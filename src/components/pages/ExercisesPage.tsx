@@ -2,14 +2,14 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Filter, X, Dumbbell, Play, ExternalLink, BookOpen, Zap, ChevronDown } from 'lucide-react';
+import { Search, Filter, X, Dumbbell, ExternalLink, BookOpen, ChevronDown, Sparkles, Flame, Target } from 'lucide-react';
 import { db } from '@/lib/db/schema';
 import type { Exercise } from '@/lib/types';
 import { MUSCLE_COLORS } from '@/lib/types';
 import { getYoutubeSearchUrl, getVideoSearchOptions } from '@/lib/data/youtube-ids';
 
-const BODY_PARTS = ['all', 'back', 'chest', 'upper arms', 'lower arms', 'shoulders', 'upper legs', 'lower legs', 'waist', 'cardio'];
-const EQUIPMENT_TYPES = ['all', 'barbell', 'dumbbell', 'cable', 'body weight', 'machine', 'leverage machine', 'band', 'kettlebell', 'medicine ball'];
+const BODY_PARTS = ['all', 'back', 'chest', 'upper arms', 'lower arms', 'shoulders', 'upper legs', 'lower legs', 'waist', 'cardio', 'neck'];
+const EQUIPMENT_TYPES = ['all', 'barbell', 'dumbbell', 'cable', 'body weight', 'machine', 'leverage machine', 'band', 'kettlebell', 'medicine ball', 'smith machine'];
 
 export default function ExercisesPage() {
   const [exercises, setExercises] = useState<Exercise[]>([]);
@@ -39,15 +39,16 @@ export default function ExercisesPage() {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(e =>
         e.name.toLowerCase().includes(q) ||
-        e.primaryMuscles.some(m => m.toLowerCase().includes(q)) ||
-        e.secondaryMuscles.some(m => m.toLowerCase().includes(q)) ||
+        e.primaryMuscles?.some(m => m.toLowerCase().includes(q)) ||
+        e.secondaryMuscles?.some(m => m.toLowerCase().includes(q)) ||
         (e.equipment && e.equipment.toLowerCase().includes(q))
       );
     }
     if (bodyPartFilter !== 'all') {
       filtered = filtered.filter(e =>
-        e.primaryMuscles.some(m => m.toLowerCase().includes(bodyPartFilter)) ||
-        e.secondaryMuscles.some(m => m.toLowerCase().includes(bodyPartFilter)) ||
+        e.primaryMuscles?.some(m => m.toLowerCase().includes(bodyPartFilter)) ||
+        e.secondaryMuscles?.some(m => m.toLowerCase().includes(bodyPartFilter)) ||
+        (e.category && e.category.toLowerCase().includes(bodyPartFilter)) ||
         (e.equipment && e.equipment.toLowerCase().includes(bodyPartFilter))
       );
     }
@@ -72,17 +73,25 @@ export default function ExercisesPage() {
   return (
     <div className="page-container">
       {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 20 }}>
-        <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em' }}>
-          <span className="gradient-text">Exercise Library</span>
-        </h1>
-        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 4 }}>
-          {exercises.length} exercises with animated demos
-        </p>
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 14, background: 'var(--gradient-fire)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 20px var(--glow-red)' }}>
+            <Dumbbell size={22} color="white" />
+          </div>
+          <div>
+            <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.03em' }}>
+              <span className="gradient-text">Exercise Library</span>
+            </h1>
+            <p style={{ color: 'var(--text-muted)', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Sparkles size={10} /> {exercises.length} exercises with animated demos
+            </p>
+          </div>
+        </div>
       </motion.div>
 
       {/* Search */}
-      <div style={{ position: 'relative', marginBottom: 14 }}>
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+        style={{ position: 'relative', marginBottom: 16 }}>
         <Search size={16} style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
         <input className="search-bar" type="text" placeholder="Search exercises, muscles, equipment..."
           value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
@@ -94,7 +103,7 @@ export default function ExercisesPage() {
         <button onClick={() => setShowFilters(!showFilters)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: activeFilters > 0 ? 'var(--accent-purple)' : 'transparent', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', color: activeFilters > 0 ? 'white' : 'var(--text-muted)', transition: 'all 0.2s' }}>
           <Filter size={14} />
         </button>
-      </div>
+      </motion.div>
 
       {/* Body part chips */}
       <div className="chip-scroll">
@@ -132,8 +141,16 @@ export default function ExercisesPage() {
         )}
       </AnimatePresence>
 
-      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, fontWeight: 600 }}>
-        {filteredExercises.length} result{filteredExercises.length !== 1 ? 's' : ''}
+      {/* Results count */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
+          {filteredExercises.length} result{filteredExercises.length !== 1 ? 's' : ''}
+        </div>
+        {searchQuery && (
+          <div style={{ fontSize: 11, color: 'var(--accent-purple)', fontWeight: 700 }}>
+            &ldquo;{searchQuery}&rdquo;
+          </div>
+        )}
       </div>
 
       {/* Grid */}
@@ -146,7 +163,7 @@ export default function ExercisesPage() {
           {filteredExercises.slice(0, visibleCount).map((exercise, idx) => {
             const imgSrc = getDisplayImage(exercise);
             const hasError = exercise.id !== undefined && imgErrors.has(exercise.id);
-            const muscleColor = MUSCLE_COLORS[exercise.primaryMuscles[0]?.toLowerCase()] || '#888';
+            const muscleColor = MUSCLE_COLORS[exercise.primaryMuscles?.[0]?.toLowerCase()] || '#888';
             return (
               <motion.div key={exercise.id} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: Math.min(idx * 0.015, 0.25) }} className="card exercise-card"
@@ -156,21 +173,28 @@ export default function ExercisesPage() {
                   {imgSrc && !hasError ? (
                     <img src={imgSrc} alt={exercise.name} loading="lazy" onError={() => handleImgError(exercise.id)} />
                   ) : (
-                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: `linear-gradient(135deg, ${muscleColor}08, var(--bg-elevated))` }}>
+                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: `linear-gradient(135deg, ${muscleColor}15, var(--bg-elevated))` }}>
                       <Dumbbell size={30} color="var(--text-dim)" />
                     </div>
                   )}
-                  {exercise.gifUrl && (
-                    <div style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', borderRadius: 6, padding: '3px 8px', fontSize: 9, fontWeight: 700, color: 'var(--accent-green)', letterSpacing: 0.5, zIndex: 2 }}>GIF</div>
+                  {exercise.gifUrl && !hasError && (
+                    <div style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)', borderRadius: 6, padding: '3px 8px', fontSize: 9, fontWeight: 700, color: 'var(--accent-green)', letterSpacing: 0.5, zIndex: 2, display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--accent-green)', display: 'inline-block' }} /> LIVE
+                    </div>
                   )}
+                  {/* Gradient overlay */}
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '60%', background: 'linear-gradient(transparent, rgba(7,7,16,0.85))', pointerEvents: 'none', zIndex: 1 }} />
                 </div>
                 <div style={{ padding: '10px 12px 12px' }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden', letterSpacing: '-0.01em' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden', letterSpacing: '-0.01em', textTransform: 'capitalize' }}>
                     {exercise.name}
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                    {exercise.primaryMuscles.slice(0, 2).map(m => (
-                      <span key={m} className="badge badge-muscle" style={{ fontSize: 9, padding: '2px 8px', color: MUSCLE_COLORS[m.toLowerCase()] || '#888' }}>{m}</span>
+                    {(exercise.primaryMuscles || []).slice(0, 2).map(m => (
+                      <span key={m} className="badge badge-muscle" style={{ fontSize: 9, padding: '2px 8px', color: MUSCLE_COLORS[m.toLowerCase()] || '#888', display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <span style={{ width: 4, height: 4, borderRadius: '50%', background: MUSCLE_COLORS[m.toLowerCase()] || '#888', display: 'inline-block' }} />
+                        {m}
+                      </span>
                     ))}
                   </div>
                   {exercise.equipment && (
@@ -200,10 +224,8 @@ export default function ExercisesPage() {
 
 /* ===== EXERCISE DETAIL MODAL ===== */
 function ExerciseDetailModal({ exercise, onClose }: { exercise: Exercise; onClose: () => void }) {
-  const [mediaMode, setMediaMode] = useState<'gif' | 'video'>('gif');
   const videoOptions = getVideoSearchOptions(exercise.name);
   const ytSearchUrl = getYoutubeSearchUrl(exercise.name);
-  const ytEmbedUrl = `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(exercise.name + ' exercise form')}`;
 
   return (
     <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
@@ -211,76 +233,64 @@ function ExerciseDetailModal({ exercise, onClose }: { exercise: Exercise; onClos
         transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()}>
         <div className="modal-handle" />
 
-        {/* Media Toggle */}
-        <div style={{ display: 'flex', gap: 4, marginBottom: 12, background: 'var(--bg-glass)', borderRadius: 'var(--r-sm)', padding: 3, border: '1px solid var(--border)' }}>
-          <button onClick={() => setMediaMode('gif')} style={{ flex: 1, padding: '8px', borderRadius: 8, border: 'none', background: mediaMode === 'gif' ? 'var(--gradient-fire)' : 'transparent', color: mediaMode === 'gif' ? 'white' : 'var(--text-muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s' }}>
-            🎬 Animation
-          </button>
-          <button onClick={() => setMediaMode('video')} style={{ flex: 1, padding: '8px', borderRadius: 8, border: 'none', background: mediaMode === 'video' ? 'var(--gradient-fire)' : 'transparent', color: mediaMode === 'video' ? 'white' : 'var(--text-muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s' }}>
-            ▶ Video Guide
-          </button>
-        </div>
-
-        {/* Media Display */}
-        {mediaMode === 'gif' ? (
-          exercise.gifUrl ? (
-            <div className="gif-container" style={{ marginBottom: 16 }}>
-              <img src={exercise.gifUrl} alt={exercise.name} />
+        {/* GIF Display */}
+        {exercise.gifUrl ? (
+          <div className="gif-container" style={{ marginBottom: 16, position: 'relative' }}>
+            <img src={exercise.gifUrl} alt={exercise.name} />
+            {/* Live indicator */}
+            <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', borderRadius: 8, padding: '4px 10px', fontSize: 10, fontWeight: 700, color: 'var(--accent-green)', display: 'flex', alignItems: 'center', gap: 4, zIndex: 2 }}>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent-green)', animation: 'pulse-dot 2s ease-in-out infinite' }} /> Animation
             </div>
-          ) : (
-            <div style={{ width: '100%', aspectRatio: '1', borderRadius: 'var(--r-lg)', background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-              <Dumbbell size={48} color="var(--text-dim)" />
-            </div>
-          )
+          </div>
         ) : (
-          <div style={{ marginBottom: 16 }}>
-            {/* Embedded YouTube Player */}
-            <div className="youtube-embed" style={{ marginBottom: 8 }}>
-              <iframe
-                src={ytEmbedUrl}
-                title={`${exercise.name} form guide`}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-            </div>
-            {/* External link fallback */}
-            <a href={ytSearchUrl} target="_blank" rel="noopener noreferrer" style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-              padding: '10px', borderRadius: 'var(--r-sm)', textDecoration: 'none',
-              background: 'rgba(255,0,0,0.06)', border: '1px solid rgba(255,0,0,0.15)',
-              color: '#FF4444', fontWeight: 600, fontSize: 12,
-            }}>
-              <ExternalLink size={12} /> Open on YouTube (more results)
-            </a>
-            {/* Channel shortcuts */}
-            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-              {videoOptions.slice(1).map(opt => (
-                <a key={opt.label} href={opt.url} target="_blank" rel="noopener noreferrer" style={{
-                  flex: 1, padding: '7px', borderRadius: 'var(--r-sm)', textDecoration: 'none', textAlign: 'center',
-                  background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)',
-                  fontSize: 10, fontWeight: 600,
-                }}>
-                  {opt.label}
-                </a>
-              ))}
-            </div>
+          <div style={{ width: '100%', aspectRatio: '1', borderRadius: 'var(--r-lg)', background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+            <Dumbbell size={48} color="var(--text-dim)" />
           </div>
         )}
 
+        {/* YouTube Link */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+          <a href={ytSearchUrl} target="_blank" rel="noopener noreferrer" style={{
+            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            padding: '10px', borderRadius: 'var(--r-sm)', textDecoration: 'none',
+            background: 'rgba(255,0,0,0.06)', border: '1px solid rgba(255,0,0,0.15)',
+            color: '#FF4444', fontWeight: 600, fontSize: 12,
+          }}>
+            <ExternalLink size={12} /> Watch on YouTube
+          </a>
+          {videoOptions.slice(1, 3).map(opt => (
+            <a key={opt.label} href={opt.url} target="_blank" rel="noopener noreferrer" style={{
+              padding: '10px 12px', borderRadius: 'var(--r-sm)', textDecoration: 'none', textAlign: 'center',
+              background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)',
+              fontSize: 10, fontWeight: 600,
+            }}>
+              {opt.label}
+            </a>
+          ))}
+        </div>
+
         {/* Title */}
-        <h2 className="font-display" style={{ fontSize: 22, fontWeight: 800, marginBottom: 8, letterSpacing: '-0.02em' }}>{exercise.name}</h2>
+        <h2 className="font-display" style={{ fontSize: 22, fontWeight: 800, marginBottom: 8, letterSpacing: '-0.02em', textTransform: 'capitalize' }}>{exercise.name}</h2>
 
         {/* Badges */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
-          {exercise.primaryMuscles.map(m => {
+          {(exercise.primaryMuscles || []).map(m => {
             const color = MUSCLE_COLORS[m.toLowerCase()] || '#888';
-            return <span key={m} className="badge" style={{ background: `${color}14`, color, border: `1px solid ${color}28`, fontWeight: 700 }}>● {m}</span>;
+            return <span key={m} className="badge" style={{ background: `${color}14`, color, border: `1px solid ${color}28`, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Flame size={10} /> {m}
+            </span>;
           })}
-          {exercise.secondaryMuscles.slice(0, 3).map(m => {
+          {(exercise.secondaryMuscles || []).slice(0, 4).map(m => {
             const color = MUSCLE_COLORS[m.toLowerCase()] || '#888';
-            return <span key={m} className="badge" style={{ background: `${color}0a`, color: `${color}bb`, fontSize: 10 }}>○ {m}</span>;
+            return <span key={m} className="badge" style={{ background: `${color}0a`, color: `${color}bb`, fontSize: 10, display: 'flex', alignItems: 'center', gap: 3 }}>
+              <Target size={8} /> {m}
+            </span>;
           })}
-          {exercise.equipment && <span className="badge badge-muscle" style={{ textTransform: 'capitalize' }}>🏋️ {exercise.equipment}</span>}
+          {exercise.equipment && (
+            <span className="badge badge-muscle" style={{ textTransform: 'capitalize', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Dumbbell size={10} /> {exercise.equipment}
+            </span>
+          )}
         </div>
 
         {/* Instructions */}

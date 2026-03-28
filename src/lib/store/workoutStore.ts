@@ -3,6 +3,7 @@ import type { ActiveExercise, ActiveSet, SetType } from '@/lib/types';
 
 interface WorkoutState {
   isActive: boolean;
+  isPaused: boolean;
   sessionId: number | null;
   planName: string;
   dayName: string;
@@ -28,15 +29,18 @@ interface WorkoutState {
   prevExercise: () => void;
   addExercise: (exercise: ActiveExercise) => void;
   removeExercise: (index: number) => void;
+  swapExercise: (index: number, newExercise: ActiveExercise) => void;
   startRestTimer: (duration: number) => void;
   stopRestTimer: () => void;
   tickTimer: () => void;
   tickRestTimer: () => void;
   addPR: (exerciseName: string, weight: number, reps: number) => void;
+  togglePause: () => void;
 }
 
 export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   isActive: false,
+  isPaused: false,
   sessionId: null,
   planName: '',
   dayName: '',
@@ -53,6 +57,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
 
   startWorkout: (planName, dayName, exercises) => set({
     isActive: true,
+    isPaused: false,
     planName,
     dayName,
     exercises,
@@ -68,6 +73,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
 
   endWorkout: () => set({
     isActive: false,
+    isPaused: false,
     sessionId: null,
     exercises: [],
     currentExerciseIndex: 0,
@@ -140,6 +146,12 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     };
   }),
 
+  swapExercise: (index, newExercise) => set((state) => {
+    const exercises = [...state.exercises];
+    exercises[index] = newExercise;
+    return { exercises };
+  }),
+
   startRestTimer: (duration) => set({
     restTimerActive: true,
     restTimeRemaining: duration,
@@ -151,9 +163,10 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     restTimeRemaining: 0,
   }),
 
-  tickTimer: () => set((state) => ({
-    elapsedTime: state.elapsedTime + 1,
-  })),
+  tickTimer: () => set((state) => {
+    if (state.isPaused) return {};
+    return { elapsedTime: state.elapsedTime + 1 };
+  }),
 
   tickRestTimer: () => set((state) => {
     const remaining = state.restTimeRemaining - 1;
@@ -166,4 +179,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   addPR: (exerciseName, weight, reps) => set((state) => ({
     newPRs: [...state.newPRs, { exerciseName, weight, reps }],
   })),
+
+  togglePause: () => set((state) => ({ isPaused: !state.isPaused })),
 }));
+

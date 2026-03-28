@@ -14,6 +14,17 @@ import type {
   UserProfile,
 } from '@/lib/types';
 
+export interface ExerciseSwap {
+  id?: number;
+  planName: string;
+  dayName: string;
+  originalExerciseName: string;
+  newExerciseId: number;
+  newExerciseName: string;
+  newGifUrl?: string;
+  swappedAt: Date;
+}
+
 export class IronForgeDB extends Dexie {
   exercises!: Table<Exercise>;
   workoutPlans!: Table<WorkoutPlan>;
@@ -27,13 +38,15 @@ export class IronForgeDB extends Dexie {
   nutritionLogs!: Table<NutritionLog>;
   waterLogs!: Table<WaterLog>;
   userProfile!: Table<UserProfile>;
+  exerciseSwaps!: Table<ExerciseSwap>;
 
   constructor() {
     super('IronForgeDB');
 
-    this.version(1).stores({
+    // Single comprehensive version to avoid upgrade chain issues on Android
+    this.version(4).stores({
       exercises: '++id, externalId, name, *primaryMuscles, equipment, category, level',
-      workoutPlans: '++id, name, category, isCustom, createdAt',
+      workoutPlans: '++id, name, category, isCustom, isActive, createdAt',
       workoutDays: '++id, planId, dayNumber',
       workoutSessions: '++id, planId, dayId, startedAt, completedAt, isComplete',
       sessionExercises: '++id, sessionId, exerciseId, orderIndex',
@@ -44,8 +57,41 @@ export class IronForgeDB extends Dexie {
       nutritionLogs: '++id, date, meal',
       waterLogs: '++id, date',
       userProfile: '++id',
+      exerciseSwaps: '++id, planName, dayName',
     });
   }
 }
 
-export const db = new IronForgeDB();
+let dbInstance: IronForgeDB | null = null;
+
+export function getDB(): IronForgeDB {
+  if (!dbInstance) {
+    dbInstance = new IronForgeDB();
+  }
+  return dbInstance;
+}
+
+// Reset the DB instance (for retry after failures)
+export async function resetDB(): Promise<IronForgeDB> {
+  if (dbInstance) {
+    try { dbInstance.close(); } catch {}
+  }
+  dbInstance = null;
+  // Delete and recreate if version mismatch causes problems
+  try {
+    const newDb = getDB();
+    await newDb.open();
+    return newDb;
+  } catch (err) {
+    console.error('DB open failed, attempting delete + recreate:', err);
+    try {
+      await Dexie.delete('IronForgeDB');
+    } catch {}
+    dbInstance = null;
+    const freshDb = getDB();
+    await freshDb.open();
+    return freshDb;
+  }
+}
+
+export const db = getDB();

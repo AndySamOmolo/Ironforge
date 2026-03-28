@@ -2,33 +2,36 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Check, Plus, Minus, Timer, SkipForward, ChevronLeft, ChevronRight, Dumbbell, ArrowLeftRight, ExternalLink, Zap, StickyNote, Play } from 'lucide-react';
+import { X, Check, Plus, Minus, Timer, SkipForward, ChevronLeft, ChevronRight, Dumbbell, ArrowLeftRight, ExternalLink, Zap, StickyNote, Play, Pause, AlertTriangle, BookOpen } from 'lucide-react';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
 import { useUserStore } from '@/lib/store/userStore';
 import { db } from '@/lib/db/schema';
 import { MUSCLE_COLORS } from '@/lib/types';
 import type { Exercise } from '@/lib/types';
-import { getYoutubeSearchUrl } from '@/lib/data/youtube-ids';
+import { getSwapSuggestions, calculatePlates } from '@/lib/utils/swapEngine';
 
 interface ActiveWorkoutPageProps { onComplete: () => void; }
 
 export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps) {
   const {
     exercises, currentExerciseIndex, elapsedTime, totalVolume, totalSets,
-    planName, dayName, sessionId,
+    planName, dayName, sessionId, isPaused,
     completeSet, updateSetWeight, updateSetReps,
     goToExercise, nextExercise, prevExercise,
     tickTimer, restTimerActive, restTimeRemaining, restTimeDuration,
-    startRestTimer, stopRestTimer, tickRestTimer, endWorkout,
+    startRestTimer, stopRestTimer, tickRestTimer, endWorkout, togglePause,
   } = useWorkoutStore();
   const { defaultRestTime, unitSystem, soundEnabled } = useUserStore();
   const [showNumpad, setShowNumpad] = useState<{ field: 'weight' | 'reps'; exerciseIdx: number; setIdx: number } | null>(null);
   const [numpadValue, setNumpadValue] = useState('0');
   const [imgErrors, setImgErrors] = useState<Set<number>>(new Set());
   const [showSwap, setShowSwap] = useState(false);
-  const [swapSuggestions, setSwapSuggestions] = useState<Exercise[]>([]);
+  const [swapSuggestions, setSwapSuggestions] = useState<{ exercise: Exercise; score: number; matchTags: string[]; category: string }[]>([]);
   const [notes, setNotes] = useState<Record<number, string>>({});
+  const [showPlates, setShowPlates] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [exerciseInfo, setExerciseInfo] = useState<Exercise | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const restTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -67,6 +70,29 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     return () => { if (wakeLock) wakeLock.release(); };
   }, []);
 
+  // Load exercise info when current exercise changes
+  useEffect(() => {
+    const loadExerciseInfo = async () => {
+      if (!currentExercise) return;
+      try {
+        const ex = await db.exercises.where('name').equalsIgnoreCase(currentExercise.exerciseName).first();
+        if (!ex) {
+          const keywords = currentExercise.exerciseName.toLowerCase().split(/\s+/).filter(k => k.length > 2);
+          const candidates = await db.exercises.filter(e => {
+            const eName = e.name.toLowerCase();
+            return keywords.every(kw => eName.includes(kw));
+          }).limit(3).toArray();
+          setExerciseInfo(candidates[0] || null);
+        } else {
+          setExerciseInfo(ex);
+        }
+      } catch {
+        setExerciseInfo(null);
+      }
+    };
+    loadExerciseInfo();
+  }, [currentExerciseIndex, exercises]);
+
   const currentExercise = exercises[currentExerciseIndex];
   const currentSetIndex = currentExercise?.sets.findIndex(s => !s.isComplete) ?? -1;
   const progress = exercises.length > 0 ? (exercises.filter(e => e.isComplete).length / exercises.length) * 100 : 0;
@@ -95,15 +121,73 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     onComplete();
   };
 
+  const handleCancel = () => {
+    setShowCancelConfirm(true);
+  };
+
+  const confirmCancel = () => {
+    endWorkout();
+    setShowCancelConfirm(false);
+  };
+
   const handleSwap = async () => {
     if (!currentExercise) return;
     try {
       const all = await db.exercises.toArray();
       const current = all.find(e => e.name.toLowerCase() === currentExercise.exerciseName.toLowerCase());
       if (!current) return;
-      const suggestions = all.filter(e => e.name !== currentExercise.exerciseName && e.primaryMuscles.some(m => current.primaryMuscles.includes(m))).slice(0, 10);
+      const sessionIds = exercises.map(e => e.exerciseId).filter(Boolean);
+      const suggestions = await getSwapSuggestions(current, sessionIds);
       setSwapSuggestions(suggestions); setShowSwap(true);
     } catch {}
+  };
+
+  const doSwap = async (newEx: Exercise) => {
+    const { swapExercise } = useWorkoutStore.getState();
+    if (swapExercise) {
+      swapExercise(currentExerciseIndex, {
+        exerciseId: newEx.id || 0,
+        exerciseName: newEx.name,
+        imageUrl: newEx.gifUrl || newEx.imageUrls?.[0],
+        gifUrl: newEx.gifUrl,
+        sets: currentExercise.sets.map(s => ({ ...s, isComplete: false })),
+        targetSets: currentExercise.targetSets,
+        targetReps: currentExercise.targetReps,
+        restTime: currentExercise.restTime,
+        isComplete: false,
+      });
+    }
+    // Persist swap to DB for future sessions
+    if (planName && dayName) {
+      try {
+        // Remove existing swap for this exercise in this plan/day
+        const existing = await db.exerciseSwaps
+          .where('[planName+dayName+originalExerciseName]')
+          .equals([planName, dayName, currentExercise.exerciseName])
+          .first();
+        if (existing?.id) {
+          await db.exerciseSwaps.update(existing.id, {
+            newExerciseId: newEx.id || 0,
+            newExerciseName: newEx.name,
+            newGifUrl: newEx.gifUrl,
+            swappedAt: new Date(),
+          });
+        } else {
+          await db.exerciseSwaps.add({
+            planName,
+            dayName,
+            originalExerciseName: currentExercise.exerciseName,
+            newExerciseId: newEx.id || 0,
+            newExerciseName: newEx.name,
+            newGifUrl: newEx.gifUrl,
+            swappedAt: new Date(),
+          });
+        }
+      } catch (err) {
+        console.warn('Failed to persist swap:', err);
+      }
+    }
+    setShowSwap(false);
   };
 
   const openNumpad = (field: 'weight' | 'reps', eIdx: number, sIdx: number) => {
@@ -138,37 +222,63 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
       {/* Top bar */}
       <div style={{ position: 'sticky', top: 0, background: 'rgba(7,7,16,0.95)', backdropFilter: 'blur(24px)', zIndex: 50, padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <button onClick={() => endWorkout()} className="btn-ghost"><X size={16} /> Cancel</button>
+          <button onClick={handleCancel} className="btn-ghost" style={{ padding: '8px 12px', minHeight: 40 }}><X size={16} /> Cancel</button>
           <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: '-0.01em' }}>{dayName || planName}</div>
-          <button onClick={handleFinish} style={{ background: 'var(--accent-green)', border: 'none', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', borderRadius: 10, padding: '8px 16px' }}>Finish</button>
+          <button onClick={handleFinish} style={{ background: 'var(--accent-green)', border: 'none', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', borderRadius: 12, padding: '10px 20px', minHeight: 40 }}>Finish</button>
         </div>
         <div style={{ height: 3, background: 'rgba(255,255,255,0.03)', borderRadius: 2 }}>
           <motion.div style={{ height: '100%', background: 'var(--gradient-fire)', borderRadius: 2 }} animate={{ width: `${progress}%` }} transition={{ duration: 0.4 }} />
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 11, fontWeight: 600 }}>
-          <span style={{ color: 'var(--text-muted)' }}>{currentExerciseIndex + 1}/{exercises.length}</span>
-          <span className="font-mono" style={{ color: 'var(--accent-red)', fontWeight: 700 }}>⏱ {formatTime(elapsedTime)}</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>{currentExerciseIndex + 1}/{exercises.length}</span>
+          {/* Timer with pause button */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button
+              onClick={togglePause}
+              style={{
+                width: 32, height: 32, borderRadius: 8,
+                background: isPaused ? 'rgba(16,232,154,0.12)' : 'rgba(255,61,90,0.08)',
+                border: `1px solid ${isPaused ? 'rgba(16,232,154,0.25)' : 'rgba(255,61,90,0.15)'}`,
+                color: isPaused ? 'var(--accent-green)' : 'var(--accent-red)',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              {isPaused ? <Play size={12} fill="currentColor" /> : <Pause size={12} />}
+            </button>
+            <span className="font-mono" style={{
+              color: isPaused ? 'var(--accent-yellow)' : 'var(--accent-red)',
+              fontWeight: 700, fontSize: 13,
+              animation: isPaused ? 'pulse-dot 1.5s ease-in-out infinite' : 'none',
+            }}>
+              ⏱ {formatTime(elapsedTime)}
+              {isPaused && <span style={{ fontSize: 9, marginLeft: 4, opacity: 0.8 }}>PAUSED</span>}
+            </span>
+          </div>
         </div>
       </div>
 
       {/* Exercise queue */}
       <div className="chip-scroll" style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)' }}>
         {exercises.map((ex, idx) => (
-          <button key={idx} onClick={() => goToExercise(idx)} style={{ flexShrink: 0, padding: '6px 12px', borderRadius: 10, border: idx === currentExerciseIndex ? '2px solid var(--accent-red)' : '1px solid var(--border)', background: ex.isComplete ? 'rgba(16,232,154,0.06)' : 'var(--bg-glass)', color: ex.isComplete ? 'var(--accent-green)' : idx === currentExerciseIndex ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          <button key={idx} onClick={() => goToExercise(idx)} style={{ flexShrink: 0, padding: '8px 14px', borderRadius: 12, border: idx === currentExerciseIndex ? '2px solid var(--accent-red)' : '1px solid var(--border)', background: ex.isComplete ? 'rgba(16,232,154,0.06)' : 'var(--bg-glass)', color: ex.isComplete ? 'var(--accent-green)' : idx === currentExerciseIndex ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', minHeight: 38 }}>
             {ex.isComplete ? '✓ ' : ''}{ex.exerciseName.split(' ').slice(0, 3).join(' ')}
           </button>
         ))}
       </div>
 
       <div style={{ padding: 16 }}>
-        {/* GIF display */}
+        {/* GIF display — upscaled */}
         {exerciseGif && !hasImgError && (
-          <div style={{ width: '100%', aspectRatio: '1', borderRadius: 'var(--r-lg)', overflow: 'hidden', marginBottom: 14, background: '#0a0a14', position: 'relative', border: '1px solid var(--border)' }}>
-            <img src={exerciseGif} alt={currentExercise.exerciseName} style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={() => setImgErrors(prev => new Set(prev).add(currentExerciseIndex))} />
-            <a href={getYoutubeSearchUrl(currentExercise.exerciseName)} target="_blank" rel="noopener noreferrer"
-              style={{ position: 'absolute', bottom: 10, right: 10, background: 'rgba(255,0,0,0.85)', borderRadius: 10, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 4, color: 'white', fontSize: 11, fontWeight: 700, textDecoration: 'none', backdropFilter: 'blur(4px)', border: 'none', cursor: 'pointer' }}>
-              <Play size={10} fill="white" /> YouTube <ExternalLink size={9} />
-            </a>
+          <div className="gif-upscale-container" style={{ width: '100%', aspectRatio: '1', borderRadius: 'var(--r-lg)', overflow: 'hidden', marginBottom: 14, background: '#0a0a14', position: 'relative', border: '1px solid var(--border)' }}>
+            <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at center, rgba(139,92,246,0.04) 0%, transparent 70%)', zIndex: 0 }} />
+            <img
+              src={exerciseGif} alt={currentExercise.exerciseName}
+              style={{ width: '100%', height: '100%', objectFit: 'contain', imageRendering: 'auto', transform: 'scale(1.12)', transformOrigin: 'center', position: 'relative', zIndex: 1 }}
+              onError={() => setImgErrors(prev => new Set(prev).add(currentExerciseIndex))}
+            />
+            <div style={{ position: 'absolute', top: 10, left: 10, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', borderRadius: 8, padding: '4px 10px', fontSize: 10, fontWeight: 700, color: 'var(--accent-green)', display: 'flex', alignItems: 'center', gap: 4, zIndex: 2 }}>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent-green)', animation: 'pulse-dot 2s ease-in-out infinite' }} /> GIF
+            </div>
           </div>
         )}
 
@@ -179,10 +289,10 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Set {currentSetIndex >= 0 ? currentSetIndex + 1 : '✓'} of {currentExercise.sets.length}</div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={() => setShowNotes(true)} title="Notes" style={{ width: 34, height: 34, borderRadius: 9, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)', color: 'var(--accent-yellow)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><StickyNote size={14} /></button>
-            <button onClick={handleSwap} title="Swap" style={{ width: 34, height: 34, borderRadius: 9, background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', color: 'var(--accent-purple)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ArrowLeftRight size={14} /></button>
-            <button onClick={prevExercise} disabled={currentExerciseIndex === 0} style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: currentExerciseIndex === 0 ? 0.3 : 1 }}><ChevronLeft size={16} /></button>
-            <button onClick={nextExercise} disabled={currentExerciseIndex === exercises.length - 1} style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: currentExerciseIndex === exercises.length - 1 ? 0.3 : 1 }}><ChevronRight size={16} /></button>
+            <button onClick={() => setShowNotes(true)} title="Notes" style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)', color: 'var(--accent-yellow)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><StickyNote size={16} /></button>
+            <button onClick={handleSwap} title="Swap" style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', color: 'var(--accent-purple)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ArrowLeftRight size={16} /></button>
+            <button onClick={prevExercise} disabled={currentExerciseIndex === 0} style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: currentExerciseIndex === 0 ? 0.3 : 1 }}><ChevronLeft size={18} /></button>
+            <button onClick={nextExercise} disabled={currentExerciseIndex === exercises.length - 1} style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: currentExerciseIndex === exercises.length - 1 ? 0.3 : 1 }}><ChevronRight size={18} /></button>
           </div>
         </div>
 
@@ -197,31 +307,61 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
           {currentExercise.sets.map((set, setIdx) => (
             <motion.div key={setIdx} layout className={`set-row ${set.isComplete ? 'completed' : ''}`} style={setIdx === currentSetIndex ? { borderColor: 'rgba(255,61,90,0.3)' } : {}}>
-              <div style={{ width: 28, height: 28, borderRadius: 7, background: set.isComplete ? 'var(--accent-green)' : 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0, color: set.isComplete ? 'white' : 'var(--text-muted)' }}>
-                {set.isComplete ? <Check size={12} /> : setIdx + 1}
+              <div style={{ width: 32, height: 32, borderRadius: 8, background: set.isComplete ? 'var(--accent-green)' : 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, flexShrink: 0, color: set.isComplete ? 'white' : 'var(--text-muted)' }}>
+                {set.isComplete ? <Check size={14} /> : setIdx + 1}
               </div>
               <div style={{ flex: 1 }}>
-                <div className="section-label" style={{ marginBottom: 2 }}>{unitSystem === 'metric' ? 'KG' : 'LBS'}</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <button onClick={() => updateSetWeight(currentExerciseIndex, setIdx, Math.max(0, set.weight - 2.5))} style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={10} /></button>
-                  <button className="set-input" onClick={() => openNumpad('weight', currentExerciseIndex, setIdx)} style={{ cursor: 'pointer', width: 56 }}>{set.weight}</button>
-                  <button onClick={() => updateSetWeight(currentExerciseIndex, setIdx, set.weight + 2.5)} style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={10} /></button>
+                <div className="section-label" style={{ marginBottom: 3 }}>{unitSystem === 'metric' ? 'KG' : 'LBS'}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <button onClick={() => updateSetWeight(currentExerciseIndex, setIdx, Math.max(0, set.weight - 2.5))} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={14} /></button>
+                  <button className="set-input" onClick={() => openNumpad('weight', currentExerciseIndex, setIdx)} style={{ cursor: 'pointer', width: 60, minHeight: 40 }}>{set.weight}</button>
+                  <button onClick={() => updateSetWeight(currentExerciseIndex, setIdx, set.weight + 2.5)} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={14} /></button>
                 </div>
               </div>
               <div style={{ flex: 1 }}>
-                <div className="section-label" style={{ marginBottom: 2 }}>REPS</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <button onClick={() => updateSetReps(currentExerciseIndex, setIdx, Math.max(0, set.reps - 1))} style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={10} /></button>
-                  <button className="set-input" onClick={() => openNumpad('reps', currentExerciseIndex, setIdx)} style={{ cursor: 'pointer', width: 48 }}>{set.reps || set.targetReps}</button>
-                  <button onClick={() => updateSetReps(currentExerciseIndex, setIdx, (set.reps || set.targetReps) + 1)} style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={10} /></button>
+                <div className="section-label" style={{ marginBottom: 3 }}>REPS</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <button onClick={() => updateSetReps(currentExerciseIndex, setIdx, Math.max(0, set.reps - 1))} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={14} /></button>
+                  <button className="set-input" onClick={() => openNumpad('reps', currentExerciseIndex, setIdx)} style={{ cursor: 'pointer', width: 52, minHeight: 40 }}>{set.reps || set.targetReps}</button>
+                  <button onClick={() => updateSetReps(currentExerciseIndex, setIdx, (set.reps || set.targetReps) + 1)} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={14} /></button>
                 </div>
               </div>
               {!set.isComplete && (
-                <motion.button whileTap={{ scale: 0.9 }} onClick={() => handleCompleteSet(currentExerciseIndex, setIdx)} style={{ width: 40, height: 40, borderRadius: 11, background: 'var(--gradient-fire)', border: 'none', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 4px 14px var(--glow-red)' }}><Check size={16} /></motion.button>
+                <motion.button whileTap={{ scale: 0.9 }} onClick={() => handleCompleteSet(currentExerciseIndex, setIdx)} style={{ width: 48, height: 48, borderRadius: 14, background: 'var(--gradient-fire)', border: 'none', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 4px 14px var(--glow-red)' }}><Check size={20} /></motion.button>
               )}
             </motion.div>
           ))}
         </div>
+
+        {/* Plate Calculator */}
+        {currentSetIndex >= 0 && currentExercise.sets[currentSetIndex]?.weight > 0 && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginBottom: 14 }}>
+            <button onClick={() => setShowPlates(!showPlates)} style={{ width: '100%', padding: '10px 14px', background: 'var(--bg-glass)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, minHeight: 44 }}>
+              <span>🏋️ Plate Calculator</span>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{showPlates ? '▲' : '▼'}</span>
+            </button>
+            <AnimatePresence>
+              {showPlates && (
+                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} style={{ overflow: 'hidden' }}>
+                  <div style={{ padding: '10px 12px', background: 'var(--bg-elevated)', borderRadius: '0 0 var(--r-sm) var(--r-sm)', border: '1px solid var(--border)', borderTop: 'none' }}>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6 }}>Bar: {useUserStore.getState().barWeight}kg • Each side: {((currentExercise.sets[currentSetIndex].weight - useUserStore.getState().barWeight) / 2).toFixed(1)}kg</div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {calculatePlates(currentExercise.sets[currentSetIndex].weight, useUserStore.getState().barWeight).map((p, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: `${p.color}15`, border: `1px solid ${p.color}30`, borderRadius: 6 }}>
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color }} />
+                          <span style={{ fontSize: 11, fontWeight: 700, color: p.color }}>{p.plate}kg ×{p.count}</span>
+                        </div>
+                      ))}
+                      {calculatePlates(currentExercise.sets[currentSetIndex].weight, useUserStore.getState().barWeight).length === 0 && (
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Empty bar</span>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
 
         {/* Stats footer */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, padding: 14, background: 'var(--bg-glass)', backdropFilter: 'blur(20px)', borderRadius: 'var(--r-lg)', border: '1px solid var(--border-subtle)' }}>
@@ -233,6 +373,34 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
           ))}
         </div>
       </div>
+
+      {/* Cancel Confirmation Modal */}
+      <AnimatePresence>
+        {showCancelConfirm && (
+          <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowCancelConfirm(false)}>
+            <motion.div className="modal-content" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()} style={{ maxHeight: '40dvh' }}>
+              <div className="modal-handle" />
+              <div style={{ textAlign: 'center', padding: '8px 0' }}>
+                <div style={{ width: 56, height: 56, borderRadius: 16, background: 'rgba(255,61,90,0.1)', border: '1px solid rgba(255,61,90,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                  <AlertTriangle size={28} color="var(--accent-red)" />
+                </div>
+                <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 8 }}>End Workout?</h3>
+                <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 24 }}>
+                  Your progress ({totalSets} sets, {totalVolume.toLocaleString()}kg volume) will be lost.
+                </p>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => setShowCancelConfirm(false)} className="btn-secondary" style={{ flex: 1, minHeight: 48, borderRadius: 14 }}>
+                    Continue Workout
+                  </button>
+                  <button onClick={confirmCancel} style={{ flex: 1, background: 'rgba(255,61,90,0.12)', border: '1px solid rgba(255,61,90,0.3)', color: 'var(--accent-red)', borderRadius: 14, fontSize: 14, fontWeight: 700, cursor: 'pointer', minHeight: 48 }}>
+                    End & Discard
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Rest Timer */}
       <AnimatePresence>
@@ -249,25 +417,62 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                 <div className="progress-ring-text"><div className="font-mono" style={{ fontSize: 52, fontWeight: 800 }}>{restTimeRemaining}</div><div style={{ fontSize: 12, color: 'var(--text-muted)' }}>sec</div></div>
               </div>
               <div style={{ display: 'flex', gap: 10, marginTop: 24, justifyContent: 'center' }}>
-                <button className="btn-secondary" onClick={() => startRestTimer(restTimeRemaining - 15)} style={{ padding: '10px 18px', borderRadius: 'var(--r-sm)' }}>-15s</button>
-                <motion.button whileTap={{ scale: 0.95 }} className="btn-primary" onClick={stopRestTimer} style={{ padding: '12px 32px', width: 'auto', borderRadius: 'var(--r-sm)' }}><SkipForward size={16} /> Skip</motion.button>
-                <button className="btn-secondary" onClick={() => startRestTimer(restTimeRemaining + 15)} style={{ padding: '10px 18px', borderRadius: 'var(--r-sm)' }}>+15s</button>
+                <button className="btn-secondary" onClick={() => startRestTimer(restTimeRemaining - 15)} style={{ padding: '12px 20px', borderRadius: 14, minHeight: 48 }}>-15s</button>
+                <motion.button whileTap={{ scale: 0.95 }} className="btn-primary" onClick={stopRestTimer} style={{ padding: '14px 36px', width: 'auto', borderRadius: 14, minHeight: 48 }}><SkipForward size={18} /> Skip</motion.button>
+                <button className="btn-secondary" onClick={() => startRestTimer(restTimeRemaining + 15)} style={{ padding: '12px 20px', borderRadius: 14, minHeight: 48 }}>+15s</button>
               </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Notes Modal */}
+      {/* Notes Modal — now with exercise info */}
       <AnimatePresence>
         {showNotes && (
           <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowNotes(false)}>
             <motion.div className="modal-content" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()}>
               <div className="modal-handle" />
-              <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 12 }}>Workout Notes</h3>
-              <textarea value={notes[currentExerciseIndex] || ''} onChange={e => setNotes(prev => ({ ...prev, [currentExerciseIndex]: e.target.value }))} placeholder="Add notes for this exercise..." rows={4}
-                style={{ width: '100%', padding: 14, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', color: 'var(--text-primary)', fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit' }} />
-              <button onClick={() => setShowNotes(false)} className="btn-primary" style={{ marginTop: 12, borderRadius: 'var(--r-md)' }}>Done</button>
+              <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>{currentExercise.exerciseName}</h3>
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 16 }}>Exercise notes & instructions</p>
+
+              {/* Exercise instructions from DB */}
+              {exerciseInfo?.instructions && exerciseInfo.instructions.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                    <BookOpen size={14} color="var(--accent-purple)" />
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-purple)' }}>How to Perform</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 14px', background: 'var(--bg-glass)', borderRadius: 12, border: '1px solid var(--border)', maxHeight: '35vh', overflowY: 'auto' }}>
+                    {exerciseInfo.instructions.map((step, i) => (
+                      <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                        <div style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--gradient-ocean)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, flexShrink: 0, color: 'white' }}>{i + 1}</div>
+                        <p style={{ fontSize: 12, lineHeight: 1.6, color: 'var(--text-secondary)', flex: 1 }}>{step}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Muscle targets */}
+              {exerciseInfo?.primaryMuscles && exerciseInfo.primaryMuscles.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+                  {exerciseInfo.primaryMuscles.map(m => {
+                    const color = MUSCLE_COLORS[m.toLowerCase()] || '#888';
+                    return <span key={m} className="badge" style={{ background: `${color}14`, color, border: `1px solid ${color}28`, fontWeight: 700, fontSize: 10 }}>● {m}</span>;
+                  })}
+                  {exerciseInfo.equipment && (
+                    <span className="badge badge-muscle" style={{ textTransform: 'capitalize', fontSize: 10 }}>🏋️ {exerciseInfo.equipment}</span>
+                  )}
+                </div>
+              )}
+
+              {/* User notes */}
+              <div style={{ marginBottom: 12 }}>
+                <div className="section-label" style={{ marginBottom: 8 }}>YOUR NOTES</div>
+                <textarea value={notes[currentExerciseIndex] || ''} onChange={e => setNotes(prev => ({ ...prev, [currentExerciseIndex]: e.target.value }))} placeholder="Add notes for this exercise..."  rows={3}
+                  style={{ width: '100%', padding: 14, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit' }} />
+              </div>
+              <button onClick={() => setShowNotes(false)} className="btn-primary" style={{ borderRadius: 14, minHeight: 48 }}>Done</button>
             </motion.div>
           </motion.div>
         )}
@@ -279,17 +484,32 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
           <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowSwap(false)}>
             <motion.div className="modal-content" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()}>
               <div className="modal-handle" />
-              <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 12 }}>Swap Exercise</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {swapSuggestions.map(ex => (
-                  <button key={ex.id} onClick={() => setShowSwap(false)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--bg-glass)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', cursor: 'pointer', textAlign: 'left', width: '100%', color: 'var(--text-primary)' }}>
-                    {ex.gifUrl && <img src={ex.gifUrl} alt="" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover' }} />}
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700 }}>{ex.name}</div>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{ex.primaryMuscles.join(', ')}</div>
+              <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>Swap Exercise</h3>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Swapping: {currentExercise?.exerciseName}</div>
+              <div style={{ fontSize: 10, color: 'var(--accent-green)', marginBottom: 12 }}>✓ Swaps are remembered for future sessions</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '60vh', overflowY: 'auto' }}>
+                {['perfect', 'good', 'home', 'related'].map(cat => {
+                  const items = swapSuggestions.filter(s => s.category === cat);
+                  if (items.length === 0) return null;
+                  const catLabel = { perfect: '🎯 Perfect Swaps', good: '🔄 Good Alternatives', home: '🏠 Home Alternatives', related: '➕ Related' }[cat];
+                  return (
+                    <div key={cat}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4, marginTop: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>{catLabel}</div>
+                      {items.map(({ exercise: ex, matchTags, score }) => (
+                        <button key={ex.id} onClick={() => doSwap(ex)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: 'var(--bg-glass)', border: '1px solid var(--border)', borderRadius: 14, cursor: 'pointer', textAlign: 'left', width: '100%', color: 'var(--text-primary)', marginBottom: 4, minHeight: 56 }}>
+                          {ex.gifUrl && <img src={ex.gifUrl} alt="" style={{ width: 44, height: 44, borderRadius: 10, objectFit: 'cover' }} />}
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700 }}>{ex.name}</div>
+                            <div style={{ fontSize: 9, color: 'var(--text-muted)', display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 2 }}>
+                              {matchTags.slice(0, 3).map((tag, i) => (<span key={i} style={{ background: 'var(--bg-elevated)', padding: '1px 4px', borderRadius: 3 }}>{tag}</span>))}
+                            </div>
+                          </div>
+                          <div style={{ width: 28, height: 28, borderRadius: 7, background: `rgba(16,232,154,${score / 150})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: 'white' }}>{score}</div>
+                        </button>
+                      ))}
                     </div>
-                  </button>
-                ))}
+                  );
+                })}
               </div>
             </motion.div>
           </motion.div>
@@ -308,7 +528,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
               </div>
               {showNumpad.field === 'weight' && (
                 <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 10 }}>
-                  {[1, 2.5, 5, 10, 20].map(inc => <button key={inc} className="btn-secondary" onClick={() => setNumpadValue(prev => (parseFloat(prev) + inc).toString())} style={{ padding: '7px 12px', fontSize: 12, borderRadius: 8 }}>+{inc}</button>)}
+                  {[1, 2.5, 5, 10, 20].map(inc => <button key={inc} className="btn-secondary" onClick={() => setNumpadValue(prev => (parseFloat(prev) + inc).toString())} style={{ padding: '9px 14px', fontSize: 13, borderRadius: 10, minHeight: 40 }}>+{inc}</button>)}
                 </div>
               )}
               <div className="numpad-grid">

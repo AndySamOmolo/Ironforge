@@ -1,0 +1,8 @@
+{
+  "appId": "com.ironforge.workout",
+  "appName": "IronForge",
+  "webDir": "out",
+  "server": {
+    "androidScheme": "https"
+  }
+}

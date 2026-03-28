@@ -18,7 +18,8 @@ export default function ProgressPage() {
 
   const loadData = async () => {
     const allSessions = await db.workoutSessions.orderBy('startedAt').reverse().toArray();
-    setSessions(allSessions);
+    // Only use completed sessions for stats
+    setSessions(allSessions.filter(s => s.isComplete));
     const allPRs = await db.personalRecords.orderBy('date').reverse().toArray();
     setPrs(allPRs);
   };

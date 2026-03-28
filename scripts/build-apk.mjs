@@ -15,10 +15,12 @@
  */
 
 import { execSync } from 'child_process';
-import { existsSync, readFileSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { existsSync, readFileSync, writeFileSync, readdirSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
-const ROOT = process.cwd();
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT = join(__dirname, '..');
 
 const run = (cmd, opts = {}) => {
   console.log(`  ▸ ${cmd}`);
@@ -48,6 +50,20 @@ if (!javaVersion) {
 }
 console.log('  ✅ Java detected');
 
+if (javaVersion.match(/version "(2[2-9]|[3-9][0-9])/)) {
+  console.log('  ⚠️ Detected Java 22+ which is incompatible with Gradle. Searching for Java 17/21...');
+  if (existsSync('/usr/lib/jvm')) {
+    const jvmDirs = readdirSync('/usr/lib/jvm');
+    const compatible = jvmDirs.find(d => d.includes('java-21')) || jvmDirs.find(d => d.includes('java-17'));
+    if (compatible) {
+      process.env.JAVA_HOME = join('/usr/lib/jvm', compatible);
+      console.log(`  ✅ Auto-switched JAVA_HOME to: ${process.env.JAVA_HOME}`);
+    } else {
+      console.log('  ⚠️ No Java 17/21 found in /usr/lib/jvm. Build might fail.');
+    }
+  }
+}
+
 const androidHome = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
 if (!androidHome) {
   console.error('❌ Android SDK not found. Set ANDROID_HOME or ANDROID_SDK_ROOT.');
@@ -61,20 +77,16 @@ console.log(`  ✅ Android SDK: ${androidHome}`);
 console.log('\n📋 Step 2: Configuring static export...');
 
 const nextConfigPath = join(ROOT, 'next.config.ts');
-let nextConfig = readFileSync(nextConfigPath, 'utf-8');
+const originalConfig = readFileSync(nextConfigPath, 'utf-8');
+let nextConfig = originalConfig;
 
 if (!nextConfig.includes("output: 'export'")) {
-  // Temporarily add export config
-  nextConfig = nextConfig.replace(
-    'const nextConfig',
-    `// Temporarily added for APK build\nconst nextConfig`
-  );
   if (nextConfig.includes('output:')) {
     nextConfig = nextConfig.replace(/output:\s*['"][^'"]*['"]/, "output: 'export'");
   } else {
     nextConfig = nextConfig.replace(
-      /const nextConfig\s*[:=]\s*\{/,
-      "const nextConfig = {\n  output: 'export',"
+      /const nextConfig(?:[^=]+)?=\s*\{/,
+      "$& \n  output: 'export',"
     );
   }
   writeFileSync(nextConfigPath, nextConfig);
@@ -169,11 +181,7 @@ if (existsSync(apkPath)) {
 }
 
 // Step 10: Revert next.config.ts
-const revertConfig = readFileSync(nextConfigPath, 'utf-8');
-if (revertConfig.includes("output: 'export'")) {
-  const reverted = revertConfig
-    .replace("  output: 'export',\n", '')
-    .replace('// Temporarily added for APK build\n', '');
-  writeFileSync(nextConfigPath, reverted);
-  console.log('✅ Reverted next.config.ts (removed static export)');
+if (originalConfig && !originalConfig.includes("output: 'export'")) {
+  writeFileSync(nextConfigPath, originalConfig);
+  console.log('✅ Reverted next.config.ts');
 }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Calendar, ChevronRight, ChevronDown, ChevronUp, Zap, Target, Dumbbell, Plus, X, Check, Settings, Search } from 'lucide-react';
+import { Calendar, ChevronRight, ChevronDown, ChevronUp, Zap, Target, Dumbbell, Plus, X, Check, Settings, Search, Play, XCircle } from 'lucide-react';
 import { db } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
@@ -67,16 +67,58 @@ export default function PlansPage() {
     loadPlans();
   };
 
+  const deactivatePlan = async (planId: number) => {
+    await db.workoutPlans.update(planId, { isActive: false });
+    loadPlans();
+  };
+
   const startDay = async (plan: WorkoutPlan, day: WorkoutDay) => {
+    // Load saved swaps for this plan+day
+    let savedSwaps: Record<string, { newExerciseId: number; newExerciseName: string; newGifUrl?: string }> = {};
+    try {
+      const swaps = await db.exerciseSwaps.where('planName').equals(plan.name).filter(s => s.dayName === day.name).toArray();
+      for (const swap of swaps) {
+        savedSwaps[swap.originalExerciseName.toLowerCase()] = {
+          newExerciseId: swap.newExerciseId,
+          newExerciseName: swap.newExerciseName,
+          newGifUrl: swap.newGifUrl,
+        };
+      }
+    } catch {}
+
     const exercises = await Promise.all(day.exercises.map(async (ex) => {
-      const dbEx = await db.exercises.where('name').equalsIgnoreCase(ex.exerciseName).first();
+      // Check if there's a saved swap for this exercise
+      const swap = savedSwaps[ex.exerciseName.toLowerCase()];
+      if (swap) {
+        const swappedEx = await db.exercises.get(swap.newExerciseId);
+        if (swappedEx) {
+          return {
+            exerciseId: swappedEx.id || 0, exerciseName: swappedEx.name,
+            imageUrl: swappedEx.gifUrl || swappedEx.imageUrls?.[0], gifUrl: swappedEx.gifUrl,
+            sets: Array.from({ length: ex.sets }, (_, i) => ({ setNumber: i + 1, setType: ex.setType as any, weight: ex.weight || 0, reps: typeof ex.reps === 'number' ? ex.reps : 0, targetWeight: ex.weight || 0, targetReps: typeof ex.reps === 'number' ? ex.reps : 0, isComplete: false })),
+            targetSets: ex.sets, targetReps: ex.reps, restTime: ex.restTime, isComplete: false,
+          };
+        }
+      }
+
+      // Fuzzy search: try exact match first, then keyword-based partial match
+      let dbEx = await db.exercises.where('name').equalsIgnoreCase(ex.exerciseName).first();
+      if (!dbEx) {
+        const keywords = ex.exerciseName.toLowerCase().split(/\s+/).filter(k => k.length > 2);
+        const candidates = await db.exercises.filter(e => {
+          const eName = e.name.toLowerCase();
+          return keywords.every(kw => eName.includes(kw)) || keywords.filter(kw => eName.includes(kw)).length >= Math.max(1, keywords.length - 1);
+        }).limit(5).toArray();
+        if (candidates.length > 0) {
+          dbEx = candidates.sort((a, b) => Math.abs(a.name.length - ex.exerciseName.length) - Math.abs(b.name.length - ex.exerciseName.length))[0];
+        }
+      }
       // Check if exercise matches user equipment
       if (dbEx && selectedEquipment.length > 0) {
         const exEquip = dbEx.equipment?.toLowerCase() || 'body weight';
         if (!selectedEquipment.some(eq => exEquip.includes(eq.toLowerCase()))) {
-          // Find alternative with matching equipment
           const alt = await db.exercises
-            .filter(e => e.primaryMuscles.some(m => dbEx.primaryMuscles.includes(m)) && selectedEquipment.some(eq => (e.equipment || '').toLowerCase().includes(eq.toLowerCase())))
+            .filter(e => e.primaryMuscles.some(m => dbEx!.primaryMuscles.includes(m)) && selectedEquipment.some(eq => (e.equipment || '').toLowerCase().includes(eq.toLowerCase())))
             .first();
           if (alt) {
             return {
@@ -89,7 +131,7 @@ export default function PlansPage() {
         }
       }
       return {
-        exerciseId: dbEx?.id || 0, exerciseName: ex.exerciseName,
+        exerciseId: dbEx?.id || 0, exerciseName: dbEx?.name || ex.exerciseName,
         imageUrl: dbEx?.gifUrl || dbEx?.imageUrls?.[0], gifUrl: dbEx?.gifUrl,
         sets: Array.from({ length: ex.sets }, (_, i) => ({ setNumber: i + 1, setType: ex.setType as any, weight: ex.weight || 0, reps: typeof ex.reps === 'number' ? ex.reps : 0, targetWeight: ex.weight || 0, targetReps: typeof ex.reps === 'number' ? ex.reps : 0, isComplete: false })),
         targetSets: ex.sets, targetReps: ex.reps, restTime: ex.restTime, isComplete: false,
@@ -101,7 +143,7 @@ export default function PlansPage() {
       startedAt: new Date(), duration: 0, totalVolume: 0, totalSets: 0, totalReps: 0, isComplete: false,
     });
 
-    startWorkout(exercises, plan.name, day.name, sessionId);
+    startWorkout(plan.name, day.name, exercises);
   };
 
   const categories = useMemo(() => {
@@ -137,10 +179,10 @@ export default function PlansPage() {
         style={{ marginBottom: 16 }}>
         <button onClick={() => setShowEquipment(!showEquipment)} className="card" style={{
           width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          cursor: 'pointer', padding: '14px 16px', border: '1px solid var(--border-subtle)',
+          cursor: 'pointer', padding: '14px 16px', border: '1px solid var(--border-subtle)', minHeight: 56,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--gradient-mint)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--gradient-mint)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Settings size={16} color="white" />
             </div>
             <div style={{ textAlign: 'left' }}>
@@ -165,8 +207,8 @@ export default function PlansPage() {
                 ))}
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => setSelectedEquipment(ALL_EQUIPMENT)} className="btn-ghost" style={{ flex: 1, fontSize: 11 }}>Select All</button>
-                <button onClick={() => setSelectedEquipment(['body weight'])} className="btn-ghost" style={{ flex: 1, fontSize: 11 }}>Body Only</button>
+                <button onClick={() => setSelectedEquipment(ALL_EQUIPMENT)} className="btn-ghost" style={{ flex: 1, fontSize: 11, minHeight: 40 }}>Select All</button>
+                <button onClick={() => setSelectedEquipment(['body weight'])} className="btn-ghost" style={{ flex: 1, fontSize: 11, minHeight: 40 }}>Body Only</button>
               </div>
             </motion.div>
           )}
@@ -195,13 +237,13 @@ export default function PlansPage() {
             <motion.div key={plan.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
               <div className="card" style={{ padding: 0, overflow: 'hidden', border: plan.isActive ? '1px solid rgba(16,232,154,0.3)' : '1px solid var(--border-subtle)' }}>
                 {plan.isActive && (
-                  <div style={{ background: 'var(--gradient-mint)', padding: '4px 0', textAlign: 'center', fontSize: 10, fontWeight: 800, color: 'white', letterSpacing: 1.2, textTransform: 'uppercase' }}>
+                  <div style={{ background: 'var(--gradient-mint)', padding: '5px 0', textAlign: 'center', fontSize: 10, fontWeight: 800, color: 'white', letterSpacing: 1.2, textTransform: 'uppercase' }}>
                     ✓ Active Plan
                   </div>
                 )}
                 <button onClick={() => togglePlan(plan.id!)} style={{
                   width: '100%', padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--text-primary)',
+                  background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--text-primary)', minHeight: 80,
                 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 6, letterSpacing: '-0.01em' }}>{plan.name}</div>
@@ -229,25 +271,54 @@ export default function PlansPage() {
                       style={{ overflow: 'hidden', borderTop: '1px solid var(--border)' }}>
                       <div style={{ padding: 16 }}>
                         {days.map((day, j) => (
-                          <div key={day.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: j < days.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                            <div>
-                              <div style={{ fontSize: 14, fontWeight: 700 }}>Day {day.dayNumber}: {day.name}</div>
-                              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{day.exercises.length} exercises</div>
+                          <div key={day.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: j < days.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
+                              <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--gradient-fire)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, color: 'white', flexShrink: 0 }}>
+                                D{day.dayNumber}
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 14, fontWeight: 700 }}>{day.name}</div>
+                                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{day.exercises.length} exercises</div>
+                              </div>
                             </div>
-                            <button onClick={() => startDay(plan, day)} style={{
-                              background: 'var(--gradient-fire)', border: 'none', color: 'white', borderRadius: 10,
-                              padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                              boxShadow: '0 2px 10px var(--glow-red)',
-                            }}>
-                              <Zap size={12} style={{ marginRight: 4 }} /> Start
-                            </button>
+                            <motion.button
+                              whileTap={{ scale: 0.93 }}
+                              onClick={() => startDay(plan, day)}
+                              style={{
+                                background: 'var(--gradient-fire)', border: 'none', color: 'white', borderRadius: 14,
+                                padding: '12px 22px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                                boxShadow: '0 4px 16px var(--glow-red)', display: 'flex', alignItems: 'center', gap: 6,
+                                minHeight: 48,
+                              }}>
+                              <Play size={14} fill="white" /> Start
+                            </motion.button>
                           </div>
                         ))}
-                        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                          {!plan.isActive && (
-                            <button onClick={() => activatePlan(plan.id!)} className="btn-secondary" style={{ flex: 1, fontSize: 12, padding: '10px' }}>
-                              <Target size={12} style={{ marginRight: 4 }} /> Set Active
-                            </button>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+                          {!plan.isActive ? (
+                            <motion.button
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() => activatePlan(plan.id!)}
+                              style={{
+                                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                                padding: '12px 16px', borderRadius: 14, minHeight: 48,
+                                background: 'rgba(16,232,154,0.06)', border: '1px solid rgba(16,232,154,0.2)',
+                                color: 'var(--accent-green)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                              }}>
+                              <Target size={14} /> Set as Active Plan
+                            </motion.button>
+                          ) : (
+                            <motion.button
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() => deactivatePlan(plan.id!)}
+                              style={{
+                                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                                padding: '12px 16px', borderRadius: 14, minHeight: 48,
+                                background: 'rgba(255,61,90,0.06)', border: '1px solid rgba(255,61,90,0.2)',
+                                color: 'var(--accent-red)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                              }}>
+                              <XCircle size={14} /> Remove Active
+                            </motion.button>
                           )}
                         </div>
                       </div>
@@ -263,7 +334,7 @@ export default function PlansPage() {
       {/* Custom Plan Builder Button */}
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
         style={{ marginTop: 24 }}>
-        <button onClick={() => setShowBuilder(true)} className="btn-primary" style={{ borderRadius: 'var(--r-lg)' }}>
+        <button onClick={() => setShowBuilder(true)} className="btn-primary" style={{ borderRadius: 16, minHeight: 52 }}>
           <Plus size={18} /> Create Custom Plan
         </button>
       </motion.div>
@@ -351,7 +422,7 @@ function CustomPlanBuilder({ onClose, equipment }: { onClose: () => void; equipm
 
         {/* Plan Name */}
         <input value={planName} onChange={e => setPlanName(e.target.value)} placeholder="Plan name..."
-          style={{ width: '100%', padding: '14px 16px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--r-md)', color: 'var(--text-primary)', fontSize: 15, fontWeight: 600, outline: 'none', marginBottom: 16, fontFamily: 'inherit' }} />
+          style={{ width: '100%', padding: '14px 16px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 14, color: 'var(--text-primary)', fontSize: 15, fontWeight: 600, outline: 'none', marginBottom: 16, fontFamily: 'inherit', minHeight: 48 }} />
 
         {/* Day Tabs */}
         <div className="tab-bar" style={{ marginBottom: 16 }}>
@@ -366,24 +437,24 @@ function CustomPlanBuilder({ onClose, equipment }: { onClose: () => void; equipm
         {/* Day Name */}
         <input value={days[currentDayIdx]?.name || ''} onChange={e => {
           setDays(prev => { const u = [...prev]; u[currentDayIdx] = { ...u[currentDayIdx], name: e.target.value }; return u; });
-        }} placeholder="Day name..." style={{ width: '100%', padding: '10px 14px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', color: 'var(--text-primary)', fontSize: 13, outline: 'none', marginBottom: 12, fontFamily: 'inherit' }} />
+        }} placeholder="Day name..." style={{ width: '100%', padding: '10px 14px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 13, outline: 'none', marginBottom: 12, fontFamily: 'inherit', minHeight: 44 }} />
 
         {/* Exercises */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
           {days[currentDayIdx]?.exercises.map((ex, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'var(--bg-glass)', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)' }}>
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', background: 'var(--bg-glass)', borderRadius: 12, border: '1px solid var(--border)', minHeight: 48 }}>
               <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{ex.name}</div>
               <div className="font-mono" style={{ fontSize: 12, color: 'var(--text-muted)' }}>{ex.sets}×{ex.reps}</div>
-              <button onClick={() => removeExercise(currentDayIdx, i)} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: 4 }}><X size={14} /></button>
+              <button onClick={() => removeExercise(currentDayIdx, i)} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: 6, minWidth: 32, minHeight: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={16} /></button>
             </div>
           ))}
         </div>
 
-        <button onClick={() => setShowExercisePicker(true)} className="btn-secondary" style={{ width: '100%', marginBottom: 16 }}>
+        <button onClick={() => setShowExercisePicker(true)} className="btn-secondary" style={{ width: '100%', marginBottom: 16, minHeight: 48, borderRadius: 14 }}>
           <Plus size={14} /> Add Exercise
         </button>
 
-        <button onClick={savePlan} className="btn-primary" style={{ borderRadius: 'var(--r-md)' }} disabled={!planName.trim() || days.every(d => d.exercises.length === 0)}>
+        <button onClick={savePlan} className="btn-primary" style={{ borderRadius: 14, minHeight: 52 }} disabled={!planName.trim() || days.every(d => d.exercises.length === 0)}>
           Save Plan
         </button>
 
@@ -394,7 +465,7 @@ function CustomPlanBuilder({ onClose, equipment }: { onClose: () => void; equipm
               style={{ position: 'absolute', inset: 0, background: 'var(--bg-sheet)', borderRadius: 'var(--r-2xl) var(--r-2xl) 0 0', padding: 20, zIndex: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <h3 style={{ fontSize: 16, fontWeight: 800 }}>Pick Exercise</h3>
-                <button onClick={() => setShowExercisePicker(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
+                <button onClick={() => setShowExercisePicker(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', minWidth: 36, minHeight: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={18} /></button>
               </div>
               <div style={{ position: 'relative', marginBottom: 12 }}>
                 <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
@@ -403,11 +474,11 @@ function CustomPlanBuilder({ onClose, equipment }: { onClose: () => void; equipm
               <div style={{ maxHeight: '50vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {filteredExercises.map(ex => (
                   <button key={ex.id} onClick={() => addExercise(ex)} style={{
-                    display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-                    background: 'var(--bg-glass)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)',
-                    cursor: 'pointer', textAlign: 'left', width: '100%', color: 'var(--text-primary)',
+                    display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px',
+                    background: 'var(--bg-glass)', border: '1px solid var(--border)', borderRadius: 12,
+                    cursor: 'pointer', textAlign: 'left', width: '100%', color: 'var(--text-primary)', minHeight: 56,
                   }}>
-                    {ex.gifUrl && <img src={ex.gifUrl} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: 'cover' }} />}
+                    {ex.gifUrl && <img src={ex.gifUrl} alt="" style={{ width: 40, height: 40, borderRadius: 10, objectFit: 'cover' }} />}
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 13, fontWeight: 600 }}>{ex.name}</div>
                       <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{ex.equipment} • {ex.primaryMuscles.join(', ')}</div>

@@ -2,7 +2,6 @@
 
 import { Home, ClipboardList, Play, BarChart3, User } from 'lucide-react';
 import { useUIStore } from '@/lib/store/uiStore';
-import { useWorkoutStore } from '@/lib/store/workoutStore';
 import { motion } from 'framer-motion';
 
 const tabs = [
@@ -35,6 +34,13 @@ export default function BottomNav() {
               onClick={() => handleTabClick(tab.id)}
               aria-label="Start workout"
             >
+              {/* Pulse ring */}
+              <div style={{
+                position: 'absolute', width: 64, height: 64, borderRadius: '50%',
+                border: '2px solid rgba(255,61,90,0.25)',
+                animation: 'pulse-dot 3s ease-in-out infinite',
+                pointerEvents: 'none',
+              }} />
               <Play size={24} fill="white" />
             </button>
           );
@@ -48,15 +54,16 @@ export default function BottomNav() {
             aria-label={tab.label}
           >
             <tab.icon size={22} strokeWidth={isActive ? 2.5 : 1.5} />
-            <span>{tab.label}</span>
+            <span className="nav-label" style={{ fontWeight: isActive ? 700 : 500 }}>{tab.label}</span>
             {isActive && (
               <motion.div
                 layoutId="nav-indicator"
                 style={{
-                  width: 4,
-                  height: 4,
+                  width: 5,
+                  height: 5,
                   borderRadius: '50%',
                   background: 'var(--accent-red)',
+                  boxShadow: '0 0 8px var(--glow-red)',
                 }}
               />
             )}
