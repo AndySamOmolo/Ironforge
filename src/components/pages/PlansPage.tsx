@@ -7,6 +7,7 @@ import { db } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
 import type { WorkoutPlan, WorkoutDay, Exercise } from '@/lib/types';
+import { getWorkoutStartingWeight } from '@/lib/utils/workoutDefaults';
 
 const CATEGORY_COLORS: Record<string, string> = {
   Hypertrophy: 'var(--accent-purple)',
@@ -30,7 +31,7 @@ const ALL_EQUIPMENT = [
 ];
 
 export default function PlansPage() {
-  const { equipment: userEquipment } = useUserStore();
+  const { equipment: userEquipment, barWeight, dumbbellWeight } = useUserStore();
   const { startWorkout } = useWorkoutStore();
   const [plans, setPlans] = useState<WorkoutPlan[]>([]);
   const [expandedPlan, setExpandedPlan] = useState<number | null>(null);
@@ -92,10 +93,16 @@ export default function PlansPage() {
       if (swap) {
         const swappedEx = await db.exercises.get(swap.newExerciseId);
         if (swappedEx) {
+          const startingWeight = getWorkoutStartingWeight({
+            equipment: swappedEx.equipment,
+            plannedWeight: ex.weight,
+            barWeight,
+            dumbbellWeight,
+          });
           return {
             exerciseId: swappedEx.id || 0, exerciseName: swappedEx.name,
             imageUrl: swappedEx.gifUrl || swappedEx.imageUrls?.[0], gifUrl: swappedEx.gifUrl,
-            sets: Array.from({ length: ex.sets }, (_, i) => ({ setNumber: i + 1, setType: ex.setType as any, weight: ex.weight || 0, reps: typeof ex.reps === 'number' ? ex.reps : 0, targetWeight: ex.weight || 0, targetReps: typeof ex.reps === 'number' ? ex.reps : 0, isComplete: false })),
+            sets: Array.from({ length: ex.sets }, (_, i) => ({ setNumber: i + 1, setType: ex.setType as any, weight: startingWeight, reps: typeof ex.reps === 'number' ? ex.reps : 0, targetWeight: ex.weight || 0, targetReps: typeof ex.reps === 'number' ? ex.reps : 0, isComplete: false })),
             targetSets: ex.sets, targetReps: ex.reps, restTime: ex.restTime, isComplete: false,
           };
         }
@@ -130,18 +137,19 @@ export default function PlansPage() {
           }
         }
       }
+      const startingWeight = getWorkoutStartingWeight({
+        equipment: dbEx?.equipment,
+        plannedWeight: ex.weight,
+        barWeight,
+        dumbbellWeight,
+      });
       return {
         exerciseId: dbEx?.id || 0, exerciseName: dbEx?.name || ex.exerciseName,
         imageUrl: dbEx?.gifUrl || dbEx?.imageUrls?.[0], gifUrl: dbEx?.gifUrl,
-        sets: Array.from({ length: ex.sets }, (_, i) => ({ setNumber: i + 1, setType: ex.setType as any, weight: ex.weight || 0, reps: typeof ex.reps === 'number' ? ex.reps : 0, targetWeight: ex.weight || 0, targetReps: typeof ex.reps === 'number' ? ex.reps : 0, isComplete: false })),
+        sets: Array.from({ length: ex.sets }, (_, i) => ({ setNumber: i + 1, setType: ex.setType as any, weight: startingWeight, reps: typeof ex.reps === 'number' ? ex.reps : 0, targetWeight: ex.weight || 0, targetReps: typeof ex.reps === 'number' ? ex.reps : 0, isComplete: false })),
         targetSets: ex.sets, targetReps: ex.reps, restTime: ex.restTime, isComplete: false,
       };
     }));
-
-    const sessionId = await db.workoutSessions.add({
-      planId: plan.id, dayId: day.id, planName: plan.name, dayName: day.name,
-      startedAt: new Date(), duration: 0, totalVolume: 0, totalSets: 0, totalReps: 0, isComplete: false,
-    });
 
     startWorkout(plan.name, day.name, exercises);
   };

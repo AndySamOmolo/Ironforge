@@ -9,6 +9,7 @@ import { db } from '@/lib/db/schema';
 import { MUSCLE_COLORS } from '@/lib/types';
 import type { Exercise } from '@/lib/types';
 import { getSwapSuggestions, calculatePlates } from '@/lib/utils/swapEngine';
+import { getYoutubeSearchUrl, getVideoSearchOptions } from '@/lib/data/youtube-ids';
 
 interface ActiveWorkoutPageProps { onComplete: () => void; }
 
@@ -142,19 +143,71 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     completeSet(exerciseIdx, setIdx, weight, reps);
     playFeedbackTone('set');
     triggerHaptic('light');
-    if (sessionId) {
-      try { await db.sets.add({ sessionExerciseId: 0, sessionId, exerciseId: exercise.exerciseId, setNumber: setIdx + 1, setType: 'normal' as any, weight, reps, completedAt: new Date(), isWarmup: false, isPR: false }); } catch {}
-    }
     startRestTimer(exercise.restTime || defaultRestTime);
     const updated = [...exercise.sets]; updated[setIdx] = { ...updated[setIdx], isComplete: true };
     if (updated.every(s => s.isComplete) && currentExerciseIndex < exercises.length - 1) setTimeout(() => nextExercise(), 600);
-  }, [exercises, sessionId, completeSet, startRestTimer, defaultRestTime, currentExerciseIndex, nextExercise, playFeedbackTone, triggerHaptic]);
+  }, [exercises, completeSet, startRestTimer, defaultRestTime, currentExerciseIndex, nextExercise, playFeedbackTone, triggerHaptic]);
 
   const handleFinish = async () => {
     playFeedbackTone('finish');
     triggerHaptic('success');
+    const completedSetEntries = exercises.flatMap((exercise) =>
+      exercise.sets
+        .filter(set => set.isComplete)
+        .map((set, setIndex) => ({
+          exerciseId: exercise.exerciseId,
+          setNumber: setIndex + 1,
+          setType: (set.setType || 'normal') as any,
+          weight: set.weight || 0,
+          reps: set.reps || 0,
+        }))
+    );
+    const now = new Date();
+    const startedAt = new Date(now.getTime() - elapsedTime * 1000);
+    const computedTotalReps = completedSetEntries.reduce((sum, set) => sum + set.reps, 0);
+    const computedTotalSets = completedSetEntries.length;
+
+    const savedSessionId = sessionId
+      ? sessionId
+      : await db.workoutSessions.add({
+          planName,
+          dayName,
+          startedAt,
+          completedAt: now,
+          duration: elapsedTime,
+          totalVolume,
+          totalSets: computedTotalSets,
+          totalReps: computedTotalReps,
+          isComplete: true,
+        });
+
     if (sessionId) {
-      await db.workoutSessions.update(sessionId, { completedAt: new Date(), duration: elapsedTime, totalVolume, totalSets, totalReps: exercises.reduce((a, e) => a + e.sets.filter(s => s.isComplete).reduce((acc, s) => acc + s.reps, 0), 0), isComplete: true });
+      await db.workoutSessions.update(savedSessionId, {
+        completedAt: now,
+        duration: elapsedTime,
+        totalVolume,
+        totalSets: computedTotalSets,
+        totalReps: computedTotalReps,
+        isComplete: true,
+      });
+      await db.sets.where('sessionId').equals(savedSessionId).delete();
+    }
+
+    if (completedSetEntries.length > 0) {
+      await db.sets.bulkAdd(
+        completedSetEntries.map(set => ({
+          sessionExerciseId: 0,
+          sessionId: savedSessionId,
+          exerciseId: set.exerciseId,
+          setNumber: set.setNumber,
+          setType: set.setType,
+          weight: set.weight,
+          reps: set.reps,
+          completedAt: now,
+          isWarmup: false,
+          isPR: false,
+        }))
+      );
     }
     onComplete();
   };
@@ -262,7 +315,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <button onClick={handleCancel} className="btn-cancel" style={{ minHeight: 40 }}><X size={16} /> Cancel</button>
           <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: '-0.01em' }}>{dayName || planName}</div>
-          <button onClick={handleFinish} className="btn-primary btn-high-contrast" style={{ fontSize: 13, fontWeight: 800, borderRadius: 12, padding: '10px 20px', minHeight: 40 }}>Finish</button>
+          <button onClick={handleFinish} className="btn-primary" style={{ fontSize: 11, fontWeight: 800, borderRadius: 10, padding: '6px 10px', minHeight: 30, width: 'auto', color: '#fff', textShadow: 'none', boxShadow: 'none' }}>End</button>
         </div>
         <div style={{ height: 3, background: 'rgba(255,255,255,0.03)', borderRadius: 2 }}>
           <motion.div style={{ height: '100%', background: 'var(--gradient-fire)', borderRadius: 2 }} animate={{ width: `${progress}%` }} transition={{ duration: 0.4 }} />
@@ -485,6 +538,37 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
               <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>{currentExercise.exerciseName}</h3>
               <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 16 }}>Exercise notes & instructions</p>
 
+                <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
+                  <a
+                    href={getYoutubeSearchUrl(currentExercise.exerciseName)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      flex: '1 1 160px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      padding: '10px 12px', borderRadius: 'var(--r-sm)', textDecoration: 'none',
+                      background: 'rgba(255,0,0,0.06)', border: '1px solid rgba(255,0,0,0.15)',
+                      color: '#FF4444', fontWeight: 600, fontSize: 12,
+                    }}
+                  >
+                    <ExternalLink size={12} /> Watch on YouTube
+                  </a>
+                  {getVideoSearchOptions(currentExercise.exerciseName).slice(1, 3).map(opt => (
+                    <a
+                      key={opt.label}
+                      href={opt.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        padding: '10px 12px', borderRadius: 'var(--r-sm)', textDecoration: 'none', textAlign: 'center',
+                        background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)',
+                        fontSize: 10, fontWeight: 600,
+                      }}
+                    >
+                      {opt.label}
+                    </a>
+                  ))}
+                </div>
+
               {/* Exercise instructions from DB */}
               {exerciseInfo?.instructions && exerciseInfo.instructions.length > 0 && (
                 <div style={{ marginBottom: 16 }}>
@@ -522,7 +606,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                 <textarea value={notes[currentExerciseIndex] || ''} onChange={e => setNotes(prev => ({ ...prev, [currentExerciseIndex]: e.target.value }))} placeholder="Add notes for this exercise..."  rows={3}
                   style={{ width: '100%', padding: 14, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit' }} />
               </div>
-              <button onClick={() => setShowNotes(false)} className="btn-primary" style={{ borderRadius: 14, minHeight: 48 }}>Done</button>
+              <button onClick={() => setShowNotes(false)} className="btn-primary" style={{ borderRadius: 14, minHeight: 46, color: '#fff', textShadow: 'none', boxShadow: 'none' }}>Done</button>
             </motion.div>
           </motion.div>
         )}

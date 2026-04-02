@@ -58,6 +58,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   startWorkout: (planName, dayName, exercises) => set({
     isActive: true,
     isPaused: false,
+    sessionId: null,
     planName,
     dayName,
     exercises,
@@ -108,8 +109,12 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     const exercises = [...state.exercises];
     const exercise = { ...exercises[exerciseIndex] };
     const sets = [...exercise.sets];
-    sets[setIndex] = { ...sets[setIndex], weight };
-    exercise.sets = sets;
+    if (setIndex === 0) {
+      exercise.sets = sets.map(set => ({ ...set, weight }));
+    } else {
+      sets[setIndex] = { ...sets[setIndex], weight };
+      exercise.sets = sets;
+    }
     exercises[exerciseIndex] = exercise;
     return { exercises };
   }),
@@ -118,8 +123,12 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     const exercises = [...state.exercises];
     const exercise = { ...exercises[exerciseIndex] };
     const sets = [...exercise.sets];
-    sets[setIndex] = { ...sets[setIndex], reps };
-    exercise.sets = sets;
+    if (setIndex === 0) {
+      exercise.sets = sets.map(set => ({ ...set, reps }));
+    } else {
+      sets[setIndex] = { ...sets[setIndex], reps };
+      exercise.sets = sets;
+    }
     exercises[exerciseIndex] = exercise;
     return { exercises };
   }),

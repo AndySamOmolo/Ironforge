@@ -8,6 +8,7 @@ import { useUserStore } from '@/lib/store/userStore';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
 import { useUIStore } from '@/lib/store/uiStore';
 import type { WorkoutSession, WorkoutPlan, WorkoutDay } from '@/lib/types';
+import { getWorkoutStartingWeight } from '@/lib/utils/workoutDefaults';
 
 const FITNESS_QUOTES = [
   { text: "The only bad workout is the one that didn't happen.", author: "Unknown" },
@@ -43,7 +44,7 @@ const FITNESS_QUOTES = [
 ];
 
 export default function HomePage() {
-  const { name } = useUserStore();
+  const { name, barWeight, dumbbellWeight } = useUserStore();
   const { startWorkout } = useWorkoutStore();
   const { setActiveTab } = useUIStore();
   const [recentSessions, setRecentSessions] = useState<WorkoutSession[]>([]);
@@ -162,13 +163,19 @@ export default function HomePage() {
       if (swap) {
         const swappedEx = await db.exercises.get(swap.newExerciseId);
         if (swappedEx) {
+          const startingWeight = getWorkoutStartingWeight({
+            equipment: swappedEx.equipment,
+            plannedWeight: ex.weight,
+            barWeight,
+            dumbbellWeight,
+          });
           return {
             exerciseId: swappedEx.id || 0,
             exerciseName: swappedEx.name,
             imageUrl: swappedEx.gifUrl || swappedEx.imageUrls?.[0] || undefined,
             gifUrl: swappedEx.gifUrl || undefined,
             sets: Array.from({ length: ex.sets }, (_, i) => ({
-              setNumber: i + 1, setType: ex.setType as any, weight: ex.weight || 0,
+              setNumber: i + 1, setType: ex.setType as any, weight: startingWeight,
               reps: typeof ex.reps === 'number' ? ex.reps : 0, targetWeight: ex.weight || 0,
               targetReps: typeof ex.reps === 'number' ? ex.reps : 0, isComplete: false,
             })),
@@ -188,24 +195,25 @@ export default function HomePage() {
           dbEx = candidates.sort((a, b) => Math.abs(a.name.length - ex.exerciseName.length) - Math.abs(b.name.length - ex.exerciseName.length))[0];
         }
       }
+      const startingWeight = getWorkoutStartingWeight({
+        equipment: dbEx?.equipment,
+        plannedWeight: ex.weight,
+        barWeight,
+        dumbbellWeight,
+      });
       return {
         exerciseId: dbEx?.id || 0,
         exerciseName: dbEx?.name || ex.exerciseName,
         imageUrl: dbEx?.gifUrl || dbEx?.imageUrls?.[0] || undefined,
         gifUrl: dbEx?.gifUrl || undefined,
         sets: Array.from({ length: ex.sets }, (_, i) => ({
-          setNumber: i + 1, setType: ex.setType as any, weight: ex.weight || 0,
+          setNumber: i + 1, setType: ex.setType as any, weight: startingWeight,
           reps: typeof ex.reps === 'number' ? ex.reps : 0, targetWeight: ex.weight || 0,
           targetReps: typeof ex.reps === 'number' ? ex.reps : 0, isComplete: false,
         })),
         targetSets: ex.sets, targetReps: ex.reps, restTime: ex.restTime, isComplete: false,
       };
     }));
-
-    await db.workoutSessions.add({
-      planId: activePlan.id, dayId: day.id, planName: activePlan.name, dayName: day.name,
-      startedAt: new Date(), duration: 0, totalVolume: 0, totalSets: 0, totalReps: 0, isComplete: false,
-    });
 
     startWorkout(activePlan.name, day.name, exercises);
   };
@@ -365,8 +373,25 @@ export default function HomePage() {
           <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.5 }}>
             Choose a workout program to get started
           </p>
-          <button className="btn-primary btn-high-contrast" onClick={() => setActiveTab('plans')} style={{ maxWidth: 260, margin: '0 auto', minHeight: 48, borderRadius: 14, fontSize: 15, fontWeight: 800 }}>
-            <Dumbbell size={16} /> Browse Plans
+          <button
+            className="btn-primary"
+            onClick={() => setActiveTab('plans')}
+            style={{
+              maxWidth: 260,
+              margin: '0 auto',
+              minHeight: 48,
+              borderRadius: 14,
+              fontSize: 14,
+              fontWeight: 800,
+              padding: '12px 20px',
+              color: '#ffffff',
+              boxShadow: 'none',
+              textShadow: 'none',
+              width: 'auto',
+            }}
+          >
+            <Dumbbell size={16} color="currentColor" />
+            <span style={{ letterSpacing: '0.03em', textTransform: 'uppercase' }}>Browse Plans</span>
           </button>
         </motion.div>
       )}

@@ -21,42 +21,43 @@ type Region = {
 };
 
 const FRONT_REGIONS: Region[] = [
-  { id: 'front_shoulders_l', muscle: 'shoulders', x: 44, y: 42, w: 22, h: 18, rx: 9 },
-  { id: 'front_shoulders_r', muscle: 'shoulders', x: 134, y: 42, w: 22, h: 18, rx: 9 },
-  { id: 'front_chest_l', muscle: 'chest', x: 60, y: 64, w: 30, h: 26, rx: 10 },
-  { id: 'front_chest_r', muscle: 'chest', x: 110, y: 64, w: 30, h: 26, rx: 10 },
-  { id: 'front_biceps_l', muscle: 'biceps', x: 38, y: 78, w: 16, h: 38, rx: 8 },
-  { id: 'front_biceps_r', muscle: 'biceps', x: 146, y: 78, w: 16, h: 38, rx: 8 },
-  { id: 'front_forearms_l', muscle: 'forearms', x: 34, y: 118, w: 14, h: 42, rx: 7 },
-  { id: 'front_forearms_r', muscle: 'forearms', x: 152, y: 118, w: 14, h: 42, rx: 7 },
-  { id: 'front_abs', muscle: 'abdominals', x: 80, y: 98, w: 40, h: 62, rx: 12 },
-  { id: 'front_obliques_l', muscle: 'obliques', x: 60, y: 100, w: 16, h: 58, rx: 8 },
-  { id: 'front_obliques_r', muscle: 'obliques', x: 124, y: 100, w: 16, h: 58, rx: 8 },
-  { id: 'front_quads_l', muscle: 'quadriceps', x: 74, y: 168, w: 24, h: 76, rx: 10 },
-  { id: 'front_quads_r', muscle: 'quadriceps', x: 102, y: 168, w: 24, h: 76, rx: 10 },
-  { id: 'front_calves_l', muscle: 'calves', x: 74, y: 252, w: 20, h: 58, rx: 10 },
-  { id: 'front_calves_r', muscle: 'calves', x: 106, y: 252, w: 20, h: 58, rx: 10 },
+  { id: 'front_shoulders_l', muscle: 'shoulders', x: 48, y: 50, w: 24, h: 20, rx: 10 },
+  { id: 'front_shoulders_r', muscle: 'shoulders', x: 128, y: 50, w: 24, h: 20, rx: 10 },
+  { id: 'front_chest_l', muscle: 'chest', x: 66, y: 76, w: 30, h: 24, rx: 10 },
+  { id: 'front_chest_r', muscle: 'chest', x: 104, y: 76, w: 30, h: 24, rx: 10 },
+  { id: 'front_biceps_l', muscle: 'biceps', x: 40, y: 88, w: 16, h: 40, rx: 8 },
+  { id: 'front_biceps_r', muscle: 'biceps', x: 144, y: 88, w: 16, h: 40, rx: 8 },
+  { id: 'front_forearms_l', muscle: 'forearms', x: 34, y: 132, w: 14, h: 44, rx: 7 },
+  { id: 'front_forearms_r', muscle: 'forearms', x: 152, y: 132, w: 14, h: 44, rx: 7 },
+  { id: 'front_abs', muscle: 'abdominals', x: 84, y: 108, w: 32, h: 66, rx: 12 },
+  { id: 'front_obliques_l', muscle: 'obliques', x: 66, y: 112, w: 14, h: 60, rx: 8 },
+  { id: 'front_obliques_r', muscle: 'obliques', x: 120, y: 112, w: 14, h: 60, rx: 8 },
+  { id: 'front_quads_l', muscle: 'quadriceps', x: 75, y: 194, w: 24, h: 90, rx: 11 },
+  { id: 'front_quads_r', muscle: 'quadriceps', x: 101, y: 194, w: 24, h: 90, rx: 11 },
+  { id: 'front_calves_l', muscle: 'calves', x: 79, y: 286, w: 15, h: 34, rx: 10 },
+  { id: 'front_calves_r', muscle: 'calves', x: 106, y: 286, w: 15, h: 34, rx: 10 },
 ];
 
 const BACK_REGIONS: Region[] = [
-  { id: 'back_traps', muscle: 'traps', x: 82, y: 52, w: 36, h: 20, rx: 10 },
-  { id: 'back_shoulders_l', muscle: 'shoulders', x: 44, y: 42, w: 22, h: 18, rx: 9 },
-  { id: 'back_shoulders_r', muscle: 'shoulders', x: 134, y: 42, w: 22, h: 18, rx: 9 },
-  { id: 'back_triceps_l', muscle: 'triceps', x: 38, y: 78, w: 16, h: 38, rx: 8 },
-  { id: 'back_triceps_r', muscle: 'triceps', x: 146, y: 78, w: 16, h: 38, rx: 8 },
-  { id: 'back_middle', muscle: 'middle back', x: 74, y: 74, w: 52, h: 54, rx: 12 },
-  { id: 'back_lats_l', muscle: 'lats', x: 50, y: 86, w: 24, h: 70, rx: 11 },
-  { id: 'back_lats_r', muscle: 'lats', x: 126, y: 86, w: 24, h: 70, rx: 11 },
-  { id: 'back_lower', muscle: 'lower back', x: 82, y: 130, w: 36, h: 34, rx: 10 },
-  { id: 'back_glutes_l', muscle: 'glutes', x: 76, y: 166, w: 24, h: 28, rx: 10 },
-  { id: 'back_glutes_r', muscle: 'glutes', x: 100, y: 166, w: 24, h: 28, rx: 10 },
-  { id: 'back_hamstrings_l', muscle: 'hamstrings', x: 74, y: 198, w: 24, h: 62, rx: 10 },
-  { id: 'back_hamstrings_r', muscle: 'hamstrings', x: 102, y: 198, w: 24, h: 62, rx: 10 },
-  { id: 'back_calves_l', muscle: 'calves', x: 74, y: 262, w: 20, h: 54, rx: 10 },
-  { id: 'back_calves_r', muscle: 'calves', x: 106, y: 262, w: 20, h: 54, rx: 10 },
+  { id: 'back_traps', muscle: 'traps', x: 84, y: 58, w: 32, h: 20, rx: 10 },
+  { id: 'back_shoulders_l', muscle: 'shoulders', x: 48, y: 50, w: 24, h: 20, rx: 10 },
+  { id: 'back_shoulders_r', muscle: 'shoulders', x: 128, y: 50, w: 24, h: 20, rx: 10 },
+  { id: 'back_triceps_l', muscle: 'triceps', x: 40, y: 88, w: 16, h: 40, rx: 8 },
+  { id: 'back_triceps_r', muscle: 'triceps', x: 144, y: 88, w: 16, h: 40, rx: 8 },
+  { id: 'back_middle', muscle: 'middle back', x: 78, y: 86, w: 44, h: 52, rx: 12 },
+  { id: 'back_lats_l', muscle: 'lats', x: 54, y: 96, w: 24, h: 76, rx: 11 },
+  { id: 'back_lats_r', muscle: 'lats', x: 122, y: 96, w: 24, h: 76, rx: 11 },
+  { id: 'back_lower', muscle: 'lower back', x: 84, y: 144, w: 32, h: 34, rx: 10 },
+  { id: 'back_glutes_l', muscle: 'glutes', x: 76, y: 184, w: 24, h: 30, rx: 11 },
+  { id: 'back_glutes_r', muscle: 'glutes', x: 100, y: 184, w: 24, h: 30, rx: 11 },
+  { id: 'back_hamstrings_l', muscle: 'hamstrings', x: 76, y: 216, w: 22, h: 68, rx: 11 },
+  { id: 'back_hamstrings_r', muscle: 'hamstrings', x: 102, y: 216, w: 22, h: 68, rx: 11 },
+  { id: 'back_calves_l', muscle: 'calves', x: 81, y: 287, w: 14, h: 33, rx: 10 },
+  { id: 'back_calves_r', muscle: 'calves', x: 105, y: 287, w: 14, h: 33, rx: 10 },
 ];
 
 const ALL_REGIONS = [...FRONT_REGIONS, ...BACK_REGIONS];
+const BASE_NOW_MS = Date.now();
 
 const muscleAliases: Record<string, string> = {
   abs: 'abdominals',
@@ -99,6 +100,28 @@ function BodyFigure({
   selectedMuscle: string | null;
   onSelectMuscle: (muscle: string) => void;
 }) {
+  const isFront = title === 'Front';
+  const rotationByRegion: Record<string, number> = {
+    front_biceps_l: -14,
+    front_biceps_r: 14,
+    front_forearms_l: -10,
+    front_forearms_r: 10,
+    back_triceps_l: -14,
+    back_triceps_r: 14,
+    front_obliques_l: -10,
+    front_obliques_r: 10,
+    front_shoulders_l: -12,
+    front_shoulders_r: 12,
+    back_shoulders_l: -12,
+    back_shoulders_r: 12,
+    back_lats_l: -8,
+    back_lats_r: 8,
+    front_quads_l: -4,
+    front_quads_r: 4,
+    back_hamstrings_l: -5,
+    back_hamstrings_r: 5,
+  };
+
   return (
     <div className="card" style={{ padding: 14 }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 10 }}>{title}</div>
@@ -111,17 +134,57 @@ function BodyFigure({
         <svg viewBox="0 0 200 330" width="100%" height="330" role="img" aria-label={`${title} muscle activation`}>
           <defs>
             <linearGradient id="body-base" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="rgba(255,255,255,0.14)" />
-              <stop offset="100%" stopColor="rgba(255,255,255,0.05)" />
+              <stop offset="0%" stopColor="rgba(255,255,255,0.2)" />
+              <stop offset="45%" stopColor="rgba(255,255,255,0.11)" />
+              <stop offset="100%" stopColor="rgba(255,255,255,0.04)" />
             </linearGradient>
+            <radialGradient id="anatomy-shade" cx="50%" cy="20%" r="80%">
+              <stop offset="0%" stopColor="rgba(255,255,255,0.14)" />
+              <stop offset="65%" stopColor="rgba(255,255,255,0.03)" />
+              <stop offset="100%" stopColor="rgba(0,0,0,0.18)" />
+            </radialGradient>
           </defs>
 
-          <circle cx="100" cy="26" r="18" fill="url(#body-base)" stroke="rgba(255,255,255,0.16)" />
-          <rect x="76" y="44" width="48" height="124" rx="20" fill="url(#body-base)" stroke="rgba(255,255,255,0.16)" />
-          <rect x="48" y="56" width="24" height="118" rx="12" fill="url(#body-base)" stroke="rgba(255,255,255,0.12)" />
-          <rect x="128" y="56" width="24" height="118" rx="12" fill="url(#body-base)" stroke="rgba(255,255,255,0.12)" />
-          <rect x="74" y="166" width="24" height="148" rx="12" fill="url(#body-base)" stroke="rgba(255,255,255,0.12)" />
-          <rect x="102" y="166" width="24" height="148" rx="12" fill="url(#body-base)" stroke="rgba(255,255,255,0.12)" />
+          <circle cx="100" cy="24" r="18" fill="url(#body-base)" stroke="rgba(255,255,255,0.2)" />
+          <path d="M92 40 Q100 47 108 40 L110 49 L90 49 Z" fill="url(#body-base)" stroke="rgba(255,255,255,0.13)" />
+
+          <path
+            d={
+              isFront
+                ? "M62 54 Q72 46 84 48 L116 48 Q128 46 138 54 Q146 62 146 80 L146 122 Q145 144 132 162 Q122 176 116 192 L84 192 Q78 176 68 162 Q55 144 54 122 L54 80 Q54 62 62 54 Z"
+                : "M60 56 Q70 48 84 50 L116 50 Q130 48 140 56 Q147 64 146 84 L144 126 Q141 152 126 172 Q116 184 116 196 L84 196 Q84 184 74 172 Q59 152 56 126 L54 84 Q53 64 60 56 Z"
+            }
+            fill="url(#body-base)"
+            stroke="rgba(255,255,255,0.17)"
+          />
+          <path d="M55 78 Q44 88 46 112 L48 160 Q48 176 58 186 Q66 192 72 188 L70 162 Q66 130 67 98 Q67 86 63 76 Z" fill="url(#body-base)" stroke="rgba(255,255,255,0.12)" />
+          <path d="M145 78 Q156 88 154 112 L152 160 Q152 176 142 186 Q134 192 128 188 L130 162 Q134 130 133 98 Q133 86 137 76 Z" fill="url(#body-base)" stroke="rgba(255,255,255,0.12)" />
+          <path d="M86 192 Q78 204 76 224 L74 312 Q74 322 83 322 L95 322 Q100 322 100 314 L100 224 Q99 205 92 192 Z" fill="url(#body-base)" stroke="rgba(255,255,255,0.12)" />
+          <path d="M114 192 Q122 204 124 224 L126 312 Q126 322 117 322 L105 322 Q100 322 100 314 L100 224 Q101 205 108 192 Z" fill="url(#body-base)" stroke="rgba(255,255,255,0.12)" />
+          <path d="M100 62 L100 188" stroke="rgba(255,255,255,0.12)" strokeWidth="1.2" />
+          {isFront ? (
+            <>
+              <path d="M72 86 Q86 95 100 94" stroke="rgba(255,255,255,0.1)" strokeWidth="1" fill="none" />
+              <path d="M128 86 Q114 95 100 94" stroke="rgba(255,255,255,0.1)" strokeWidth="1" fill="none" />
+              <path d="M88 112 L88 166" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+              <path d="M112 112 L112 166" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+              <path d="M86 196 Q82 238 86 282" stroke="rgba(255,255,255,0.08)" strokeWidth="1" fill="none" />
+              <path d="M114 196 Q118 238 114 282" stroke="rgba(255,255,255,0.08)" strokeWidth="1" fill="none" />
+              <path d="M84 286 Q87 298 85 318" stroke="rgba(255,255,255,0.08)" strokeWidth="1" fill="none" />
+              <path d="M116 286 Q113 298 115 318" stroke="rgba(255,255,255,0.08)" strokeWidth="1" fill="none" />
+            </>
+          ) : (
+            <>
+              <path d="M74 90 Q84 102 96 106" stroke="rgba(255,255,255,0.1)" strokeWidth="1" fill="none" />
+              <path d="M126 90 Q116 102 104 106" stroke="rgba(255,255,255,0.1)" strokeWidth="1" fill="none" />
+              <path d="M86 142 Q100 156 114 142" stroke="rgba(255,255,255,0.08)" strokeWidth="1" fill="none" />
+              <path d="M86 214 Q82 248 86 286" stroke="rgba(255,255,255,0.08)" strokeWidth="1" fill="none" />
+              <path d="M114 214 Q118 248 114 286" stroke="rgba(255,255,255,0.08)" strokeWidth="1" fill="none" />
+              <path d="M86 286 Q88 302 86 318" stroke="rgba(255,255,255,0.08)" strokeWidth="1" fill="none" />
+              <path d="M114 286 Q112 302 114 318" stroke="rgba(255,255,255,0.08)" strokeWidth="1" fill="none" />
+            </>
+          )}
+          <ellipse cx="100" cy="120" rx="48" ry="82" fill="url(#anatomy-shade)" />
 
           {regions.map(region => {
             const value = intensity[region.id] || 0;
@@ -130,18 +193,21 @@ function BodyFigure({
             const alpha = 0.08 + value * 0.88;
             const isStale = staleMuscles.has(normalizedMuscle);
             const isSelected = selectedMuscle === normalizedMuscle;
+            const cx = region.x + region.w / 2;
+            const cy = region.y + region.h / 2;
+            const rotate = rotationByRegion[region.id] || 0;
             return (
-              <rect
+              <ellipse
                 key={region.id}
-                x={region.x}
-                y={region.y}
-                width={region.w}
-                height={region.h}
-                rx={region.rx || 8}
+                cx={cx}
+                cy={cy}
+                rx={Math.max(4, region.w / 2)}
+                ry={Math.max(4, region.h / 2)}
                 fill={hexToRgba(color, alpha)}
                 stroke={isSelected ? '#ffffff' : isStale ? '#F59E0B' : hexToRgba(color, Math.min(1, alpha + 0.18))}
                 strokeWidth={isSelected ? 2 : value > 0.6 ? 1.4 : 1}
                 strokeDasharray={isStale ? '3 2' : undefined}
+                transform={`rotate(${rotate} ${cx} ${cy})`}
                 style={{ cursor: 'pointer' }}
                 onClick={() => onSelectMuscle(normalizedMuscle)}
               />
@@ -159,10 +225,9 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
   const [muscleExerciseScores, setMuscleExerciseScores] = useState<Record<string, Record<string, number>>>({});
   const [range, setRange] = useState<TimeRange>('30d');
   const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);
-
   const filteredSessions = useMemo(() => {
     if (range === 'all') return sessions;
-    const now = Date.now();
+    const now = BASE_NOW_MS;
     const days = range === '7d' ? 7 : 30;
     const threshold = now - days * 24 * 60 * 60 * 1000;
     return sessions.filter(s => new Date(s.startedAt).getTime() >= threshold);
@@ -271,7 +336,7 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
   }, [normalizedByMuscle]);
 
   const staleMuscles = useMemo(() => {
-    const now = Date.now();
+    const now = BASE_NOW_MS;
     const staleThresholdMs = 9 * 24 * 60 * 60 * 1000;
     const stale = new Set<string>();
     Object.entries(lastTrainedAt).forEach(([muscle, timestamp]) => {

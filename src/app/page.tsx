@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { seedDatabase } from '@/lib/db/seed';
+import { ensureWorkoutPrograms } from '@/lib/db/seed';
 import { db, resetDB } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
 import { useUIStore } from '@/lib/store/uiStore';
@@ -131,6 +132,7 @@ export default function App() {
         }
 
         setSeedingProgress(100, 'Ready!');
+        await ensureWorkoutPrograms();
         setIsLoading(false);
         setIsInitialized(true);
         setShowSeedingScreen(false);
