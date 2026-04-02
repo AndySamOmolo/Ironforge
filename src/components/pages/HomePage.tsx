@@ -365,7 +365,7 @@ export default function HomePage() {
           <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.5 }}>
             Choose a workout program to get started
           </p>
-          <button className="btn-primary" onClick={() => setActiveTab('plans')} style={{ maxWidth: 260, margin: '0 auto', minHeight: 48, borderRadius: 14 }}>
+          <button className="btn-primary btn-high-contrast" onClick={() => setActiveTab('plans')} style={{ maxWidth: 260, margin: '0 auto', minHeight: 48, borderRadius: 14, fontSize: 15, fontWeight: 800 }}>
             <Dumbbell size={16} /> Browse Plans
           </button>
         </motion.div>

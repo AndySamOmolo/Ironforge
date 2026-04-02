@@ -4,6 +4,7 @@ interface UserState {
   name: string;
   unitSystem: 'metric' | 'imperial';
   barWeight: number;
+  dumbbellWeight: number;
   equipment: string[];
   defaultRestTime: number;
   restTimerEnabled: boolean;
@@ -17,6 +18,7 @@ interface UserState {
   setName: (name: string) => void;
   setUnitSystem: (system: 'metric' | 'imperial') => void;
   setBarWeight: (weight: number) => void;
+  setDumbbellWeight: (weight: number) => void;
   setEquipment: (equipment: string[]) => void;
   setDefaultRestTime: (time: number) => void;
   toggleRestTimer: () => void;
@@ -33,6 +35,7 @@ export const useUserStore = create<UserState>((set) => ({
   name: 'Athlete',
   unitSystem: 'metric',
   barWeight: 20,
+  dumbbellWeight: 10,
   equipment: ['barbell', 'dumbbell', 'cable', 'machine', 'body only'],
   defaultRestTime: 90,
   restTimerEnabled: true,
@@ -46,6 +49,7 @@ export const useUserStore = create<UserState>((set) => ({
   setName: (name) => set({ name }),
   setUnitSystem: (unitSystem) => set({ unitSystem }),
   setBarWeight: (barWeight) => set({ barWeight }),
+  setDumbbellWeight: (dumbbellWeight) => set({ dumbbellWeight }),
   setEquipment: (equipment) => set({ equipment }),
   setDefaultRestTime: (defaultRestTime) => set({ defaultRestTime }),
   toggleRestTimer: () => set((s) => ({ restTimerEnabled: !s.restTimerEnabled })),

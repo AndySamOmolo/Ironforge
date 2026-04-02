@@ -33,6 +33,7 @@ export async function seedDatabase(
     name: 'Athlete',
     unitSystem: 'metric',
     barWeight: 20,
+    dumbbellWeight: 10,
     equipment: ['barbell', 'dumbbell', 'cable', 'body weight', 'machine', 'leverage machine'],
     defaultRestTime: 90,
     restTimerEnabled: true,

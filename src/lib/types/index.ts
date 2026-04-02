@@ -246,6 +246,7 @@ export interface UserProfile {
   equipment: string[];
   unitSystem: 'metric' | 'imperial';
   barWeight: number;
+  dumbbellWeight?: number;
   defaultRestTime: number;
   restTimerEnabled: boolean;
   soundEnabled: boolean;

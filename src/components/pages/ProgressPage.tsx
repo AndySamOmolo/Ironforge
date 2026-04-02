@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { BarChart3, Calendar, Clock, Dumbbell, TrendingUp, Trophy, Target, Flame, Zap, Award } from 'lucide-react';
+import { BarChart3, Calendar, Clock, Dumbbell, TrendingUp, Trophy, Target, Zap } from 'lucide-react';
 import { db } from '@/lib/db/schema';
 import type { WorkoutSession, PersonalRecord } from '@/lib/types';
-import { MUSCLE_COLORS } from '@/lib/types';
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid, AreaChart, Area, LineChart, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid, AreaChart, Area } from 'recharts';
+import MuscleHeatmap from '@/components/ui/MuscleHeatmap';
 
 export default function ProgressPage() {
   const [sessions, setSessions] = useState<WorkoutSession[]>([]);
@@ -92,10 +92,31 @@ export default function ProgressPage() {
       </motion.div>
 
       {/* Tabs */}
-      <div className="tab-bar" style={{ marginBottom: 20 }}>
-        {(['overview', 'strength', 'records', 'body'] as const).map(t => (
-          <button key={t} className={`tab-btn ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)} style={{ textTransform: 'capitalize' }}>
-            {t}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginBottom: 20 }}>
+        {([
+          { id: 'overview', label: 'Overview', icon: BarChart3 },
+          { id: 'strength', label: 'Strength', icon: TrendingUp },
+          { id: 'records', label: 'Records', icon: Trophy },
+          { id: 'body', label: 'Body', icon: Target },
+        ] as const).map(t => (
+          <button
+            key={t.id}
+            className={tab === t.id ? 'btn-primary btn-high-contrast' : 'btn-secondary'}
+            onClick={() => setTab(t.id)}
+            style={{
+              textTransform: 'none',
+              fontSize: 13,
+              fontWeight: 700,
+              letterSpacing: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              minHeight: 44,
+              borderRadius: 12,
+            }}
+          >
+            <t.icon size={13} /> {t.label}
           </button>
         ))}
       </div>
@@ -258,18 +279,7 @@ export default function ProgressPage() {
 
       {tab === 'body' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <div className="card hero-gradient" style={{ marginBottom: 16, padding: 24, textAlign: 'center' }}>
-            <Award size={36} color="var(--accent-purple)" style={{ marginBottom: 10 }} />
-            <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>Body Tracking</h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.7 }}>
-              Track your body weight and measurements over time. Coming soon with photo progress and body composition charts.
-            </p>
-          </div>
-          <div className="empty-state" style={{ padding: 40 }}>
-            <Target size={48} color="var(--text-muted)" style={{ marginBottom: 8 }} />
-            <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Coming Soon</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Body weight logging, measurements, and progress photos</p>
-          </div>
+          <MuscleHeatmap sessions={sessions} />
         </motion.div>
       )}
     </div>

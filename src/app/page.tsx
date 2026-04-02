@@ -19,11 +19,15 @@ import { useWorkoutStore } from '@/lib/store/workoutStore';
 export default function App() {
   const { activeTab, setActiveTab, showSeedingScreen, setShowSeedingScreen, setSeedingProgress } = useUIStore();
   const { setIsSeeded, setIsLoading, loadFromProfile } = useUserStore();
-  const { isActive: workoutActive } = useWorkoutStore();
+  const { isActive: workoutActive, endWorkout } = useWorkoutStore();
   const [showComplete, setShowComplete] = useState(false);
+  const [showExitHint, setShowExitHint] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   const attemptRef = useRef(0);
+  const lastBackPressRef = useRef(0);
+  const exitHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const navStateRef = useRef({ activeTab, workoutActive, showComplete });
 
   const doInit = useCallback(async (forceReset = false) => {
     const attempt = ++attemptRef.current;
@@ -63,11 +67,13 @@ export default function App() {
           name: p.name,
           unitSystem: p.unitSystem,
           barWeight: p.barWeight,
+          dumbbellWeight: p.dumbbellWeight ?? 10,
           equipment: p.equipment,
           defaultRestTime: p.defaultRestTime,
           restTimerEnabled: p.restTimerEnabled,
           soundEnabled: p.soundEnabled,
           hapticEnabled: p.hapticEnabled,
+          notificationsEnabled: p.notificationsEnabled,
           theme: p.theme,
           isSeeded: true,
         });
@@ -79,6 +85,49 @@ export default function App() {
         // Apply saved font
         if (p.font && typeof document !== 'undefined') {
           document.documentElement.setAttribute('data-font', p.font);
+        }
+        if (p.fontSize && typeof document !== 'undefined') {
+          document.documentElement.setAttribute('data-fontsize', p.fontSize);
+        }
+        if (typeof document !== 'undefined') {
+          if (p.compactMode) document.documentElement.setAttribute('data-compact', 'true');
+          else document.documentElement.removeAttribute('data-compact');
+
+          if (p.buttonStyle && p.buttonStyle !== 'default') document.documentElement.setAttribute('data-buttons', p.buttonStyle);
+          else document.documentElement.removeAttribute('data-buttons');
+
+          if (p.cardStyle && p.cardStyle !== 'glass') document.documentElement.setAttribute('data-cards', p.cardStyle);
+          else document.documentElement.removeAttribute('data-cards');
+
+          if (p.borderRadius && p.borderRadius !== 'default') document.documentElement.setAttribute('data-radius', p.borderRadius);
+          else document.documentElement.removeAttribute('data-radius');
+
+          if (p.animationLevel && p.animationLevel !== 'normal') document.documentElement.setAttribute('data-anim', p.animationLevel);
+          else document.documentElement.removeAttribute('data-anim');
+
+          if (p.navStyle && p.navStyle !== 'default') document.documentElement.setAttribute('data-nav', p.navStyle);
+          else document.documentElement.removeAttribute('data-nav');
+
+          if (p.accentIntensity && p.accentIntensity !== 'normal') document.documentElement.setAttribute('data-accent-intensity', p.accentIntensity);
+          else document.documentElement.removeAttribute('data-accent-intensity');
+
+          if (p.colorMode && p.colorMode !== 'normal') document.documentElement.setAttribute('data-color-mode', p.colorMode);
+          else document.documentElement.removeAttribute('data-color-mode');
+
+          if (p.textShadow) document.documentElement.setAttribute('data-text-shadow', 'true');
+          else document.documentElement.removeAttribute('data-text-shadow');
+
+          if (p.glowIntensity && p.glowIntensity !== 'normal') document.documentElement.setAttribute('data-glow', p.glowIntensity);
+          else document.documentElement.removeAttribute('data-glow');
+
+          if (p.borderThickness && p.borderThickness !== 'normal') document.documentElement.setAttribute('data-border-width', p.borderThickness);
+          else document.documentElement.removeAttribute('data-border-width');
+
+          if (p.glassOpacity && p.glassOpacity !== 'medium') document.documentElement.setAttribute('data-glass-opacity', p.glassOpacity);
+          else document.documentElement.removeAttribute('data-glass-opacity');
+
+          if (p.contrastMode && p.contrastMode !== 'normal') document.documentElement.setAttribute('data-contrast', p.contrastMode);
+          else document.documentElement.removeAttribute('data-contrast');
         }
 
         setSeedingProgress(100, 'Ready!');
@@ -116,6 +165,71 @@ export default function App() {
   useEffect(() => {
     doInit(false);
   }, [doInit]);
+
+  useEffect(() => {
+    navStateRef.current = { activeTab, workoutActive, showComplete };
+  }, [activeTab, workoutActive, showComplete]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const pushSentinel = () => {
+      window.history.pushState({ ironforge: true, ts: Date.now() }, '');
+    };
+
+    pushSentinel();
+
+    const onPopState = () => {
+      const current = navStateRef.current;
+
+      if (current.showComplete) {
+        setShowComplete(false);
+        pushSentinel();
+      } else if (current.workoutActive) {
+        endWorkout();
+        pushSentinel();
+      } else if (current.activeTab !== 'home') {
+        setActiveTab('home');
+        pushSentinel();
+      } else {
+        const now = Date.now();
+        const withinWindow = now - lastBackPressRef.current < 1800;
+
+        if (withinWindow) {
+          if (exitHintTimerRef.current) {
+            clearTimeout(exitHintTimerRef.current);
+            exitHintTimerRef.current = null;
+          }
+          setShowExitHint(false);
+          void (async () => {
+            try {
+              const { App: CapacitorApp } = await import('@capacitor/app');
+              await CapacitorApp.exitApp();
+            } catch {
+              window.close();
+            }
+          })();
+          return;
+        }
+
+        lastBackPressRef.current = now;
+        setShowExitHint(true);
+        if (exitHintTimerRef.current) clearTimeout(exitHintTimerRef.current);
+        exitHintTimerRef.current = setTimeout(() => setShowExitHint(false), 1700);
+        pushSentinel();
+        return;
+      }
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+      if (exitHintTimerRef.current) {
+        clearTimeout(exitHintTimerRef.current);
+        exitHintTimerRef.current = null;
+      }
+    };
+  }, [endWorkout, setActiveTab]);
 
   const handleWorkoutComplete = useCallback(() => {
     setShowComplete(true);
@@ -169,6 +283,28 @@ export default function App() {
             background: 'var(--gradient-fire)', border: 'none', color: 'white',
             padding: '8px 18px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
           }}>Reset & Retry</button>
+        </div>
+      )}
+      {showExitHint && (
+        <div style={{
+          position: 'fixed',
+          left: '50%',
+          bottom: 'calc(84px + env(safe-area-inset-bottom))',
+          transform: 'translateX(-50%)',
+          zIndex: 300,
+          background: 'rgba(6,7,16,0.94)',
+          border: '1px solid rgba(255,255,255,0.14)',
+          color: 'var(--text-primary)',
+          padding: '10px 14px',
+          borderRadius: 12,
+          fontSize: 12,
+          fontWeight: 700,
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+          whiteSpace: 'nowrap',
+        }}>
+          Press back again to exit
         </div>
       )}
       {renderPage()}

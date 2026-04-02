@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, Settings, Dumbbell, Scale, Calculator, Trash2, Download, ChevronRight, Check, X, Plus, TrendingUp, Moon, Volume2, Type, Maximize, Minimize, RotateCcw, Vibrate, Smartphone, Timer, ArrowUp, BarChart3, Shield, Database, Zap } from 'lucide-react';
 import { db } from '@/lib/db/schema';
@@ -30,9 +30,59 @@ const FONT_SIZE_OPTIONS = [
   { id: 'xlarge', label: 'X-Large', size: 'A' },
 ];
 
+const THEME_OPTIONS = [
+  { id: 'dark', label: 'Forge', colors: ['#FF3D5A', '#8B5CF6', '#070710'] },
+  { id: 'ocean', label: 'Ocean', colors: ['#0EA5E9', '#6366F1', '#050c1a'] },
+  { id: 'forest', label: 'Forest', colors: ['#10B981', '#D97706', '#051208'] },
+  { id: 'steel', label: 'Steel', colors: ['#EF4444', '#9CA3AF', '#121214'] },
+  { id: 'sunset', label: 'Sunset', colors: ['#FB923C', '#FBBF24', '#120c08'] },
+  { id: 'cyberpunk', label: 'Cyber', colors: ['#FF00FF', '#00FFFF', '#0a0014'] },
+  { id: 'arctic', label: 'Arctic', colors: ['#7DD3FC', '#2DD4BF', '#061222'] },
+  { id: 'magma', label: 'Magma', colors: ['#FF4500', '#FF6347', '#0d0404'] },
+  { id: 'lavender', label: 'Lavender', colors: ['#C084FC', '#F9A8D4', '#100818'] },
+  { id: 'rose', label: 'Rose', colors: ['#BE123C', '#D4A574', '#0c0508'] },
+  { id: 'space', label: 'Space', colors: ['#7C3AED', '#06B6D4', '#0a0e27'] },
+  { id: 'vaporwave', label: 'Vapor', colors: ['#FF006E', '#8338EC', '#1a0033'] },
+  { id: 'jade', label: 'Jade', colors: ['#14B8A6', '#9333EA', '#0d3a3a'] },
+  { id: 'violet', label: 'Violet', colors: ['#A78BFA', '#60A5FA', '#1e1b4b'] },
+  { id: 'noir', label: 'Noir', colors: ['#E5E7EB', '#6B7280', '#070707'] },
+  { id: 'zen', label: 'Zen', colors: ['#84CC16', '#0EA5E9', '#0a1911'] },
+];
+
+const ACCENT_INTENSITY_OPTIONS = [
+  { id: 'subtle', label: 'Subtle', icon: '🌕' },
+  { id: 'normal', label: 'Normal', icon: '⭐' },
+  { id: 'vibrant', label: 'Vibrant', icon: '✨' },
+];
+
+const COLOR_MODE_OPTIONS = [
+  { id: 'normal', label: 'Normal', icon: '👁️' },
+  { id: 'protanopia', label: 'Red-Blind', icon: '🔴' },
+  { id: 'deuteranopia', label: 'Green-Blind', icon: '🟢' },
+  { id: 'tritanopia', label: 'Blue-Blind', icon: '🔵' },
+];
+
+const CONTRAST_OPTIONS = [
+  { id: 'normal', label: 'Normal', icon: '🌓' },
+  { id: 'high', label: 'High', icon: '◼️' },
+];
+
+const ACCENT_VAR_KEYS = [
+  '--accent-red',
+  '--accent-orange',
+  '--accent-purple',
+  '--accent-green',
+  '--accent-yellow',
+  '--accent-blue',
+  '--accent-pink',
+  '--accent-cyan',
+  '--accent-lime',
+];
+
 export default function ProfilePage() {
   const {
     name, setName, unitSystem, setUnitSystem, barWeight, setBarWeight,
+    dumbbellWeight, setDumbbellWeight,
     equipment, setEquipment, defaultRestTime, setDefaultRestTime,
     soundEnabled, toggleSound, hapticEnabled, toggleHaptic,
   } = useUserStore();
@@ -46,12 +96,20 @@ export default function ProfilePage() {
   // Appearance
   const [currentFont, setCurrentFont] = useState('inter');
   const [currentFontSize, setCurrentFontSize] = useState('normal');
+  const [currentTheme, setCurrentTheme] = useState('dark');
   const [compactMode, setCompactMode] = useState(false);
   const [buttonStyle, setButtonStyle] = useState('default');
   const [cardStyle, setCardStyle] = useState('glass');
   const [borderRadius, setBorderRadius] = useState('default');
   const [animLevel, setAnimLevel] = useState('normal');
   const [navStyle, setNavStyle] = useState('default');
+  const [accentIntensity, setAccentIntensity] = useState('normal');
+  const [colorMode, setColorMode] = useState('normal');
+  const [textShadow, setTextShadow] = useState(false);
+  const [glowIntensity, setGlowIntensity] = useState('normal');
+  const [borderThickness, setBorderThickness] = useState('normal');
+  const [glassOpacity, setGlassOpacity] = useState('medium');
+  const [contrastMode, setContrastMode] = useState('normal');
   
   // Workout settings
   const [weightIncrement, setWeightIncrement] = useState(2.5);
@@ -79,17 +137,40 @@ export default function ProfilePage() {
 
   const loadAppearanceSettings = async () => {
     try {
+      document.documentElement.removeAttribute('data-spacing');
+      document.documentElement.removeAttribute('data-texture');
+
+      // Load theme from document data-theme attribute first
+      const themeAttr = document.documentElement.getAttribute('data-theme');
+      if (themeAttr) {
+        setCurrentTheme(themeAttr);
+      }
+      
       const profiles = await db.userProfile.toArray();
       if (profiles[0]) {
         const p = profiles[0] as any;
+        if (p.theme) { setCurrentTheme(p.theme); }
         if (p.font) { setCurrentFont(p.font); document.documentElement.setAttribute('data-font', p.font); }
         if (p.fontSize) { setCurrentFontSize(p.fontSize); document.documentElement.setAttribute('data-fontsize', p.fontSize); }
+        if (p.dumbbellWeight !== undefined) { setDumbbellWeight(p.dumbbellWeight); }
         if (p.compactMode) { setCompactMode(true); document.documentElement.setAttribute('data-compact', 'true'); }
         if (p.buttonStyle && p.buttonStyle !== 'default') { setButtonStyle(p.buttonStyle); document.documentElement.setAttribute('data-buttons', p.buttonStyle); }
         if (p.cardStyle && p.cardStyle !== 'glass') { setCardStyle(p.cardStyle); document.documentElement.setAttribute('data-cards', p.cardStyle); }
         if (p.borderRadius && p.borderRadius !== 'default') { setBorderRadius(p.borderRadius); document.documentElement.setAttribute('data-radius', p.borderRadius); }
         if (p.animationLevel && p.animationLevel !== 'normal') { setAnimLevel(p.animationLevel); document.documentElement.setAttribute('data-anim', p.animationLevel); }
         if (p.navStyle && p.navStyle !== 'default') { setNavStyle(p.navStyle); document.documentElement.setAttribute('data-nav', p.navStyle); }
+        if (p.accentIntensity) {
+          setAccentIntensity(p.accentIntensity);
+          if (p.accentIntensity === 'normal') document.documentElement.removeAttribute('data-accent-intensity');
+          else document.documentElement.setAttribute('data-accent-intensity', p.accentIntensity);
+          applyAccentIntensity(p.accentIntensity);
+        }
+        if (p.colorMode && p.colorMode !== 'normal') { setColorMode(p.colorMode); document.documentElement.setAttribute('data-color-mode', p.colorMode); }
+        if (p.textShadow) { setTextShadow(true); document.documentElement.setAttribute('data-text-shadow', 'true'); }
+        if (p.glowIntensity && p.glowIntensity !== 'normal') { setGlowIntensity(p.glowIntensity); document.documentElement.setAttribute('data-glow', p.glowIntensity); }
+        if (p.borderThickness && p.borderThickness !== 'normal') { setBorderThickness(p.borderThickness); document.documentElement.setAttribute('data-border-width', p.borderThickness); }
+        if (p.glassOpacity && p.glassOpacity !== 'medium') { setGlassOpacity(p.glassOpacity); document.documentElement.setAttribute('data-glass-opacity', p.glassOpacity); }
+        if (p.contrastMode && p.contrastMode !== 'normal') { setContrastMode(p.contrastMode); document.documentElement.setAttribute('data-contrast', p.contrastMode); }
         if (p.weightIncrement) setWeightIncrement(p.weightIncrement);
         if (p.autoAdvance !== undefined) setAutoAdvance(p.autoAdvance);
         if (p.autoStartRest !== undefined) setAutoStartRest(p.autoStartRest);
@@ -152,6 +233,78 @@ export default function ProfilePage() {
       const profiles = await db.userProfile.toArray();
       if (profiles[0]?.id) await db.userProfile.update(profiles[0].id, { [field]: value });
     } catch {}
+  };
+
+  const parseCssColor = (value: string): [number, number, number] | null => {
+    const color = value.trim();
+    if (!color) return null;
+
+    if (color.startsWith('#')) {
+      const hex = color.slice(1);
+      if (hex.length === 3) {
+        return [
+          parseInt(hex[0] + hex[0], 16),
+          parseInt(hex[1] + hex[1], 16),
+          parseInt(hex[2] + hex[2], 16),
+        ];
+      }
+      if (hex.length >= 6) {
+        return [
+          parseInt(hex.slice(0, 2), 16),
+          parseInt(hex.slice(2, 4), 16),
+          parseInt(hex.slice(4, 6), 16),
+        ];
+      }
+      return null;
+    }
+
+    const rgbMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+    if (!rgbMatch) return null;
+    return [
+      parseInt(rgbMatch[1], 10),
+      parseInt(rgbMatch[2], 10),
+      parseInt(rgbMatch[3], 10),
+    ];
+  };
+
+  const toHex = ([r, g, b]: [number, number, number]) =>
+    `#${[r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('')}`;
+
+  const blendColor = (
+    source: [number, number, number],
+    target: [number, number, number],
+    ratio: number,
+  ): [number, number, number] => ([
+    source[0] * (1 - ratio) + target[0] * ratio,
+    source[1] * (1 - ratio) + target[1] * ratio,
+    source[2] * (1 - ratio) + target[2] * ratio,
+  ]);
+
+  const boostColor = (source: [number, number, number], amount: number): [number, number, number] => {
+    const avg = (source[0] + source[1] + source[2]) / 3;
+    return [
+      avg + (source[0] - avg) * amount,
+      avg + (source[1] - avg) * amount,
+      avg + (source[2] - avg) * amount,
+    ];
+  };
+
+  const applyAccentIntensity = (mode: string) => {
+    const root = document.documentElement;
+    ACCENT_VAR_KEYS.forEach(key => root.style.removeProperty(key));
+    if (mode === 'normal') return;
+
+    const styles = window.getComputedStyle(root);
+    const subtleTarget: [number, number, number] = [124, 126, 146];
+
+    for (const key of ACCENT_VAR_KEYS) {
+      const parsed = parseCssColor(styles.getPropertyValue(key));
+      if (!parsed) continue;
+      const adjusted = mode === 'subtle'
+        ? blendColor(parsed, subtleTarget, 0.35)
+        : boostColor(parsed, 1.35);
+      root.style.setProperty(key, toHex(adjusted));
+    }
   };
 
   const applyFont = (fontId: string) => {
@@ -272,13 +425,44 @@ export default function ProfilePage() {
           </SettingRow>
 
           <SettingRow icon={Dumbbell} iconColor="var(--accent-orange)" label="Bar Weight" description="Standard barbell weight">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {[15, 20, 25].map(w => (
-                <button key={w} onClick={() => { setBarWeight(w); saveProfileField('barWeight', w); }}
-                  style={{ padding: '7px 14px', borderRadius: 8, border: barWeight === w ? 'none' : '1px solid var(--border)', background: barWeight === w ? 'var(--gradient-ocean)' : 'transparent', color: barWeight === w ? 'white' : 'var(--text-muted)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                  {w}kg
-                </button>
-              ))}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
+              <input
+                type="number"
+                min={0}
+                step={unitSystem === 'metric' ? 2.5 : 5}
+                value={barWeight}
+                onChange={e => {
+                  const next = Number.parseFloat(e.target.value);
+                  if (Number.isFinite(next)) {
+                    const normalized = Math.max(0, Math.round(next * 2) / 2);
+                    setBarWeight(normalized);
+                    saveProfileField('barWeight', normalized);
+                  }
+                }}
+                style={{ width: 86, textAlign: 'right', padding: '8px 10px', borderRadius: 10, border: '1px solid var(--border-bright)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14, fontWeight: 700 }}
+              />
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)', minWidth: 26 }}>{unitSystem === 'metric' ? 'kg' : 'lb'}</span>
+            </div>
+          </SettingRow>
+
+          <SettingRow icon={Dumbbell} iconColor="var(--accent-cyan)" label="Dumbbell Default" description="Per-dumbbell starting weight">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
+              <input
+                type="number"
+                min={0}
+                step={unitSystem === 'metric' ? 2.5 : 5}
+                value={dumbbellWeight}
+                onChange={e => {
+                  const next = Number.parseFloat(e.target.value);
+                  if (Number.isFinite(next)) {
+                    const normalized = Math.max(0, Math.round(next * 2) / 2);
+                    setDumbbellWeight(normalized);
+                    saveProfileField('dumbbellWeight', normalized);
+                  }
+                }}
+                style={{ width: 86, textAlign: 'right', padding: '8px 10px', borderRadius: 10, border: '1px solid var(--border-bright)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14, fontWeight: 700 }}
+              />
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)', minWidth: 26 }}>{unitSystem === 'metric' ? 'kg' : 'lb'}</span>
             </div>
           </SettingRow>
 
@@ -303,31 +487,24 @@ export default function ProfilePage() {
 
           {/* Theme Selector */}
           <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Theme</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
-              {[
-                { id: 'dark', label: 'Forge', colors: ['#FF3D5A', '#8B5CF6', '#070710'] },
-                { id: 'ocean', label: 'Ocean', colors: ['#0EA5E9', '#6366F1', '#050c1a'] },
-                { id: 'forest', label: 'Forest', colors: ['#10B981', '#D97706', '#051208'] },
-                { id: 'steel', label: 'Steel', colors: ['#EF4444', '#9CA3AF', '#121214'] },
-                { id: 'sunset', label: 'Sunset', colors: ['#FB923C', '#FBBF24', '#120c08'] },
-                { id: 'cyberpunk', label: 'Cyber', colors: ['#FF00FF', '#00FFFF', '#0a0014'] },
-                { id: 'arctic', label: 'Arctic', colors: ['#7DD3FC', '#2DD4BF', '#061222'] },
-                { id: 'magma', label: 'Magma', colors: ['#FF4500', '#FF6347', '#0d0404'] },
-                { id: 'lavender', label: 'Lavender', colors: ['#C084FC', '#F9A8D4', '#100818'] },
-                { id: 'rose', label: 'Rose', colors: ['#BE123C', '#D4A574', '#0c0508'] },
-              ].map(theme => {
-                const isActive = (typeof window !== 'undefined' ? document.documentElement.getAttribute('data-theme') || 'dark' : 'dark') === theme.id;
+            <div className="section-label" style={{ marginBottom: 10 }}>Theme (16 Options)</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(50px, 1fr))', gap: 8 }}>
+              {THEME_OPTIONS.map(theme => {
+                const isActive = currentTheme === theme.id;
                 return (
                   <button key={theme.id} onClick={() => {
+                    setCurrentTheme(theme.id);
                     if (theme.id === 'dark') document.documentElement.removeAttribute('data-theme');
                     else document.documentElement.setAttribute('data-theme', theme.id);
+                    if (accentIntensity !== 'normal') {
+                      requestAnimationFrame(() => applyAccentIntensity(accentIntensity));
+                    }
                     saveProfileField('theme', theme.id);
                   }} style={{
                     padding: '10px 4px', borderRadius: 'var(--r-md)', border: isActive ? `2px solid ${theme.colors[0]}` : '1px solid var(--border)',
                     background: theme.colors[2], cursor: 'pointer', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 6,
-                    boxShadow: isActive ? `0 0 12px ${theme.colors[0]}30` : 'none', minHeight: 60,
-                  }}>
+                    boxShadow: isActive ? `0 0 12px ${theme.colors[0]}30` : 'none', minHeight: 60, transition: 'all 0.2s',
+                  }} title={theme.label}>
                     <div style={{ display: 'flex', gap: 3 }}>
                       <div style={{ width: 12, height: 12, borderRadius: '50%', background: theme.colors[0] }} />
                       <div style={{ width: 12, height: 12, borderRadius: '50%', background: theme.colors[1] }} />
@@ -531,6 +708,169 @@ export default function ProfilePage() {
               ))}
             </div>
           </div>
+
+          {/* Accent Intensity */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Accent Intensity</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {ACCENT_INTENSITY_OPTIONS.map(opt => (
+                <button key={opt.id} onClick={() => {
+                  setAccentIntensity(opt.id);
+                  if (opt.id === 'normal') document.documentElement.removeAttribute('data-accent-intensity');
+                  else document.documentElement.setAttribute('data-accent-intensity', opt.id);
+                  applyAccentIntensity(opt.id);
+                  saveProfileField('accentIntensity', opt.id);
+                }} style={{
+                  padding: '14px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                  background: accentIntensity === opt.id ? 'var(--gradient-hero)' : 'var(--bg-glass)',
+                  border: accentIntensity === opt.id ? 'none' : '1px solid var(--border)',
+                  color: accentIntensity === opt.id ? 'white' : 'var(--text-secondary)',
+                }}>
+                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
+                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Glow Intensity */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Glow Intensity</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {[
+                { id: 'low', label: 'Subtle', icon: '💫' },
+                { id: 'normal', label: 'Normal', icon: '✨' },
+                { id: 'high', label: 'Intense', icon: '⚡' },
+              ].map(opt => (
+                <button key={opt.id} onClick={() => {
+                  setGlowIntensity(opt.id);
+                  if (opt.id === 'normal') document.documentElement.removeAttribute('data-glow');
+                  else document.documentElement.setAttribute('data-glow', opt.id);
+                  saveProfileField('glowIntensity', opt.id);
+                }} style={{
+                  padding: '14px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                  background: glowIntensity === opt.id ? 'var(--gradient-mint)' : 'var(--bg-glass)',
+                  border: glowIntensity === opt.id ? 'none' : '1px solid var(--border)',
+                  color: glowIntensity === opt.id ? 'white' : 'var(--text-secondary)',
+                }}>
+                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
+                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Color Blindness Mode */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Color Vision Mode</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+              {COLOR_MODE_OPTIONS.map(opt => (
+                <button key={opt.id} onClick={() => {
+                  setColorMode(opt.id);
+                  if (opt.id === 'normal') document.documentElement.removeAttribute('data-color-mode');
+                  else document.documentElement.setAttribute('data-color-mode', opt.id);
+                  saveProfileField('colorMode', opt.id);
+                }} style={{
+                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                  background: colorMode === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
+                  border: colorMode === opt.id ? 'none' : '1px solid var(--border)',
+                  color: colorMode === opt.id ? 'white' : 'var(--text-secondary)',
+                }}>
+                  <div style={{ fontSize: 16 }}>{opt.icon}</div>
+                  <div style={{ fontSize: 8, fontWeight: 700, marginTop: 2 }}>{opt.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Text Shadow Toggle */}
+          <SettingRow icon={Type} iconColor="var(--accent-pink)" label="Text Shadow" description="Enhance text readability">
+            <Toggle enabled={textShadow} onToggle={() => {
+              const newVal = !textShadow;
+              setTextShadow(newVal);
+              if (newVal) document.documentElement.setAttribute('data-text-shadow', 'true');
+              else document.documentElement.removeAttribute('data-text-shadow');
+              saveProfileField('textShadow', newVal);
+            }} />
+          </SettingRow>
+
+          {/* Border Thickness */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Border Thickness</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {[
+                { id: 'thin', label: 'Thin', icon: '📏' },
+                { id: 'normal', label: 'Normal', icon: '📐' },
+                { id: 'thick', label: 'Thick', icon: '📊' },
+              ].map(opt => (
+                <button key={opt.id} onClick={() => {
+                  setBorderThickness(opt.id);
+                  if (opt.id === 'normal') document.documentElement.removeAttribute('data-border-width');
+                  else document.documentElement.setAttribute('data-border-width', opt.id);
+                  saveProfileField('borderThickness', opt.id);
+                }} style={{
+                  padding: '14px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                  background: borderThickness === opt.id ? 'var(--gradient-ocean)' : 'var(--bg-glass)',
+                  border: borderThickness === opt.id ? 'none' : '1px solid var(--border)',
+                  color: borderThickness === opt.id ? 'white' : 'var(--text-secondary)',
+                }}>
+                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
+                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Glass Opacity */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Glass Opacity</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {[
+                { id: 'light', label: 'Light', icon: '☁️' },
+                { id: 'medium', label: 'Medium', icon: '🌫️' },
+                { id: 'heavy', label: 'Heavy', icon: '💨' },
+              ].map(opt => (
+                <button key={opt.id} onClick={() => {
+                  setGlassOpacity(opt.id);
+                  if (opt.id === 'medium') document.documentElement.removeAttribute('data-glass-opacity');
+                  else document.documentElement.setAttribute('data-glass-opacity', opt.id);
+                  saveProfileField('glassOpacity', opt.id);
+                }} style={{
+                  padding: '14px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                  background: glassOpacity === opt.id ? 'var(--gradient-mint)' : 'var(--bg-glass)',
+                  border: glassOpacity === opt.id ? 'none' : '1px solid var(--border)',
+                  color: glassOpacity === opt.id ? 'white' : 'var(--text-secondary)',
+                }}>
+                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
+                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Contrast Mode */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Contrast</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
+              {CONTRAST_OPTIONS.map(opt => (
+                <button key={opt.id} onClick={() => {
+                  setContrastMode(opt.id);
+                  if (opt.id === 'normal') document.documentElement.removeAttribute('data-contrast');
+                  else document.documentElement.setAttribute('data-contrast', opt.id);
+                  saveProfileField('contrastMode', opt.id);
+                }} style={{
+                  padding: '14px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                  background: contrastMode === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
+                  border: contrastMode === opt.id ? 'none' : '1px solid var(--border)',
+                  color: contrastMode === opt.id ? 'white' : 'var(--text-secondary)',
+                }}>
+                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
+                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
         </motion.div>
       )}
 

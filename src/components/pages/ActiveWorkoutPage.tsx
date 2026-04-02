@@ -21,7 +21,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     tickTimer, restTimerActive, restTimeRemaining, restTimeDuration,
     startRestTimer, stopRestTimer, tickRestTimer, endWorkout, togglePause,
   } = useWorkoutStore();
-  const { defaultRestTime, unitSystem, soundEnabled } = useUserStore();
+  const { defaultRestTime, unitSystem, soundEnabled, hapticEnabled, barWeight, dumbbellWeight } = useUserStore();
   const [showNumpad, setShowNumpad] = useState<{ field: 'weight' | 'reps'; exerciseIdx: number; setIdx: number } | null>(null);
   const [numpadValue, setNumpadValue] = useState('0');
   const [imgErrors, setImgErrors] = useState<Set<number>>(new Set());
@@ -46,22 +46,6 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
       return () => { if (restTimerRef.current) clearInterval(restTimerRef.current); };
     } else { if (restTimerRef.current) clearInterval(restTimerRef.current); }
   }, [restTimerActive, tickRestTimer]);
-
-  // Rest timer sound
-  useEffect(() => {
-    if (restTimerActive && restTimeRemaining === 0 && soundEnabled) {
-      try {
-        const ctx = new AudioContext();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain); gain.connect(ctx.destination);
-        osc.frequency.value = 880; osc.type = 'sine';
-        gain.gain.value = 0.15;
-        osc.start(); osc.stop(ctx.currentTime + 0.3);
-        setTimeout(() => { const o2 = ctx.createOscillator(); o2.connect(gain); o2.frequency.value = 1100; o2.type = 'sine'; o2.start(); o2.stop(ctx.currentTime + 0.2); }, 350);
-      } catch {}
-    }
-  }, [restTimeRemaining, restTimerActive, soundEnabled]);
 
   useEffect(() => {
     let wakeLock: any = null;
@@ -97,6 +81,56 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
   const currentSetIndex = currentExercise?.sets.findIndex(s => !s.isComplete) ?? -1;
   const progress = exercises.length > 0 ? (exercises.filter(e => e.isComplete).length / exercises.length) * 100 : 0;
 
+  const triggerHaptic = useCallback((mode: 'light' | 'success' = 'light') => {
+    if (!hapticEnabled || typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return;
+    if (mode === 'success') {
+      navigator.vibrate([20, 30, 20]);
+      return;
+    }
+    navigator.vibrate(14);
+  }, [hapticEnabled]);
+
+  const playFeedbackTone = useCallback((mode: 'set' | 'finish' | 'rest') => {
+    if (!soundEnabled || typeof window === 'undefined') return;
+    try {
+      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime;
+      const gain = ctx.createGain();
+      gain.connect(ctx.destination);
+      gain.gain.setValueAtTime(0.0001, now);
+
+      const sequence = mode === 'finish'
+        ? [660, 880, 1100]
+        : mode === 'rest'
+          ? [880, 1100]
+          : [760];
+
+      sequence.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const start = now + idx * 0.11;
+        const stop = start + 0.09;
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, start);
+        osc.connect(gain);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.14, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, stop);
+        osc.start(start);
+        osc.stop(stop);
+      });
+    } catch {}
+  }, [soundEnabled]);
+
+  // Rest timer feedback
+  useEffect(() => {
+    if (restTimerActive && restTimeRemaining === 0) {
+      playFeedbackTone('rest');
+      triggerHaptic('success');
+    }
+  }, [restTimeRemaining, restTimerActive, playFeedbackTone, triggerHaptic]);
+
   const formatTime = (sec: number) => {
     const h = Math.floor(sec / 3600); const m = Math.floor((sec % 3600) / 60); const s = sec % 60;
     return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}` : `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
@@ -106,15 +140,19 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     const exercise = exercises[exerciseIdx]; const set = exercise.sets[setIdx];
     const weight = set.weight || 0; const reps = set.reps || set.targetReps || 0;
     completeSet(exerciseIdx, setIdx, weight, reps);
+    playFeedbackTone('set');
+    triggerHaptic('light');
     if (sessionId) {
       try { await db.sets.add({ sessionExerciseId: 0, sessionId, exerciseId: exercise.exerciseId, setNumber: setIdx + 1, setType: 'normal' as any, weight, reps, completedAt: new Date(), isWarmup: false, isPR: false }); } catch {}
     }
     startRestTimer(exercise.restTime || defaultRestTime);
     const updated = [...exercise.sets]; updated[setIdx] = { ...updated[setIdx], isComplete: true };
     if (updated.every(s => s.isComplete) && currentExerciseIndex < exercises.length - 1) setTimeout(() => nextExercise(), 600);
-  }, [exercises, sessionId, completeSet, startRestTimer, defaultRestTime, currentExerciseIndex, nextExercise]);
+  }, [exercises, sessionId, completeSet, startRestTimer, defaultRestTime, currentExerciseIndex, nextExercise, playFeedbackTone, triggerHaptic]);
 
   const handleFinish = async () => {
+    playFeedbackTone('finish');
+    triggerHaptic('success');
     if (sessionId) {
       await db.workoutSessions.update(sessionId, { completedAt: new Date(), duration: elapsedTime, totalVolume, totalSets, totalReps: exercises.reduce((a, e) => a + e.sets.filter(s => s.isComplete).reduce((acc, s) => acc + s.reps, 0), 0), isComplete: true });
     }
@@ -222,9 +260,9 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
       {/* Top bar */}
       <div style={{ position: 'sticky', top: 0, background: 'rgba(7,7,16,0.95)', backdropFilter: 'blur(24px)', zIndex: 50, padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <button onClick={handleCancel} className="btn-ghost" style={{ padding: '8px 12px', minHeight: 40 }}><X size={16} /> Cancel</button>
+          <button onClick={handleCancel} className="btn-cancel" style={{ minHeight: 40 }}><X size={16} /> Cancel</button>
           <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: '-0.01em' }}>{dayName || planName}</div>
-          <button onClick={handleFinish} style={{ background: 'var(--accent-green)', border: 'none', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', borderRadius: 12, padding: '10px 20px', minHeight: 40 }}>Finish</button>
+          <button onClick={handleFinish} className="btn-primary btn-high-contrast" style={{ fontSize: 13, fontWeight: 800, borderRadius: 12, padding: '10px 20px', minHeight: 40 }}>Finish</button>
         </div>
         <div style={{ height: 3, background: 'rgba(255,255,255,0.03)', borderRadius: 2 }}>
           <motion.div style={{ height: '100%', background: 'var(--gradient-fire)', borderRadius: 2 }} animate={{ width: `${progress}%` }} transition={{ duration: 0.4 }} />
@@ -266,7 +304,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
         ))}
       </div>
 
-      <div style={{ padding: 16 }}>
+      <div style={{ padding: 16, paddingBottom: 'calc(16px + env(safe-area-inset-bottom) + 120px)' }}>
         {/* GIF display — upscaled */}
         {exerciseGif && !hasImgError && (
           <div className="gif-upscale-container" style={{ width: '100%', aspectRatio: '1', borderRadius: 'var(--r-lg)', overflow: 'hidden', marginBottom: 14, background: '#0a0a14', position: 'relative', border: '1px solid var(--border)' }}>
@@ -313,21 +351,29 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
               <div style={{ flex: 1 }}>
                 <div className="section-label" style={{ marginBottom: 3 }}>{unitSystem === 'metric' ? 'KG' : 'LBS'}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <button onClick={() => updateSetWeight(currentExerciseIndex, setIdx, Math.max(0, set.weight - 2.5))} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={14} /></button>
+                  <button onClick={() => updateSetWeight(currentExerciseIndex, setIdx, Math.max(0, set.weight - 2.5))} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Minus size={14} /></button>
                   <button className="set-input" onClick={() => openNumpad('weight', currentExerciseIndex, setIdx)} style={{ cursor: 'pointer', width: 60, minHeight: 40 }}>{set.weight}</button>
-                  <button onClick={() => updateSetWeight(currentExerciseIndex, setIdx, set.weight + 2.5)} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={14} /></button>
+                  <button onClick={() => updateSetWeight(currentExerciseIndex, setIdx, set.weight + 2.5)} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Plus size={14} /></button>
                 </div>
               </div>
               <div style={{ flex: 1 }}>
                 <div className="section-label" style={{ marginBottom: 3 }}>REPS</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <button onClick={() => updateSetReps(currentExerciseIndex, setIdx, Math.max(0, set.reps - 1))} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={14} /></button>
+                  <button onClick={() => updateSetReps(currentExerciseIndex, setIdx, Math.max(0, set.reps - 1))} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Minus size={14} /></button>
                   <button className="set-input" onClick={() => openNumpad('reps', currentExerciseIndex, setIdx)} style={{ cursor: 'pointer', width: 52, minHeight: 40 }}>{set.reps || set.targetReps}</button>
-                  <button onClick={() => updateSetReps(currentExerciseIndex, setIdx, (set.reps || set.targetReps) + 1)} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={14} /></button>
+                  <button onClick={() => updateSetReps(currentExerciseIndex, setIdx, (set.reps || set.targetReps) + 1)} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Plus size={14} /></button>
                 </div>
               </div>
               {!set.isComplete && (
-                <motion.button whileTap={{ scale: 0.9 }} onClick={() => handleCompleteSet(currentExerciseIndex, setIdx)} style={{ width: 48, height: 48, borderRadius: 14, background: 'var(--gradient-fire)', border: 'none', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 4px 14px var(--glow-red)' }}><Check size={20} /></motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => handleCompleteSet(currentExerciseIndex, setIdx)}
+                  className="complete-set-btn"
+                  aria-label={`Complete set ${setIdx + 1}`}
+                >
+                  <Check size={16} />
+                  <span>Done</span>
+                </motion.button>
               )}
             </motion.div>
           ))}
@@ -344,15 +390,19 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
               {showPlates && (
                 <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} style={{ overflow: 'hidden' }}>
                   <div style={{ padding: '10px 12px', background: 'var(--bg-elevated)', borderRadius: '0 0 var(--r-sm) var(--r-sm)', border: '1px solid var(--border)', borderTop: 'none' }}>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6 }}>Bar: {useUserStore.getState().barWeight}kg • Each side: {((currentExercise.sets[currentSetIndex].weight - useUserStore.getState().barWeight) / 2).toFixed(1)}kg</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6 }}>
+                      {exerciseInfo?.equipment?.toLowerCase().includes('dumbbell')
+                        ? `Dumbbell default: ${dumbbellWeight}${unitSystem === 'metric' ? 'kg' : 'lbs'} each`
+                        : `Bar: ${barWeight}${unitSystem === 'metric' ? 'kg' : 'lbs'} • Each side: ${((currentExercise.sets[currentSetIndex].weight - barWeight) / 2).toFixed(1)}${unitSystem === 'metric' ? 'kg' : 'lbs'}`}
+                    </div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {calculatePlates(currentExercise.sets[currentSetIndex].weight, useUserStore.getState().barWeight).map((p, i) => (
+                      {calculatePlates(currentExercise.sets[currentSetIndex].weight, barWeight).map((p, i) => (
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: `${p.color}15`, border: `1px solid ${p.color}30`, borderRadius: 6 }}>
                           <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color }} />
                           <span style={{ fontSize: 11, fontWeight: 700, color: p.color }}>{p.plate}kg ×{p.count}</span>
                         </div>
                       ))}
-                      {calculatePlates(currentExercise.sets[currentSetIndex].weight, useUserStore.getState().barWeight).length === 0 && (
+                      {calculatePlates(currentExercise.sets[currentSetIndex].weight, barWeight).length === 0 && (
                         <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Empty bar</span>
                       )}
                     </div>
@@ -392,7 +442,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                   <button onClick={() => setShowCancelConfirm(false)} className="btn-secondary" style={{ flex: 1, minHeight: 48, borderRadius: 14 }}>
                     Continue Workout
                   </button>
-                  <button onClick={confirmCancel} style={{ flex: 1, background: 'rgba(255,61,90,0.12)', border: '1px solid rgba(255,61,90,0.3)', color: 'var(--accent-red)', borderRadius: 14, fontSize: 14, fontWeight: 700, cursor: 'pointer', minHeight: 48 }}>
+                  <button onClick={confirmCancel} className="btn-cancel" style={{ flex: 1, minHeight: 48, justifyContent: 'center' }}>
                     End & Discard
                   </button>
                 </div>
