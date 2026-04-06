@@ -1,19 +1,23 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Trophy, Flame, Clock, Dumbbell, TrendingUp, Star, Zap, ArrowRight } from 'lucide-react';
+import { Trophy, Flame, Clock, Dumbbell, TrendingUp, Star, Zap, ArrowRight, Share2, Copy, Check } from 'lucide-react';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
+import { db } from '@/lib/db/schema';
 
 interface WorkoutCompletePageProps {
   onFinish: () => void;
 }
 
 export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePageProps) {
-  const { totalVolume, totalSets, totalReps, elapsedTime, newPRs, exercises } = useWorkoutStore();
+  const { totalVolume, totalSets, totalReps, elapsedTime, newPRs, exercises, planName, dayName } = useWorkoutStore();
   const { endWorkout } = useWorkoutStore();
   const [showConfetti, setShowConfetti] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [musclesTrained, setMusclesTrained] = useState<string[]>([]);
+  const [prevSession, setPrevSession] = useState<{ volume: number; sets: number; duration: number } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     // Confetti animation
@@ -74,6 +78,39 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
     animate();
   }, []);
 
+  // Load muscles trained and previous session for comparison
+  useEffect(() => {
+    const load = async () => {
+      // Get muscles from current exercises
+      const exIds = exercises.map(e => e.exerciseId).filter(Boolean);
+      if (exIds.length === 0) return;
+      try {
+        const exs = await db.exercises.where('id').anyOf(exIds).toArray();
+        const muscles = new Set<string>();
+        exs.forEach(e => {
+          (e.primaryMuscles || []).forEach(m => muscles.add(m.toLowerCase()));
+        });
+        setMusclesTrained([...muscles].slice(0, 8));
+
+        // Find previous session with same day name to compare
+        if (dayName) {
+          const prev = await db.workoutSessions
+            .orderBy('startedAt')
+            .reverse()
+            .filter(s => s.isComplete && s.dayName === dayName)
+            .limit(2)
+            .toArray();
+          // Skip the current session (it might already be saved), take the prior one
+          const old = prev.length > 1 ? prev[1] : prev.length === 1 ? prev[0] : null;
+          if (old && old.totalVolume > 0) {
+            setPrevSession({ volume: old.totalVolume, sets: old.totalSets, duration: old.duration });
+          }
+        }
+      } catch {}
+    };
+    load();
+  }, [exercises, dayName]);
+
   const formatTime = (seconds: number) => {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
@@ -88,6 +125,38 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
     { icon: Zap, label: 'Total Reps', value: totalReps.toString(), color: 'var(--accent-orange)' },
     { icon: Clock, label: 'Duration', value: formatTime(elapsedTime), color: 'var(--accent-blue)' },
   ];
+
+  // Volume change vs last time
+  const volumeChange = prevSession ? ((totalVolume - prevSession.volume) / prevSession.volume * 100) : null;
+
+  const handleShare = useCallback(async () => {
+    const text = [
+      `🏋️ ${dayName || planName || 'Workout'} Complete!`,
+      `⏱ ${formatTime(elapsedTime)}`,
+      `📊 ${totalVolume.toLocaleString()}kg volume`,
+      `💪 ${totalSets} sets, ${totalReps} reps`,
+      `🎯 ${completedExercises} exercises`,
+      newPRs.length > 0 ? `🏆 ${newPRs.length} new PR${newPRs.length > 1 ? 's' : ''}!` : '',
+      '',
+      '#IronForge',
+    ].filter(Boolean).join('\n');
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ text });
+      } else {
+        await navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {}
+    }
+  }, [dayName, planName, elapsedTime, totalVolume, totalSets, totalReps, completedExercises, newPRs]);
 
   const handleFinish = () => {
     endWorkout();
@@ -162,7 +231,7 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.7 }}
-        style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, width: '100%', maxWidth: 400, marginBottom: 24 }}
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, width: '100%', maxWidth: 400, marginBottom: 16 }}
       >
         {stats.map((stat, i) => (
           <motion.div
@@ -181,13 +250,57 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
         ))}
       </motion.div>
 
+      {/* Compare to last session */}
+      {volumeChange !== null && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1.1 }}
+          style={{
+            width: '100%', maxWidth: 400, marginBottom: 16, padding: '12px 16px',
+            borderRadius: 14, background: volumeChange >= 0 ? 'rgba(16,232,154,0.06)' : 'rgba(255,61,90,0.06)',
+            border: `1px solid ${volumeChange >= 0 ? 'rgba(16,232,154,0.2)' : 'rgba(255,61,90,0.2)'}`,
+            textAlign: 'center',
+          }}
+        >
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>vs Last {dayName || 'Session'}</div>
+          <div className="font-mono" style={{
+            fontSize: 18, fontWeight: 800,
+            color: volumeChange >= 0 ? 'var(--accent-green)' : 'var(--accent-red)',
+          }}>
+            {volumeChange >= 0 ? '↑' : '↓'} {Math.abs(Math.round(volumeChange))}% volume
+          </div>
+        </motion.div>
+      )}
+
+      {/* Muscles Trained */}
+      {musclesTrained.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1.15 }}
+          style={{ width: '100%', maxWidth: 400, marginBottom: 16 }}
+        >
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Muscles Trained</div>
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+            {musclesTrained.map(m => (
+              <span key={m} style={{
+                padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 600,
+                background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)',
+                color: 'var(--accent-purple)', textTransform: 'capitalize',
+              }}>{m}</span>
+            ))}
+          </div>
+        </motion.div>
+      )}
+
       {/* PRs */}
       {newPRs.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1.2 }}
-          style={{ width: '100%', maxWidth: 400, marginBottom: 24 }}
+          style={{ width: '100%', maxWidth: 400, marginBottom: 16 }}
         >
           <div style={{
             padding: 18, borderRadius: 16,
@@ -210,19 +323,24 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
         </motion.div>
       )}
 
-      {/* Done button */}
+      {/* Action buttons */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 1.4 }}
-        style={{ width: '100%', maxWidth: 400 }}
+        style={{ width: '100%', maxWidth: 400, display: 'flex', gap: 10 }}
       >
+        <button onClick={handleShare}
+          className="btn-secondary"
+          style={{ minHeight: 54, borderRadius: 16, flex: '0 0 54px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {copied ? <Check size={18} color="var(--accent-green)" /> : <Share2 size={18} />}
+        </button>
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.97 }}
           className="btn-primary animate-glow"
           onClick={handleFinish}
-          style={{ fontSize: 17, padding: '18px 24px', borderRadius: 16 }}
+          style={{ fontSize: 17, padding: '18px 24px', borderRadius: 16, flex: 1 }}
         >
           Continue <ArrowRight size={18} />
         </motion.button>

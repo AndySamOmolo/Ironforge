@@ -8,6 +8,8 @@ import { useUserStore } from '@/lib/store/userStore';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
 import type { WorkoutPlan, WorkoutDay, Exercise } from '@/lib/types';
 import { getWorkoutStartingWeight } from '@/lib/utils/workoutDefaults';
+import { getPrimaryExerciseImage, getExerciseImageFrames } from '@/lib/utils/exerciseMedia';
+import ExerciseMedia from '@/components/ui/ExerciseMedia';
 
 const CATEGORY_COLORS: Record<string, string> = {
   Hypertrophy: 'var(--accent-purple)',
@@ -101,7 +103,8 @@ export default function PlansPage() {
           });
           return {
             exerciseId: swappedEx.id || 0, exerciseName: swappedEx.name,
-            imageUrl: swappedEx.gifUrl || swappedEx.imageUrls?.[0], gifUrl: swappedEx.gifUrl,
+            imageUrl: getPrimaryExerciseImage(swappedEx), gifUrl: swappedEx.gifUrl,
+            mediaFrames: getExerciseImageFrames(swappedEx),
             sets: Array.from({ length: ex.sets }, (_, i) => ({ setNumber: i + 1, setType: ex.setType as any, weight: startingWeight, reps: typeof ex.reps === 'number' ? ex.reps : 0, targetWeight: ex.weight || 0, targetReps: typeof ex.reps === 'number' ? ex.reps : 0, isComplete: false })),
             targetSets: ex.sets, targetReps: ex.reps, restTime: ex.restTime, isComplete: false,
           };
@@ -130,7 +133,8 @@ export default function PlansPage() {
           if (alt) {
             return {
               exerciseId: alt.id || 0, exerciseName: alt.name,
-              imageUrl: alt.gifUrl || alt.imageUrls?.[0], gifUrl: alt.gifUrl,
+              imageUrl: getPrimaryExerciseImage(alt), gifUrl: alt.gifUrl,
+              mediaFrames: getExerciseImageFrames(alt),
               sets: Array.from({ length: ex.sets }, (_, i) => ({ setNumber: i + 1, setType: ex.setType as any, weight: 0, reps: typeof ex.reps === 'number' ? ex.reps : 0, targetWeight: 0, targetReps: typeof ex.reps === 'number' ? ex.reps : 0, isComplete: false })),
               targetSets: ex.sets, targetReps: ex.reps, restTime: ex.restTime, isComplete: false,
             };
@@ -145,7 +149,9 @@ export default function PlansPage() {
       });
       return {
         exerciseId: dbEx?.id || 0, exerciseName: dbEx?.name || ex.exerciseName,
-        imageUrl: dbEx?.gifUrl || dbEx?.imageUrls?.[0], gifUrl: dbEx?.gifUrl,
+        imageUrl: dbEx ? getPrimaryExerciseImage(dbEx) : undefined,
+        gifUrl: dbEx?.gifUrl,
+        mediaFrames: dbEx ? getExerciseImageFrames(dbEx) : [],
         sets: Array.from({ length: ex.sets }, (_, i) => ({ setNumber: i + 1, setType: ex.setType as any, weight: startingWeight, reps: typeof ex.reps === 'number' ? ex.reps : 0, targetWeight: ex.weight || 0, targetReps: typeof ex.reps === 'number' ? ex.reps : 0, isComplete: false })),
         targetSets: ex.sets, targetReps: ex.reps, restTime: ex.restTime, isComplete: false,
       };
@@ -486,7 +492,13 @@ function CustomPlanBuilder({ onClose, equipment }: { onClose: () => void; equipm
                     background: 'var(--bg-glass)', border: '1px solid var(--border)', borderRadius: 12,
                     cursor: 'pointer', textAlign: 'left', width: '100%', color: 'var(--text-primary)', minHeight: 56,
                   }}>
-                    {ex.gifUrl && <img src={ex.gifUrl} alt="" style={{ width: 40, height: 40, borderRadius: 10, objectFit: 'cover' }} />}
+                    <ExerciseMedia
+                      gifUrl={ex.gifUrl}
+                      imageUrls={ex.imageUrls}
+                      images={ex.images}
+                      alt={ex.name}
+                      style={{ width: 40, height: 40, borderRadius: 10, objectFit: 'cover' }}
+                    />
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 13, fontWeight: 600 }}>{ex.name}</div>
                       <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{ex.equipment} • {ex.primaryMuscles.join(', ')}</div>

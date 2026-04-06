@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Settings, Dumbbell, Scale, Calculator, Trash2, Download, ChevronRight, Check, X, Plus, TrendingUp, Moon, Volume2, Type, Maximize, Minimize, RotateCcw, Vibrate, Smartphone, Timer, ArrowUp, BarChart3, Shield, Database, Zap } from 'lucide-react';
+import { User, Settings, Dumbbell, Scale, Calculator, Trash2, Download, ChevronRight, Check, X, Plus, TrendingUp, Moon, Volume2, Type, Maximize, Minimize, RotateCcw, Vibrate, Smartphone, Timer, ArrowUp, BarChart3, Shield, Database, Zap, Bell, Clock } from 'lucide-react';
+import { useReminderStore } from '@/lib/store/reminderStore';
 import { db } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
 import type { BodyWeight } from '@/lib/types';
@@ -919,6 +920,9 @@ export default function ProfilePage() {
           <SettingRow icon={Smartphone} iconColor="var(--accent-purple)" label="Keep Screen On" description="Prevent screen sleep during workouts">
             <Toggle enabled={keepScreenOn} onToggle={() => { setKeepScreenOn(!keepScreenOn); saveProfileField('keepScreenOn', !keepScreenOn); }} />
           </SettingRow>
+
+          {/* ── Workout Reminders ── */}
+          <ReminderSection />
         </motion.div>
       )}
 
@@ -1069,6 +1073,113 @@ export default function ProfilePage() {
             <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 4 }}>870+ Exercises • 12 Programs • 10 Themes</div>
           </div>
         </motion.div>
+      )}
+    </div>
+  );
+}
+
+/* ===== REMINDER SECTION ===== */
+function ReminderSection() {
+  const { reminders, loadReminders, addReminder, deleteReminder, toggleReminder, requestPermission, permissionGranted, startBackgroundCheck } = useReminderStore();
+  const [showAdd, setShowAdd] = useState(false);
+  const [newDay, setNewDay] = useState(1);
+  const [newHour, setNewHour] = useState(8);
+  const [newMinute, setNewMinute] = useState(0);
+  const [newLabel, setNewLabel] = useState('Workout time!');
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  useEffect(() => { loadReminders(); }, [loadReminders]);
+  useEffect(() => { if (permissionGranted && reminders.some(r => r.isEnabled)) startBackgroundCheck(); }, [permissionGranted, reminders, startBackgroundCheck]);
+
+  const handleAdd = async () => {
+    if (!permissionGranted) {
+      const granted = await requestPermission();
+      if (!granted) return;
+    }
+    await addReminder({ dayOfWeek: newDay, timeHour: newHour, timeMinute: newMinute, isEnabled: true, label: newLabel });
+    setShowAdd(false);
+    startBackgroundCheck();
+  };
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div className="section-label" style={{ marginBottom: 10 }}>🔔 Workout Reminders</div>
+      {!permissionGranted && (
+        <div className="card" style={{ padding: 12, marginBottom: 10, border: '1px dashed rgba(251,191,36,0.3)' }}>
+          <div style={{ fontSize: 12, color: 'var(--accent-yellow)', fontWeight: 600, marginBottom: 4 }}>Notifications not enabled</div>
+          <button onClick={requestPermission} className="btn-primary" style={{ fontSize: 11, padding: '6px 14px', minHeight: 32, borderRadius: 8, width: 'auto', color: '#fff', textShadow: 'none', boxShadow: 'none' }}>
+            <Bell size={12} /> Enable Notifications
+          </button>
+        </div>
+      )}
+
+      {reminders.length === 0 && (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10, padding: '12px 0' }}>
+          No reminders set. Add one to get notified before your workouts.
+        </div>
+      )}
+
+      {reminders.map(r => (
+        <div key={r.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, opacity: r.isEnabled ? 1 : 0.5 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: r.isEnabled ? 'rgba(16,232,154,0.1)' : 'var(--bg-glass)', border: `1px solid ${r.isEnabled ? 'rgba(16,232,154,0.2)' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Bell size={14} color={r.isEnabled ? 'var(--accent-green)' : 'var(--text-muted)'} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>{dayNames[r.dayOfWeek]} at {String(r.timeHour).padStart(2, '0')}:{String(r.timeMinute).padStart(2, '0')}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{r.label}</div>
+          </div>
+          <button onClick={() => r.id && toggleReminder(r.id)}
+            style={{ width: 48, height: 26, borderRadius: 13, border: 'none', background: r.isEnabled ? 'var(--accent-green)' : 'var(--bg-input)', cursor: 'pointer', position: 'relative' as const, flexShrink: 0 }}>
+            <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'white', position: 'absolute' as const, top: 3, left: r.isEnabled ? 25 : 3, transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+          </button>
+          <button onClick={() => r.id && deleteReminder(r.id)} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: 4 }}>
+            <X size={14} />
+          </button>
+        </div>
+      ))}
+
+      {showAdd ? (
+        <div className="card" style={{ padding: 14, marginTop: 8, border: '1px solid var(--accent-purple)' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>New Reminder</div>
+          <div style={{ marginBottom: 10 }}>
+            <div className="section-label" style={{ marginBottom: 6 }}>Day</div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {dayNames.map((d, i) => (
+                <button key={i} onClick={() => setNewDay(i)} style={{
+                  flex: 1, padding: '8px 2px', borderRadius: 8, border: newDay === i ? 'none' : '1px solid var(--border)',
+                  background: newDay === i ? 'var(--gradient-fire)' : 'transparent', color: newDay === i ? 'white' : 'var(--text-muted)',
+                  fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                }}>{d}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+            <div style={{ flex: 1 }}>
+              <div className="section-label" style={{ marginBottom: 4 }}>Hour</div>
+              <select value={newHour} onChange={e => setNewHour(parseInt(e.target.value))} style={{ width: '100%', padding: 8, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 13, outline: 'none' }}>
+                {Array.from({ length: 24 }, (_, i) => <option key={i} value={i}>{String(i).padStart(2, '0')}</option>)}
+              </select>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div className="section-label" style={{ marginBottom: 4 }}>Minute</div>
+              <select value={newMinute} onChange={e => setNewMinute(parseInt(e.target.value))} style={{ width: '100%', padding: 8, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 13, outline: 'none' }}>
+                {[0, 15, 30, 45].map(m => <option key={m} value={m}>{String(m).padStart(2, '0')}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <div className="section-label" style={{ marginBottom: 4 }}>Label</div>
+            <input value={newLabel} onChange={e => setNewLabel(e.target.value)} style={{ width: '100%', padding: 8, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 13, outline: 'none' }} />
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={handleAdd} className="btn-primary" style={{ flex: 1, minHeight: 40, borderRadius: 10, fontSize: 12, fontWeight: 700, color: '#fff', textShadow: 'none', boxShadow: 'none' }}>Save</button>
+            <button onClick={() => setShowAdd(false)} className="btn-secondary" style={{ flex: 1, minHeight: 40, borderRadius: 10, fontSize: 12 }}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setShowAdd(true)} className="btn-secondary" style={{ width: '100%', minHeight: 44, borderRadius: 12, fontSize: 13, fontWeight: 700, marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+          <Plus size={14} /> Add Reminder
+        </button>
       )}
     </div>
   );

@@ -9,6 +9,7 @@ import { useWorkoutStore } from '@/lib/store/workoutStore';
 import { useUIStore } from '@/lib/store/uiStore';
 import type { WorkoutSession, WorkoutPlan, WorkoutDay } from '@/lib/types';
 import { getWorkoutStartingWeight } from '@/lib/utils/workoutDefaults';
+import { getPrimaryExerciseImage, getExerciseImageFrames } from '@/lib/utils/exerciseMedia';
 
 const FITNESS_QUOTES = [
   { text: "The only bad workout is the one that didn't happen.", author: "Unknown" },
@@ -172,8 +173,9 @@ export default function HomePage() {
           return {
             exerciseId: swappedEx.id || 0,
             exerciseName: swappedEx.name,
-            imageUrl: swappedEx.gifUrl || swappedEx.imageUrls?.[0] || undefined,
+            imageUrl: getPrimaryExerciseImage(swappedEx),
             gifUrl: swappedEx.gifUrl || undefined,
+            mediaFrames: getExerciseImageFrames(swappedEx),
             sets: Array.from({ length: ex.sets }, (_, i) => ({
               setNumber: i + 1, setType: ex.setType as any, weight: startingWeight,
               reps: typeof ex.reps === 'number' ? ex.reps : 0, targetWeight: ex.weight || 0,
@@ -204,8 +206,9 @@ export default function HomePage() {
       return {
         exerciseId: dbEx?.id || 0,
         exerciseName: dbEx?.name || ex.exerciseName,
-        imageUrl: dbEx?.gifUrl || dbEx?.imageUrls?.[0] || undefined,
+        imageUrl: dbEx ? getPrimaryExerciseImage(dbEx) : undefined,
         gifUrl: dbEx?.gifUrl || undefined,
+        mediaFrames: dbEx ? getExerciseImageFrames(dbEx) : [],
         sets: Array.from({ length: ex.sets }, (_, i) => ({
           setNumber: i + 1, setType: ex.setType as any, weight: startingWeight,
           reps: typeof ex.reps === 'number' ? ex.reps : 0, targetWeight: ex.weight || 0,

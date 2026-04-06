@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { seedDatabase } from '@/lib/db/seed';
 import { ensureWorkoutPrograms } from '@/lib/db/seed';
+import { migrateExerciseCatalog, EXERCISE_CATALOG_VERSION } from '@/lib/db/seed';
 import { db, resetDB } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
 import { useUIStore } from '@/lib/store/uiStore';
@@ -23,11 +24,13 @@ export default function App() {
   const { isActive: workoutActive, endWorkout } = useWorkoutStore();
   const [showComplete, setShowComplete] = useState(false);
   const [showExitHint, setShowExitHint] = useState(false);
+  const [showCatalogUpdateToast, setShowCatalogUpdateToast] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   const attemptRef = useRef(0);
   const lastBackPressRef = useRef(0);
   const exitHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const catalogToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navStateRef = useRef({ activeTab, workoutActive, showComplete });
 
   const doInit = useCallback(async (forceReset = false) => {
@@ -62,6 +65,20 @@ export default function App() {
       }
 
       if (profiles.length > 0 && profiles[0].isSeeded) {
+        let didRunCatalogMigration = false;
+        const profileId = profiles[0].id;
+        const currentCatalogVersion = Number(profiles[0].exerciseCatalogVersion || 1);
+
+        if (profileId && currentCatalogVersion < EXERCISE_CATALOG_VERSION) {
+          setSeedingProgress(12, 'Updating exercise catalog...');
+          await migrateExerciseCatalog((msg, pct) => {
+            setSeedingProgress(pct, msg);
+          });
+
+          profiles = await activeDb.userProfile.toArray();
+          didRunCatalogMigration = true;
+        }
+
         // Already seeded — load profile
         const p = profiles[0];
         loadFromProfile({
@@ -136,6 +153,9 @@ export default function App() {
         setIsLoading(false);
         setIsInitialized(true);
         setShowSeedingScreen(false);
+        if (didRunCatalogMigration) {
+          setShowCatalogUpdateToast(true);
+        }
         return;
       }
 
@@ -171,6 +191,28 @@ export default function App() {
   useEffect(() => {
     navStateRef.current = { activeTab, workoutActive, showComplete };
   }, [activeTab, workoutActive, showComplete]);
+
+  useEffect(() => {
+    if (!showCatalogUpdateToast) {
+      return;
+    }
+
+    if (catalogToastTimerRef.current) {
+      clearTimeout(catalogToastTimerRef.current);
+    }
+
+    catalogToastTimerRef.current = setTimeout(() => {
+      setShowCatalogUpdateToast(false);
+      catalogToastTimerRef.current = null;
+    }, 3500);
+
+    return () => {
+      if (catalogToastTimerRef.current) {
+        clearTimeout(catalogToastTimerRef.current);
+        catalogToastTimerRef.current = null;
+      }
+    };
+  }, [showCatalogUpdateToast]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -230,6 +272,10 @@ export default function App() {
         clearTimeout(exitHintTimerRef.current);
         exitHintTimerRef.current = null;
       }
+      if (catalogToastTimerRef.current) {
+        clearTimeout(catalogToastTimerRef.current);
+        catalogToastTimerRef.current = null;
+      }
     };
   }, [endWorkout, setActiveTab]);
 
@@ -288,25 +334,13 @@ export default function App() {
         </div>
       )}
       {showExitHint && (
-        <div style={{
-          position: 'fixed',
-          left: '50%',
-          bottom: 'calc(84px + env(safe-area-inset-bottom))',
-          transform: 'translateX(-50%)',
-          zIndex: 300,
-          background: 'rgba(6,7,16,0.94)',
-          border: '1px solid rgba(255,255,255,0.14)',
-          color: 'var(--text-primary)',
-          padding: '10px 14px',
-          borderRadius: 12,
-          fontSize: 12,
-          fontWeight: 700,
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
-          whiteSpace: 'nowrap',
-        }}>
+        <div className="app-inline-toast app-inline-toast--neutral">
           Press back again to exit
+        </div>
+      )}
+      {showCatalogUpdateToast && (
+        <div className="app-inline-toast app-inline-toast--success">
+          Exercise catalog updated: new movements and improved GIFs available.
         </div>
       )}
       {renderPage()}

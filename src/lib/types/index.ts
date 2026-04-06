@@ -254,6 +254,18 @@ export interface UserProfile {
   notificationsEnabled: boolean;
   theme: string;
   isSeeded: boolean;
+  exerciseCatalogVersion?: number;
+}
+
+export interface WorkoutReminder {
+  id?: number;
+  dayOfWeek: number; // 0-6 (Sun-Sat)
+  timeHour: number; // 0-23
+  timeMinute: number; // 0-59
+  isEnabled: boolean;
+  label: string;
+  createdAt: Date;
+  lastFiredAt?: Date;
 }
 
 // ===== UI TYPES =====
@@ -263,6 +275,7 @@ export interface ActiveExercise {
   exerciseName: string;
   imageUrl?: string;
   gifUrl?: string;
+  mediaFrames?: string[];
   sets: ActiveSet[];
   targetSets: number;
   targetReps: number | string;

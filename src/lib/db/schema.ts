@@ -12,6 +12,7 @@ import type {
   NutritionLog,
   WaterLog,
   UserProfile,
+  WorkoutReminder,
 } from '@/lib/types';
 
 export interface ExerciseSwap {
@@ -39,6 +40,7 @@ export class IronForgeDB extends Dexie {
   waterLogs!: Table<WaterLog>;
   userProfile!: Table<UserProfile>;
   exerciseSwaps!: Table<ExerciseSwap>;
+  workoutReminders!: Table<WorkoutReminder>;
 
   constructor() {
     super('IronForgeDB');
@@ -58,6 +60,23 @@ export class IronForgeDB extends Dexie {
       waterLogs: '++id, date',
       userProfile: '++id',
       exerciseSwaps: '++id, planName, dayName',
+    });
+
+    this.version(5).stores({
+      exercises: '++id, externalId, name, *primaryMuscles, equipment, category, level',
+      workoutPlans: '++id, name, category, isCustom, isActive, createdAt',
+      workoutDays: '++id, planId, dayNumber',
+      workoutSessions: '++id, planId, dayId, startedAt, completedAt, isComplete',
+      sessionExercises: '++id, sessionId, exerciseId, orderIndex',
+      sets: '++id, sessionExerciseId, sessionId, exerciseId, completedAt',
+      personalRecords: '++id, exerciseId, date, estimated1RM',
+      bodyWeight: '++id, date',
+      measurements: '++id, date',
+      nutritionLogs: '++id, date, meal',
+      waterLogs: '++id, date',
+      userProfile: '++id',
+      exerciseSwaps: '++id, planName, dayName',
+      workoutReminders: '++id, dayOfWeek, isEnabled',
     });
   }
 }

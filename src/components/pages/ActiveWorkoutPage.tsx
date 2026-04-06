@@ -10,6 +10,8 @@ import { MUSCLE_COLORS } from '@/lib/types';
 import type { Exercise } from '@/lib/types';
 import { getSwapSuggestions, calculatePlates } from '@/lib/utils/swapEngine';
 import { getYoutubeSearchUrl, getVideoSearchOptions } from '@/lib/data/youtube-ids';
+import { getPrimaryExerciseImage, getExerciseImageFrames, hasAnimatedExerciseMedia } from '@/lib/utils/exerciseMedia';
+import ExerciseMedia from '@/components/ui/ExerciseMedia';
 
 interface ActiveWorkoutPageProps { onComplete: () => void; }
 
@@ -239,8 +241,9 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
       swapExercise(currentExerciseIndex, {
         exerciseId: newEx.id || 0,
         exerciseName: newEx.name,
-        imageUrl: newEx.gifUrl || newEx.imageUrls?.[0],
+        imageUrl: getPrimaryExerciseImage(newEx),
         gifUrl: newEx.gifUrl,
+        mediaFrames: getExerciseImageFrames(newEx),
         sets: currentExercise.sets.map(s => ({ ...s, isComplete: false })),
         targetSets: currentExercise.targetSets,
         targetReps: currentExercise.targetReps,
@@ -306,6 +309,9 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
   }
 
   const exerciseGif = currentExercise.gifUrl || currentExercise.imageUrl;
+  const exerciseMediaFrames = currentExercise.mediaFrames || [];
+  const hasVisualMedia = Boolean(exerciseGif) || exerciseMediaFrames.length > 0;
+  const showAnimatedBadge = Boolean(currentExercise.gifUrl) || exerciseMediaFrames.length > 1;
   const hasImgError = imgErrors.has(currentExerciseIndex);
 
   return (
@@ -359,16 +365,18 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
 
       <div style={{ padding: 16, paddingBottom: 'calc(16px + env(safe-area-inset-bottom) + 120px)' }}>
         {/* GIF display — upscaled */}
-        {exerciseGif && !hasImgError && (
+        {hasVisualMedia && !hasImgError && (
           <div className="gif-upscale-container" style={{ width: '100%', aspectRatio: '1', borderRadius: 'var(--r-lg)', overflow: 'hidden', marginBottom: 14, background: '#0a0a14', position: 'relative', border: '1px solid var(--border)' }}>
             <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at center, rgba(139,92,246,0.04) 0%, transparent 70%)', zIndex: 0 }} />
-            <img
-              src={exerciseGif} alt={currentExercise.exerciseName}
+            <ExerciseMedia
+              gifUrl={currentExercise.gifUrl || exerciseGif}
+              imageUrls={exerciseMediaFrames.length > 0 ? exerciseMediaFrames : (exerciseGif ? [exerciseGif] : [])}
+              alt={currentExercise.exerciseName}
               style={{ width: '100%', height: '100%', objectFit: 'contain', imageRendering: 'auto', transform: 'scale(1.12)', transformOrigin: 'center', position: 'relative', zIndex: 1 }}
-              onError={() => setImgErrors(prev => new Set(prev).add(currentExerciseIndex))}
+              onExhausted={() => setImgErrors(prev => new Set(prev).add(currentExerciseIndex))}
             />
             <div style={{ position: 'absolute', top: 10, left: 10, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', borderRadius: 8, padding: '4px 10px', fontSize: 10, fontWeight: 700, color: 'var(--accent-green)', display: 'flex', alignItems: 'center', gap: 4, zIndex: 2 }}>
-              <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent-green)', animation: 'pulse-dot 2s ease-in-out infinite' }} /> GIF
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent-green)', animation: 'pulse-dot 2s ease-in-out infinite' }} /> {showAnimatedBadge ? 'ANIMATED' : 'IMAGE'}
             </div>
           </div>
         )}
@@ -631,13 +639,22 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                       <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4, marginTop: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>{catLabel}</div>
                       {items.map(({ exercise: ex, matchTags, score }) => (
                         <button key={ex.id} onClick={() => doSwap(ex)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: 'var(--bg-glass)', border: '1px solid var(--border)', borderRadius: 14, cursor: 'pointer', textAlign: 'left', width: '100%', color: 'var(--text-primary)', marginBottom: 4, minHeight: 56 }}>
-                          {ex.gifUrl && <img src={ex.gifUrl} alt="" style={{ width: 44, height: 44, borderRadius: 10, objectFit: 'cover' }} />}
+                          <ExerciseMedia
+                            gifUrl={ex.gifUrl}
+                            imageUrls={ex.imageUrls}
+                            images={ex.images}
+                            alt={ex.name}
+                            style={{ width: 44, height: 44, borderRadius: 10, objectFit: 'cover' }}
+                          />
                           <div style={{ flex: 1 }}>
                             <div style={{ fontSize: 13, fontWeight: 700 }}>{ex.name}</div>
                             <div style={{ fontSize: 9, color: 'var(--text-muted)', display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 2 }}>
                               {matchTags.slice(0, 3).map((tag, i) => (<span key={i} style={{ background: 'var(--bg-elevated)', padding: '1px 4px', borderRadius: 3 }}>{tag}</span>))}
                             </div>
                           </div>
+                          {hasAnimatedExerciseMedia(ex) && (
+                            <div style={{ fontSize: 9, color: 'var(--accent-green)', fontWeight: 700 }}>ANIM</div>
+                          )}
                           <div style={{ width: 28, height: 28, borderRadius: 7, background: `rgba(16,232,154,${score / 150})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: 'white' }}>{score}</div>
                         </button>
                       ))}

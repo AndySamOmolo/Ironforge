@@ -85,6 +85,88 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+function blendHexColors(primary: string, secondary: string, weight: number): string {
+  const blend = Math.max(0, Math.min(1, weight));
+  const normalize = (value: string) => {
+    const clean = value.replace('#', '');
+    return clean.length === 3 ? clean.split('').map(ch => ch + ch).join('') : clean;
+  };
+
+  const a = normalize(primary);
+  const b = normalize(secondary);
+
+  const toInt = (hex: string, i: number) => Number.parseInt(hex.slice(i, i + 2), 16);
+  const r = Math.round(toInt(a, 0) * (1 - blend) + toInt(b, 0) * blend);
+  const g = Math.round(toInt(a, 2) * (1 - blend) + toInt(b, 2) * blend);
+  const bl = Math.round(toInt(a, 4) * (1 - blend) + toInt(b, 4) * blend);
+
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${bl.toString(16).padStart(2, '0')}`;
+}
+
+function buildMuscleShapePath(region: Region, inset = 1): string {
+  const width = region.w * inset;
+  const height = region.h * inset;
+  const x = region.x + (region.w - width) / 2;
+  const y = region.y + (region.h - height) / 2;
+  const left = x;
+  const right = x + width;
+  const top = y;
+  const bottom = y + height;
+  const midX = x + width / 2;
+  const midY = y + height / 2;
+
+  if (region.muscle === 'chest') {
+    return [
+      `M ${left} ${top + height * 0.22}`,
+      `C ${left} ${top + height * 0.04}, ${midX - width * 0.22} ${top}, ${midX} ${top + height * 0.05}`,
+      `C ${midX + width * 0.22} ${top}, ${right} ${top + height * 0.04}, ${right} ${top + height * 0.24}`,
+      `C ${right} ${top + height * 0.52}, ${midX + width * 0.13} ${bottom}, ${midX} ${bottom - height * 0.03}`,
+      `C ${midX - width * 0.13} ${bottom}, ${left} ${top + height * 0.5}, ${left} ${top + height * 0.22}`,
+      'Z',
+    ].join(' ');
+  }
+
+  if (region.muscle === 'shoulders') {
+    return [
+      `M ${midX} ${top}`,
+      `C ${right} ${top + height * 0.1}, ${right} ${midY - height * 0.12}, ${right} ${midY}`,
+      `C ${right} ${bottom - height * 0.18}, ${midX + width * 0.2} ${bottom}, ${midX} ${bottom}`,
+      `C ${midX - width * 0.2} ${bottom}, ${left} ${bottom - height * 0.18}, ${left} ${midY}`,
+      `C ${left} ${midY - height * 0.12}, ${left} ${top + height * 0.1}, ${midX} ${top}`,
+      'Z',
+    ].join(' ');
+  }
+
+  if (region.muscle === 'biceps' || region.muscle === 'triceps' || region.muscle === 'forearms' || region.muscle === 'calves') {
+    return [
+      `M ${midX - width * 0.16} ${top}`,
+      `C ${left} ${top + height * 0.12}, ${left} ${midY - height * 0.12}, ${left} ${midY}`,
+      `C ${left} ${bottom - height * 0.18}, ${midX - width * 0.12} ${bottom}, ${midX} ${bottom}`,
+      `C ${midX + width * 0.12} ${bottom}, ${right} ${bottom - height * 0.18}, ${right} ${midY}`,
+      `C ${right} ${midY - height * 0.12}, ${right} ${top + height * 0.12}, ${midX + width * 0.16} ${top}`,
+      'Z',
+    ].join(' ');
+  }
+
+  if (region.muscle === 'abdominals') {
+    return [
+      `M ${midX - width * 0.32} ${top + height * 0.04}`,
+      `C ${midX - width * 0.4} ${top + height * 0.14}, ${midX - width * 0.22} ${top}, ${midX} ${top + height * 0.05}`,
+      `C ${midX + width * 0.22} ${top}, ${midX + width * 0.4} ${top + height * 0.14}, ${midX + width * 0.32} ${top + height * 0.04}`,
+      `C ${midX + width * 0.28} ${midY}, ${midX + width * 0.16} ${bottom}, ${midX} ${bottom}`,
+      `C ${midX - width * 0.16} ${bottom}, ${midX - width * 0.28} ${midY}, ${midX - width * 0.32} ${top + height * 0.04}`,
+      'Z',
+    ].join(' ');
+  }
+
+  return [
+    `M ${midX - width * 0.28} ${top + height * 0.12}`,
+    `C ${left} ${top}, ${left} ${bottom - height * 0.18}, ${midX} ${bottom}`,
+    `C ${right} ${bottom - height * 0.18}, ${right} ${top}, ${midX + width * 0.28} ${top + height * 0.12}`,
+    'Z',
+  ].join(' ');
+}
+
 function BodyFigure({
   title,
   regions,
@@ -143,6 +225,30 @@ function BodyFigure({
               <stop offset="65%" stopColor="rgba(255,255,255,0.03)" />
               <stop offset="100%" stopColor="rgba(0,0,0,0.18)" />
             </radialGradient>
+            {regions.map(region => {
+              const value = intensity[region.id] || 0;
+              const normalizedMuscle = normalizeMuscleName(region.muscle);
+              const color = MUSCLE_COLORS[normalizedMuscle] || '#7C6AFF';
+              const activeColor = blendHexColors(color, '#ff4a4a', Math.min(0.65, value * 0.85));
+              const highlight = blendHexColors(activeColor, '#fff4ec', 0.52);
+              const low = blendHexColors(activeColor, '#220d0a', 0.45);
+              const gradId = `region-grad-${title}-${region.id}`;
+              const sheenId = `region-sheen-${title}-${region.id}`;
+              return (
+                <g key={`defs-${title}-${region.id}`}>
+                  <radialGradient id={gradId} cx="40%" cy="34%" r="76%">
+                    <stop offset="0%" stopColor={hexToRgba(highlight, 0.28 + value * 0.52)} />
+                    <stop offset="42%" stopColor={hexToRgba(activeColor, 0.24 + value * 0.62)} />
+                    <stop offset="100%" stopColor={hexToRgba(low, 0.34 + value * 0.5)} />
+                  </radialGradient>
+                  <linearGradient id={sheenId} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={hexToRgba('#ffffff', Math.min(0.36, value * 0.36))} />
+                    <stop offset="48%" stopColor={hexToRgba('#ffffff', 0)} />
+                    <stop offset="100%" stopColor={hexToRgba('#000000', Math.min(0.16, value * 0.18))} />
+                  </linearGradient>
+                </g>
+              );
+            })}
           </defs>
 
           <circle cx="100" cy="24" r="18" fill="url(#body-base)" stroke="rgba(255,255,255,0.2)" />
@@ -190,27 +296,67 @@ function BodyFigure({
             const value = intensity[region.id] || 0;
             const normalizedMuscle = normalizeMuscleName(region.muscle);
             const color = MUSCLE_COLORS[normalizedMuscle] || '#7C6AFF';
-            const alpha = 0.08 + value * 0.88;
+            const alpha = 0.4 + value * 0.6;
+            let displayColor = color;
+            if (value > 0.5) {
+              const shift = Math.min(1, (value - 0.5) * 2);
+              const r = parseInt(color.slice(1, 3), 16);
+              const g = parseInt(color.slice(3, 5), 16);
+              const b = parseInt(color.slice(5, 7), 16);
+              const newR = Math.round(Math.min(255, r + (255 - r) * shift * 0.7));
+              const newG = Math.round(g * (1 - shift * 0.5));
+              const newB = Math.round(b * (1 - shift * 0.5));
+              displayColor = `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
+            }
             const isStale = staleMuscles.has(normalizedMuscle);
             const isSelected = selectedMuscle === normalizedMuscle;
             const cx = region.x + region.w / 2;
             const cy = region.y + region.h / 2;
             const rotate = rotationByRegion[region.id] || 0;
+            const regionPath = buildMuscleShapePath(region);
+            const gradId = `region-grad-${title}-${region.id}`;
+            const sheenId = `region-sheen-${title}-${region.id}`;
+            const striationCount = Math.max(2, Math.floor(3 + value * 4));
             return (
-              <ellipse
-                key={region.id}
-                cx={cx}
-                cy={cy}
-                rx={Math.max(4, region.w / 2)}
-                ry={Math.max(4, region.h / 2)}
-                fill={hexToRgba(color, alpha)}
-                stroke={isSelected ? '#ffffff' : isStale ? '#F59E0B' : hexToRgba(color, Math.min(1, alpha + 0.18))}
-                strokeWidth={isSelected ? 2 : value > 0.6 ? 1.4 : 1}
-                strokeDasharray={isStale ? '3 2' : undefined}
-                transform={`rotate(${rotate} ${cx} ${cy})`}
-                style={{ cursor: 'pointer' }}
-                onClick={() => onSelectMuscle(normalizedMuscle)}
-              />
+              <g key={region.id} style={{ cursor: 'pointer' }} onClick={() => onSelectMuscle(normalizedMuscle)}>
+                <path
+                  d={regionPath}
+                  fill={value < 0.12 ? hexToRgba(displayColor, 0.2 + value * 0.3) : `url(#${gradId})`}
+                  stroke={isSelected ? '#ffffff' : isStale ? '#F59E0B' : hexToRgba(displayColor, Math.min(1, alpha + 0.3))}
+                  strokeWidth={isSelected ? 2.1 : value > 0.6 ? 1.4 : 1}
+                  strokeDasharray={isStale ? '3 2' : undefined}
+                  transform={`rotate(${rotate} ${cx} ${cy})`}
+                />
+                {value > 0.1 && (
+                  <path
+                    d={regionPath}
+                    fill={`url(#${sheenId})`}
+                    stroke="none"
+                    transform={`rotate(${rotate} ${cx} ${cy})`}
+                  />
+                )}
+                {value > 0.58 && (
+                  <g opacity={0.08 + (value - 0.58) * 0.25}>
+                    {Array.from({ length: striationCount }).map((_, idx) => {
+                      const t = idx / Math.max(1, striationCount - 1);
+                      const y = region.y + region.h * (0.2 + t * 0.6);
+                      const x1 = region.x + region.w * 0.2;
+                      const x2 = region.x + region.w * 0.8;
+                      return (
+                        <path
+                          key={`${region.id}-str-${idx}`}
+                          d={`M ${x1} ${y} Q ${cx} ${y + (idx % 2 === 0 ? -region.h * 0.08 : region.h * 0.08)} ${x2} ${y}`}
+                          stroke={hexToRgba('#ffffff', 0.85)}
+                          strokeWidth={0.8}
+                          fill="none"
+                          strokeLinecap="round"
+                          transform={`rotate(${rotate} ${cx} ${cy})`}
+                        />
+                      );
+                    })}
+                  </g>
+                )}
+              </g>
             );
           })}
         </svg>

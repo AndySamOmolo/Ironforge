@@ -7,6 +7,8 @@ import { db } from '@/lib/db/schema';
 import type { Exercise } from '@/lib/types';
 import { MUSCLE_COLORS } from '@/lib/types';
 import { getYoutubeSearchUrl, getVideoSearchOptions } from '@/lib/data/youtube-ids';
+import ExerciseMedia from '@/components/ui/ExerciseMedia';
+import { hasAnimatedExerciseMedia, getExerciseImageFrames } from '@/lib/utils/exerciseMedia';
 
 const BODY_PARTS = ['all', 'back', 'chest', 'upper arms', 'lower arms', 'shoulders', 'upper legs', 'lower legs', 'waist', 'cardio', 'neck'];
 const EQUIPMENT_TYPES = ['all', 'barbell', 'dumbbell', 'cable', 'body weight', 'machine', 'leverage machine', 'band', 'kettlebell', 'medicine ball', 'smith machine'];
@@ -61,12 +63,6 @@ export default function ExercisesPage() {
   const handleImgError = useCallback((id: number | undefined) => {
     if (id !== undefined) setImgErrors(prev => new Set(prev).add(id));
   }, []);
-
-  const getDisplayImage = (exercise: Exercise) => {
-    if (exercise.gifUrl) return exercise.gifUrl;
-    if (exercise.imageUrls?.length) return exercise.imageUrls[0];
-    return null;
-  };
 
   const activeFilters = [bodyPartFilter, equipmentFilter].filter(f => f !== 'all').length;
 
@@ -161,23 +157,31 @@ export default function ExercisesPage() {
       ) : (
         <div className="exercise-grid">
           {filteredExercises.slice(0, visibleCount).map((exercise, idx) => {
-            const imgSrc = getDisplayImage(exercise);
             const hasError = exercise.id !== undefined && imgErrors.has(exercise.id);
             const muscleColor = MUSCLE_COLORS[exercise.primaryMuscles?.[0]?.toLowerCase()] || '#888';
+            const hasMedia = Boolean(exercise.gifUrl) || getExerciseImageFrames(exercise).length > 0;
+            const isAnimated = hasAnimatedExerciseMedia(exercise);
             return (
               <motion.div key={exercise.id} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: Math.min(idx * 0.015, 0.25) }} className="card exercise-card"
                 style={{ padding: 0, overflow: 'hidden', cursor: 'pointer' }}
                 onClick={() => setSelectedExercise(exercise)}>
                 <div className="exercise-img-container">
-                  {imgSrc && !hasError ? (
-                    <img src={imgSrc} alt={exercise.name} loading="lazy" onError={() => handleImgError(exercise.id)} />
+                  {hasMedia && !hasError ? (
+                    <ExerciseMedia
+                      gifUrl={exercise.gifUrl}
+                      imageUrls={exercise.imageUrls}
+                      images={exercise.images}
+                      alt={exercise.name}
+                      loading="lazy"
+                      onExhausted={() => handleImgError(exercise.id)}
+                    />
                   ) : (
                     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: `linear-gradient(135deg, ${muscleColor}15, var(--bg-elevated))` }}>
                       <Dumbbell size={30} color="var(--text-dim)" />
                     </div>
                   )}
-                  {exercise.gifUrl && !hasError && (
+                  {isAnimated && !hasError && (
                     <div style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)', borderRadius: 6, padding: '3px 8px', fontSize: 9, fontWeight: 700, color: 'var(--accent-green)', letterSpacing: 0.5, zIndex: 2, display: 'flex', alignItems: 'center', gap: 3 }}>
                       <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--accent-green)', display: 'inline-block' }} /> LIVE
                     </div>
@@ -226,6 +230,8 @@ export default function ExercisesPage() {
 function ExerciseDetailModal({ exercise, onClose }: { exercise: Exercise; onClose: () => void }) {
   const videoOptions = getVideoSearchOptions(exercise.name);
   const ytSearchUrl = getYoutubeSearchUrl(exercise.name);
+  const hasMedia = Boolean(exercise.gifUrl) || getExerciseImageFrames(exercise).length > 0;
+  const isAnimated = hasAnimatedExerciseMedia(exercise);
 
   return (
     <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
@@ -234,12 +240,18 @@ function ExerciseDetailModal({ exercise, onClose }: { exercise: Exercise; onClos
         <div className="modal-handle" />
 
         {/* GIF Display */}
-        {exercise.gifUrl ? (
+        {hasMedia ? (
           <div className="gif-container" style={{ marginBottom: 16, position: 'relative' }}>
-            <img src={exercise.gifUrl} alt={exercise.name} />
+            <ExerciseMedia
+              gifUrl={exercise.gifUrl}
+              imageUrls={exercise.imageUrls}
+              images={exercise.images}
+              alt={exercise.name}
+              loading="eager"
+            />
             {/* Live indicator */}
             <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', borderRadius: 8, padding: '4px 10px', fontSize: 10, fontWeight: 700, color: 'var(--accent-green)', display: 'flex', alignItems: 'center', gap: 4, zIndex: 2 }}>
-              <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent-green)', animation: 'pulse-dot 2s ease-in-out infinite' }} /> Animation
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent-green)', animation: 'pulse-dot 2s ease-in-out infinite' }} /> {isAnimated ? 'Animation' : 'Image'}
             </div>
           </div>
         ) : (
