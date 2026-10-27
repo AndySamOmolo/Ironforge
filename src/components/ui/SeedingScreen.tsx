@@ -21,7 +21,6 @@ export default function SeedingScreen({ onRetry, error }: SeedingScreenProps) {
 
   return (
     <div className="seeding-screen">
-      {/* Animated background rings */}
       <motion.div
         animate={{ rotate: 360 }}
         transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
@@ -53,7 +52,7 @@ export default function SeedingScreen({ onRetry, error }: SeedingScreenProps) {
       >
         {error ? <AlertTriangle size={38} color="#FF3D5A" /> : <Dumbbell size={38} color="white" strokeWidth={2.5} />}
       </motion.div>
-      
+
       <motion.h1
         className="font-display gradient-text"
         initial={{ opacity: 0, y: 10 }}
@@ -108,7 +107,7 @@ export default function SeedingScreen({ onRetry, error }: SeedingScreenProps) {
           >
             Forge Your Best Self
           </motion.p>
-          
+
           <motion.div
             initial={{ opacity: 0, width: 0 }}
             animate={{ opacity: 1, width: 220 }}
@@ -132,7 +131,6 @@ export default function SeedingScreen({ onRetry, error }: SeedingScreenProps) {
             {seedingMessage || 'Setting up your workout experience...'}
           </motion.p>
 
-          {/* Slow loading warning */}
           {elapsed > 12 && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
@@ -158,14 +156,14 @@ export default function SeedingScreen({ onRetry, error }: SeedingScreenProps) {
           )}
         </>
       )}
-      
+
       <motion.p
         initial={{ opacity: 0 }}
         animate={{ opacity: 0.5 }}
         transition={{ delay: 1.2 }}
         style={{ color: 'var(--text-muted)', fontSize: 11, position: 'absolute', bottom: 40, fontWeight: 500, letterSpacing: 1 }}
       >
-        870+ EXERCISES • REAL IMAGES • PRO PROGRAMS
+        2,240+ EXERCISES • ANIMATED DEMOS • 16 PRO PROGRAMS
       </motion.p>
     </div>
   );

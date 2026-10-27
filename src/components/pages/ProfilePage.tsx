@@ -1,53 +1,31 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { User, Settings, Dumbbell, Scale, Calculator, Trash2, Download, ChevronRight, Check, X, Plus, TrendingUp, Moon, Volume2, Type, Maximize, Minimize, RotateCcw, Vibrate, Smartphone, Timer, ArrowUp, BarChart3, Shield, Database, Zap, Bell, Clock } from 'lucide-react';
+import { motion } from 'framer-motion';
+import {
+  User, Dumbbell, Scale, Calculator, Trash2, Download, Check, X, Plus,
+  Volume2, Type, Minimize, RotateCcw, Vibrate, Smartphone, Timer,
+  ArrowUp, Database, Zap, Bell, Sparkles, Eye, LayoutGrid, Sliders, Shuffle, Clock,
+} from 'lucide-react';
 import { useReminderStore } from '@/lib/store/reminderStore';
 import { db } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
 import type { BodyWeight } from '@/lib/types';
-
-const ALL_EQUIPMENT = [
-  'barbell', 'dumbbell', 'cable', 'body weight', 'machine', 'leverage machine',
-  'band', 'kettlebell', 'medicine ball', 'smith machine', 'ez barbell',
-  'olympic barbell', 'trap bar', 'stability ball',
-];
-
-const FONT_OPTIONS = [
-  { id: 'inter', label: 'Inter', preview: 'Clean & Modern' },
-  { id: 'outfit', label: 'Outfit', preview: 'Geometric & Bold' },
-  { id: 'dm-sans', label: 'DM Sans', preview: 'Friendly & Warm' },
-  { id: 'nunito', label: 'Nunito', preview: 'Rounded & Soft' },
-  { id: 'sora', label: 'Sora', preview: 'Minimalist & Sleek' },
-  { id: 'poppins', label: 'Poppins', preview: 'Versatile & Popular' },
-  { id: 'raleway', label: 'Raleway', preview: 'Elegant & Thin' },
-];
+import { ALL_EQUIPMENT, EQUIPMENT_PRESETS } from '@/lib/utils/exerciseResolver';
+import {
+  THEME_OPTIONS,
+  CUSTOM_ACCENT_OPTIONS,
+  FONT_OPTIONS,
+  DEFAULT_APPEARANCE,
+  applyAppearanceToDOM,
+} from '@/lib/utils/appearance';
 
 const FONT_SIZE_OPTIONS = [
-  { id: 'small', label: 'Small', size: 'A' },
-  { id: 'normal', label: 'Normal', size: 'A' },
-  { id: 'large', label: 'Large', size: 'A' },
-  { id: 'xlarge', label: 'X-Large', size: 'A' },
-];
-
-const THEME_OPTIONS = [
-  { id: 'dark', label: 'Forge', colors: ['#FF3D5A', '#8B5CF6', '#070710'] },
-  { id: 'ocean', label: 'Ocean', colors: ['#0EA5E9', '#6366F1', '#050c1a'] },
-  { id: 'forest', label: 'Forest', colors: ['#10B981', '#D97706', '#051208'] },
-  { id: 'steel', label: 'Steel', colors: ['#EF4444', '#9CA3AF', '#121214'] },
-  { id: 'sunset', label: 'Sunset', colors: ['#FB923C', '#FBBF24', '#120c08'] },
-  { id: 'cyberpunk', label: 'Cyber', colors: ['#FF00FF', '#00FFFF', '#0a0014'] },
-  { id: 'arctic', label: 'Arctic', colors: ['#7DD3FC', '#2DD4BF', '#061222'] },
-  { id: 'magma', label: 'Magma', colors: ['#FF4500', '#FF6347', '#0d0404'] },
-  { id: 'lavender', label: 'Lavender', colors: ['#C084FC', '#F9A8D4', '#100818'] },
-  { id: 'rose', label: 'Rose', colors: ['#BE123C', '#D4A574', '#0c0508'] },
-  { id: 'space', label: 'Space', colors: ['#7C3AED', '#06B6D4', '#0a0e27'] },
-  { id: 'vaporwave', label: 'Vapor', colors: ['#FF006E', '#8338EC', '#1a0033'] },
-  { id: 'jade', label: 'Jade', colors: ['#14B8A6', '#9333EA', '#0d3a3a'] },
-  { id: 'violet', label: 'Violet', colors: ['#A78BFA', '#60A5FA', '#1e1b4b'] },
-  { id: 'noir', label: 'Noir', colors: ['#E5E7EB', '#6B7280', '#070707'] },
-  { id: 'zen', label: 'Zen', colors: ['#84CC16', '#0EA5E9', '#0a1911'] },
+  { id: 'xs', label: 'Tiny', sample: 11 },
+  { id: 'small', label: 'Small', sample: 13 },
+  { id: 'normal', label: 'Normal', sample: 15 },
+  { id: 'large', label: 'Large', sample: 18 },
+  { id: 'xlarge', label: 'X-Large', sample: 21 },
 ];
 
 const ACCENT_INTENSITY_OPTIONS = [
@@ -61,122 +39,107 @@ const COLOR_MODE_OPTIONS = [
   { id: 'protanopia', label: 'Red-Blind', icon: '🔴' },
   { id: 'deuteranopia', label: 'Green-Blind', icon: '🟢' },
   { id: 'tritanopia', label: 'Blue-Blind', icon: '🔵' },
+  { id: 'monochrome', label: 'Mono', icon: '⚫' },
 ];
 
 const CONTRAST_OPTIONS = [
-  { id: 'normal', label: 'Normal', icon: '🌓' },
+  { id: 'normal', label: 'Standard', icon: '🌓' },
   { id: 'high', label: 'High', icon: '◼️' },
-];
-
-const ACCENT_VAR_KEYS = [
-  '--accent-red',
-  '--accent-orange',
-  '--accent-purple',
-  '--accent-green',
-  '--accent-yellow',
-  '--accent-blue',
-  '--accent-pink',
-  '--accent-cyan',
-  '--accent-lime',
+  { id: 'max', label: 'Ultra AAA', icon: '⚡' },
 ];
 
 export default function ProfilePage() {
+  const store = useUserStore();
   const {
     name, setName, unitSystem, setUnitSystem, barWeight, setBarWeight,
     dumbbellWeight, setDumbbellWeight,
     equipment, setEquipment, defaultRestTime, setDefaultRestTime,
+    restTimerEnabled, toggleRestTimer,
     soundEnabled, toggleSound, hapticEnabled, toggleHaptic,
-  } = useUserStore();
+    theme, customAccent, font, fontSize, numberFont, headerStyle,
+    density, gridColumns, buttonStyle, cardStyle, borderRadius,
+    animationLevel, navStyle, bgStyle, accentIntensity, glowIntensity,
+    borderThickness, glassOpacity, contrastMode, colorMode, textShadow,
+    weightIncrement, autoAdvance, autoStartRest, keepScreenOn,
+    showTimer, countdownSound, exerciseVariety,
+    showDailyQuote, showActivityHeatmap, showFeatureCards, showLastWorkout,
+    setField, loadFromProfile,
+  } = store;
 
   const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'workout' | 'tools' | 'data'>('profile');
   const [bodyWeights, setBodyWeights] = useState<BodyWeight[]>([]);
   const [newWeight, setNewWeight] = useState('');
   const [oneRMWeight, setOneRMWeight] = useState('');
   const [oneRMReps, setOneRMReps] = useState('');
-  
-  // Appearance
-  const [currentFont, setCurrentFont] = useState('inter');
-  const [currentFontSize, setCurrentFontSize] = useState('normal');
-  const [currentTheme, setCurrentTheme] = useState('dark');
-  const [compactMode, setCompactMode] = useState(false);
-  const [buttonStyle, setButtonStyle] = useState('default');
-  const [cardStyle, setCardStyle] = useState('glass');
-  const [borderRadius, setBorderRadius] = useState('default');
-  const [animLevel, setAnimLevel] = useState('normal');
-  const [navStyle, setNavStyle] = useState('default');
-  const [accentIntensity, setAccentIntensity] = useState('normal');
-  const [colorMode, setColorMode] = useState('normal');
-  const [textShadow, setTextShadow] = useState(false);
-  const [glowIntensity, setGlowIntensity] = useState('normal');
-  const [borderThickness, setBorderThickness] = useState('normal');
-  const [glassOpacity, setGlassOpacity] = useState('medium');
-  const [contrastMode, setContrastMode] = useState('normal');
-  
-  // Workout settings
-  const [weightIncrement, setWeightIncrement] = useState(2.5);
-  const [autoAdvance, setAutoAdvance] = useState(true);
-  const [autoStartRest, setAutoStartRest] = useState(true);
-  const [showTimer, setShowTimer] = useState(true);
-  const [countdownSound, setCountdownSound] = useState(true);
-  const [keepScreenOn, setKeepScreenOn] = useState(true);
-
-  // DB stats
   const [dbStats, setDbStats] = useState({ exercises: 0, sessions: 0, plans: 0, size: '' });
+  const [measurements, setMeasurements] = useState<BodyMeasurement[]>([]);
+  const [measForm, setMeasForm] = useState({ bodyFat: '', waist: '', chest: '', arms: '', thighs: '' });
+  const [todayWater, setTodayWater] = useState<WaterLog | null>(null);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
 
   useEffect(() => {
     loadBodyWeights();
-    loadAppearanceSettings();
+    loadMeasurements();
+    loadTodayWater();
     loadDBStats();
   }, []);
+
+  const loadMeasurements = async () => {
+    try {
+      const list = await db.measurements.orderBy('date').reverse().limit(15).toArray();
+      setMeasurements(list);
+    } catch {}
+  };
+
+  const addMeasurement = async () => {
+    const bf = parseFloat(measForm.bodyFat);
+    const waist = parseFloat(measForm.waist);
+    const chest = parseFloat(measForm.chest);
+    const arms = parseFloat(measForm.arms);
+    const thighs = parseFloat(measForm.thighs);
+    if ([bf, waist, chest, arms, thighs].every(v => isNaN(v) || v <= 0)) return;
+    await db.measurements.add({
+      date: new Date(),
+      bodyFat: !isNaN(bf) && bf > 0 ? bf : undefined,
+      waist: !isNaN(waist) && waist > 0 ? waist : undefined,
+      chest: !isNaN(chest) && chest > 0 ? chest : undefined,
+      arms: !isNaN(arms) && arms > 0 ? arms : undefined,
+      thighs: !isNaN(thighs) && thighs > 0 ? thighs : undefined,
+    });
+    setMeasForm({ bodyFat: '', waist: '', chest: '', arms: '', thighs: '' });
+    loadMeasurements();
+  };
+
+  const loadTodayWater = async () => {
+    try {
+      const todayKey = new Date().toISOString().split('T')[0];
+      const existing = await db.waterLogs.where('date').equals(todayKey).first();
+      if (existing) {
+        setTodayWater(existing);
+      } else {
+        setTodayWater({ date: todayKey, glasses: 0, targetGlasses: 8 });
+      }
+    } catch {}
+  };
+
+  const updateWater = async (delta: number) => {
+    const todayKey = new Date().toISOString().split('T')[0];
+    const current = todayWater || { date: todayKey, glasses: 0, targetGlasses: 8 };
+    const nextGlasses = Math.max(0, current.glasses + delta);
+    const existing = await db.waterLogs.where('date').equals(todayKey).first();
+    if (existing?.id) {
+      await db.waterLogs.update(existing.id, { glasses: nextGlasses });
+      setTodayWater({ ...existing, glasses: nextGlasses });
+    } else {
+      const id = await db.waterLogs.add({ date: todayKey, glasses: nextGlasses, targetGlasses: current.targetGlasses || 8 });
+      setTodayWater({ id, date: todayKey, glasses: nextGlasses, targetGlasses: current.targetGlasses || 8 });
+    }
+  };
 
   const loadBodyWeights = async () => {
     try {
       const weights = await db.bodyWeight.orderBy('date').reverse().limit(30).toArray();
       setBodyWeights(weights);
-    } catch {}
-  };
-
-  const loadAppearanceSettings = async () => {
-    try {
-      document.documentElement.removeAttribute('data-spacing');
-      document.documentElement.removeAttribute('data-texture');
-
-      // Load theme from document data-theme attribute first
-      const themeAttr = document.documentElement.getAttribute('data-theme');
-      if (themeAttr) {
-        setCurrentTheme(themeAttr);
-      }
-      
-      const profiles = await db.userProfile.toArray();
-      if (profiles[0]) {
-        const p = profiles[0] as any;
-        if (p.theme) { setCurrentTheme(p.theme); }
-        if (p.font) { setCurrentFont(p.font); document.documentElement.setAttribute('data-font', p.font); }
-        if (p.fontSize) { setCurrentFontSize(p.fontSize); document.documentElement.setAttribute('data-fontsize', p.fontSize); }
-        if (p.dumbbellWeight !== undefined) { setDumbbellWeight(p.dumbbellWeight); }
-        if (p.compactMode) { setCompactMode(true); document.documentElement.setAttribute('data-compact', 'true'); }
-        if (p.buttonStyle && p.buttonStyle !== 'default') { setButtonStyle(p.buttonStyle); document.documentElement.setAttribute('data-buttons', p.buttonStyle); }
-        if (p.cardStyle && p.cardStyle !== 'glass') { setCardStyle(p.cardStyle); document.documentElement.setAttribute('data-cards', p.cardStyle); }
-        if (p.borderRadius && p.borderRadius !== 'default') { setBorderRadius(p.borderRadius); document.documentElement.setAttribute('data-radius', p.borderRadius); }
-        if (p.animationLevel && p.animationLevel !== 'normal') { setAnimLevel(p.animationLevel); document.documentElement.setAttribute('data-anim', p.animationLevel); }
-        if (p.navStyle && p.navStyle !== 'default') { setNavStyle(p.navStyle); document.documentElement.setAttribute('data-nav', p.navStyle); }
-        if (p.accentIntensity) {
-          setAccentIntensity(p.accentIntensity);
-          if (p.accentIntensity === 'normal') document.documentElement.removeAttribute('data-accent-intensity');
-          else document.documentElement.setAttribute('data-accent-intensity', p.accentIntensity);
-          applyAccentIntensity(p.accentIntensity);
-        }
-        if (p.colorMode && p.colorMode !== 'normal') { setColorMode(p.colorMode); document.documentElement.setAttribute('data-color-mode', p.colorMode); }
-        if (p.textShadow) { setTextShadow(true); document.documentElement.setAttribute('data-text-shadow', 'true'); }
-        if (p.glowIntensity && p.glowIntensity !== 'normal') { setGlowIntensity(p.glowIntensity); document.documentElement.setAttribute('data-glow', p.glowIntensity); }
-        if (p.borderThickness && p.borderThickness !== 'normal') { setBorderThickness(p.borderThickness); document.documentElement.setAttribute('data-border-width', p.borderThickness); }
-        if (p.glassOpacity && p.glassOpacity !== 'medium') { setGlassOpacity(p.glassOpacity); document.documentElement.setAttribute('data-glass-opacity', p.glassOpacity); }
-        if (p.contrastMode && p.contrastMode !== 'normal') { setContrastMode(p.contrastMode); document.documentElement.setAttribute('data-contrast', p.contrastMode); }
-        if (p.weightIncrement) setWeightIncrement(p.weightIncrement);
-        if (p.autoAdvance !== undefined) setAutoAdvance(p.autoAdvance);
-        if (p.autoStartRest !== undefined) setAutoStartRest(p.autoStartRest);
-        if (p.keepScreenOn !== undefined) setKeepScreenOn(p.keepScreenOn);
-      }
     } catch {}
   };
 
@@ -187,12 +150,65 @@ export default function ProfilePage() {
         db.workoutSessions.count(),
         db.workoutPlans.count(),
       ]);
-      // Estimate DB size
       const estimate = await navigator?.storage?.estimate?.();
       const usageKB = estimate?.usage ? Math.round(estimate.usage / 1024) : 0;
       const sizeStr = usageKB > 1024 ? `${(usageKB / 1024).toFixed(1)} MB` : `${usageKB} KB`;
       setDbStats({ exercises, sessions, plans, size: sizeStr });
     } catch {}
+  };
+
+  const saveProfileFields = async (updates: Record<string, any>) => {
+    try {
+      const profiles = await db.userProfile.toArray();
+      if (profiles[0]?.id) {
+        await db.userProfile.update(profiles[0].id, updates);
+      }
+    } catch {}
+  };
+
+  const updateAppearance = (updates: Partial<typeof DEFAULT_APPEARANCE>) => {
+    const nextAppearance = {
+      theme,
+      customAccent,
+      font,
+      fontSize,
+      numberFont,
+      headerStyle,
+      density,
+      compactMode: (updates.density ?? density) === 'compact',
+      gridColumns,
+      buttonStyle,
+      cardStyle,
+      borderRadius,
+      animationLevel,
+      navStyle,
+      bgStyle,
+      accentIntensity,
+      glowIntensity,
+      borderThickness,
+      glassOpacity,
+      contrastMode,
+      colorMode,
+      textShadow,
+      ...updates,
+    };
+    if (updates.density !== undefined) {
+      nextAppearance.compactMode = updates.density === 'compact';
+    }
+    loadFromProfile(nextAppearance);
+    applyAppearanceToDOM(nextAppearance);
+    saveProfileFields(nextAppearance);
+  };
+
+  const resetAppearance = () => {
+    loadFromProfile(DEFAULT_APPEARANCE);
+    applyAppearanceToDOM(DEFAULT_APPEARANCE);
+    saveProfileFields(DEFAULT_APPEARANCE);
+  };
+
+  const updateWorkoutSetting = <K extends keyof typeof store>(key: K, value: (typeof store)[K]) => {
+    setField(key, value);
+    saveProfileFields({ [key]: value });
   };
 
   const addBodyWeight = async () => {
@@ -209,17 +225,21 @@ export default function ProfilePage() {
     if (isNaN(w) || isNaN(r) || w <= 0 || r <= 0) return null;
     return {
       epley: Math.round(w * (1 + r / 30)),
-      brzycki: Math.round(w * (36 / (37 - r))),
+      brzycki: Math.round(w * (36 / (37 - Math.min(36, r)))),
       lombardi: Math.round(w * Math.pow(r, 0.1)),
     };
   }, [oneRMWeight, oneRMReps]);
 
   const toggleEquipment = (eq: string) => {
-    const updated = equipment.includes(eq) ? equipment.filter(e => e !== eq) : [...equipment, eq];
-    setEquipment(updated);
-    db.userProfile.toArray().then(profiles => {
-      if (profiles[0]?.id) db.userProfile.update(profiles[0].id, { equipment: updated });
-    });
+    const next = equipment.includes(eq) ? equipment.filter(e => e !== eq) : [...equipment, eq];
+    const safeNext = next.length > 0 ? next : ['body weight'];
+    setEquipment(safeNext);
+    saveProfileFields({ equipment: safeNext });
+  };
+
+  const applyEquipmentPreset = (items: string[]) => {
+    setEquipment(items);
+    saveProfileFields({ equipment: items });
   };
 
   const handleFactoryReset = async () => {
@@ -229,112 +249,21 @@ export default function ProfilePage() {
     window.location.reload();
   };
 
-  const saveProfileField = async (field: string, value: any) => {
-    try {
-      const profiles = await db.userProfile.toArray();
-      if (profiles[0]?.id) await db.userProfile.update(profiles[0].id, { [field]: value });
-    } catch {}
-  };
-
-  const parseCssColor = (value: string): [number, number, number] | null => {
-    const color = value.trim();
-    if (!color) return null;
-
-    if (color.startsWith('#')) {
-      const hex = color.slice(1);
-      if (hex.length === 3) {
-        return [
-          parseInt(hex[0] + hex[0], 16),
-          parseInt(hex[1] + hex[1], 16),
-          parseInt(hex[2] + hex[2], 16),
-        ];
-      }
-      if (hex.length >= 6) {
-        return [
-          parseInt(hex.slice(0, 2), 16),
-          parseInt(hex.slice(2, 4), 16),
-          parseInt(hex.slice(4, 6), 16),
-        ];
-      }
-      return null;
-    }
-
-    const rgbMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
-    if (!rgbMatch) return null;
-    return [
-      parseInt(rgbMatch[1], 10),
-      parseInt(rgbMatch[2], 10),
-      parseInt(rgbMatch[3], 10),
-    ];
-  };
-
-  const toHex = ([r, g, b]: [number, number, number]) =>
-    `#${[r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('')}`;
-
-  const blendColor = (
-    source: [number, number, number],
-    target: [number, number, number],
-    ratio: number,
-  ): [number, number, number] => ([
-    source[0] * (1 - ratio) + target[0] * ratio,
-    source[1] * (1 - ratio) + target[1] * ratio,
-    source[2] * (1 - ratio) + target[2] * ratio,
-  ]);
-
-  const boostColor = (source: [number, number, number], amount: number): [number, number, number] => {
-    const avg = (source[0] + source[1] + source[2]) / 3;
-    return [
-      avg + (source[0] - avg) * amount,
-      avg + (source[1] - avg) * amount,
-      avg + (source[2] - avg) * amount,
-    ];
-  };
-
-  const applyAccentIntensity = (mode: string) => {
-    const root = document.documentElement;
-    ACCENT_VAR_KEYS.forEach(key => root.style.removeProperty(key));
-    if (mode === 'normal') return;
-
-    const styles = window.getComputedStyle(root);
-    const subtleTarget: [number, number, number] = [124, 126, 146];
-
-    for (const key of ACCENT_VAR_KEYS) {
-      const parsed = parseCssColor(styles.getPropertyValue(key));
-      if (!parsed) continue;
-      const adjusted = mode === 'subtle'
-        ? blendColor(parsed, subtleTarget, 0.35)
-        : boostColor(parsed, 1.35);
-      root.style.setProperty(key, toHex(adjusted));
-    }
-  };
-
-  const applyFont = (fontId: string) => {
-    setCurrentFont(fontId);
-    document.documentElement.setAttribute('data-font', fontId);
-    saveProfileField('font', fontId);
-  };
-
-  const applyFontSize = (sizeId: string) => {
-    setCurrentFontSize(sizeId);
-    document.documentElement.setAttribute('data-fontsize', sizeId);
-    saveProfileField('fontSize', sizeId);
-  };
-
-  const toggleCompact = () => {
-    const newVal = !compactMode;
-    setCompactMode(newVal);
-    if (newVal) document.documentElement.setAttribute('data-compact', 'true');
-    else document.documentElement.removeAttribute('data-compact');
-    saveProfileField('compactMode', newVal);
-  };
-
   const exportData = async () => {
     try {
       const data = {
+        version: 2,
+        exportedAt: new Date().toISOString(),
         sessions: await db.workoutSessions.toArray(),
+        sets: await db.sets.toArray(),
         bodyWeight: await db.bodyWeight.toArray(),
+        measurements: await db.measurements.toArray(),
+        waterLogs: await db.waterLogs.toArray(),
         profile: await db.userProfile.toArray(),
         prs: await db.personalRecords.toArray(),
+        customPlans: (await db.workoutPlans.toArray()).filter(p => p.isCustom),
+        workoutDays: await db.workoutDays.toArray(),
+        swaps: await db.exerciseSwaps.toArray(),
       };
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -344,7 +273,52 @@ export default function ProfilePage() {
     } catch {}
   };
 
-  // Body weight chart
+  const handleImportData = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (Array.isArray(data.sessions) && data.sessions.length > 0) {
+        const normalized = data.sessions.map((s: any) => ({
+          ...s,
+          startTime: new Date(s.startTime),
+          endTime: s.endTime ? new Date(s.endTime) : undefined,
+        }));
+        await db.workoutSessions.bulkPut(normalized);
+      }
+      if (Array.isArray(data.sets) && data.sets.length > 0) {
+        const normalizedSets = data.sets.map((s: any) => ({
+          ...s,
+          completedAt: s.completedAt ? new Date(s.completedAt) : undefined,
+        }));
+        await db.sets.bulkPut(normalizedSets);
+      }
+      if (Array.isArray(data.bodyWeight) && data.bodyWeight.length > 0) {
+        await db.bodyWeight.bulkPut(data.bodyWeight.map((b: any) => ({ ...b, date: new Date(b.date) })));
+      }
+      if (Array.isArray(data.measurements) && data.measurements.length > 0) {
+        await db.measurements.bulkPut(data.measurements.map((m: any) => ({ ...m, date: new Date(m.date) })));
+      }
+      if (Array.isArray(data.waterLogs) && data.waterLogs.length > 0) {
+        await db.waterLogs.bulkPut(data.waterLogs);
+      }
+      if (Array.isArray(data.prs) && data.prs.length > 0) {
+        await db.personalRecords.bulkPut(data.prs.map((p: any) => ({ ...p, achievedAt: new Date(p.achievedAt) })));
+      }
+      loadBodyWeights();
+      loadMeasurements();
+      loadTodayWater();
+      loadDBStats();
+      setImportStatus('✅ Backup restored successfully!');
+      setTimeout(() => setImportStatus(null), 4000);
+    } catch {
+      setImportStatus('❌ Invalid backup file');
+      setTimeout(() => setImportStatus(null), 4000);
+    }
+    e.target.value = '';
+  };
+
   const weightChartPoints = useMemo(() => {
     if (bodyWeights.length < 2) return '';
     const sorted = [...bodyWeights].reverse();
@@ -358,7 +332,6 @@ export default function ProfilePage() {
     }).join(' ');
   }, [bodyWeights]);
 
-  // Toggle switch component
   const Toggle = ({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) => (
     <button onClick={onToggle}
       style={{ width: 48, height: 26, borderRadius: 13, border: 'none', background: enabled ? 'var(--accent-green)' : 'var(--bg-input)', cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
@@ -366,7 +339,6 @@ export default function ProfilePage() {
     </button>
   );
 
-  // Setting row component
   const SettingRow = ({ icon: Icon, iconColor, label, description, children }: { icon: any; iconColor: string; label: string; description?: string; children: React.ReactNode }) => (
     <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
@@ -388,13 +360,13 @@ export default function ProfilePage() {
         <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em' }}>
           <span className="gradient-text">Settings</span>
         </h1>
-        <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>Customize your experience</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>Customize your equipment, appearance & workout engine</p>
       </motion.div>
 
       {/* Tab Bar */}
       <div className="chip-scroll" style={{ marginBottom: 20, paddingBottom: 4 }}>
         {([
-          { id: 'profile' as const, label: '👤 Profile' },
+          { id: 'profile' as const, label: '👤 Profile & Gear' },
           { id: 'appearance' as const, label: '🎨 Appearance' },
           { id: 'workout' as const, label: '💪 Workout' },
           { id: 'tools' as const, label: '🧮 Tools' },
@@ -410,14 +382,14 @@ export default function ProfilePage() {
       {activeTab === 'profile' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <SettingRow icon={User} iconColor="var(--accent-purple)" label="Name">
-            <input value={name} onChange={e => { setName(e.target.value); saveProfileField('name', e.target.value); }}
+            <input value={name} onChange={e => { setName(e.target.value); saveProfileFields({ name: e.target.value }); }}
               style={{ width: 140, background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: 15, fontWeight: 600, outline: 'none', fontFamily: 'inherit', padding: 0, textAlign: 'right' }} />
           </SettingRow>
 
           <SettingRow icon={Scale} iconColor="var(--accent-green)" label="Units" description="Weight & measurement system">
             <div style={{ display: 'flex', gap: 4, background: 'var(--bg-input)', borderRadius: 10, padding: 3 }}>
               {(['metric', 'imperial'] as const).map(sys => (
-                <button key={sys} onClick={() => { setUnitSystem(sys); saveProfileField('unitSystem', sys); }}
+                <button key={sys} onClick={() => { setUnitSystem(sys); saveProfileFields({ unitSystem: sys }); }}
                   style={{ padding: '7px 18px', borderRadius: 8, border: 'none', background: unitSystem === sys ? 'var(--gradient-fire)' : 'transparent', color: unitSystem === sys ? 'white' : 'var(--text-muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer', textTransform: 'capitalize' }}>
                   {sys}
                 </button>
@@ -437,7 +409,7 @@ export default function ProfilePage() {
                   if (Number.isFinite(next)) {
                     const normalized = Math.max(0, Math.round(next * 2) / 2);
                     setBarWeight(normalized);
-                    saveProfileField('barWeight', normalized);
+                    saveProfileFields({ barWeight: normalized });
                   }
                 }}
                 style={{ width: 86, textAlign: 'right', padding: '8px 10px', borderRadius: 10, border: '1px solid var(--border-bright)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14, fontWeight: 700 }}
@@ -458,7 +430,7 @@ export default function ProfilePage() {
                   if (Number.isFinite(next)) {
                     const normalized = Math.max(0, Math.round(next * 2) / 2);
                     setDumbbellWeight(normalized);
-                    saveProfileField('dumbbellWeight', normalized);
+                    saveProfileFields({ dumbbellWeight: normalized });
                   }
                 }}
                 style={{ width: 86, textAlign: 'right', padding: '8px 10px', borderRadius: 10, border: '1px solid var(--border-bright)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14, fontWeight: 700 }}
@@ -467,8 +439,26 @@ export default function ProfilePage() {
             </div>
           </SettingRow>
 
+          {/* Equipment Presets */}
+          <div className="section-label" style={{ marginTop: 10 }}>Quick Equipment Presets</div>
+          <div className="chip-scroll" style={{ marginBottom: 4 }}>
+            {EQUIPMENT_PRESETS.map(preset => (
+              <button
+                key={preset.id}
+                className="filter-chip"
+                onClick={() => applyEquipmentPreset(preset.items)}
+                style={{ fontSize: 11, padding: '6px 12px' }}
+              >
+                <span>{preset.icon}</span> {preset.label}
+              </button>
+            ))}
+          </div>
+
           {/* Equipment */}
-          <div className="section-label" style={{ marginTop: 8 }}>My Equipment</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+            <div className="section-label">My Equipment ({equipment.length} selected)</div>
+            <div style={{ fontSize: 10, color: 'var(--accent-green)', fontWeight: 700 }}>Strict Workout Filter Active</div>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
             {ALL_EQUIPMENT.map(eq => (
               <button key={eq} className={`equipment-check ${equipment.includes(eq) ? 'selected' : ''}`} onClick={() => toggleEquipment(eq)}>
@@ -484,59 +474,97 @@ export default function ProfilePage() {
 
       {/* ======== APPEARANCE TAB ======== */}
       {activeTab === 'appearance' && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-          {/* Theme Selector */}
+          {/* Live Preview Banner */}
+          <div className="card hero-gradient" style={{ padding: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span className="badge" style={{ background: 'rgba(16,232,154,0.12)', color: 'var(--accent-green)', border: '1px solid rgba(16,232,154,0.25)', fontSize: 10 }}>
+                <Sparkles size={10} /> Live Preview
+              </span>
+              <button onClick={resetAppearance} className="btn-ghost" style={{ fontSize: 11, padding: '4px 10px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <RotateCcw size={12} /> Reset Defaults
+              </button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <h3 className="font-display" style={{ fontSize: 18, fontWeight: 800 }}>
+                  <span className="gradient-text">IronForge Studio</span>
+                </h3>
+                <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                  Theme: <strong style={{ textTransform: 'capitalize' }}>{theme}</strong> • Card: <strong style={{ textTransform: 'capitalize' }}>{cardStyle}</strong> • Button: <strong style={{ textTransform: 'capitalize' }}>{buttonStyle}</strong>
+                </p>
+              </div>
+              <div className="font-mono" style={{ fontSize: 20, fontWeight: 800, color: 'var(--accent-green)' }}>100kg</div>
+            </div>
+          </div>
+
+          {/* Theme Selector (24 Themes) */}
           <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Theme (16 Options)</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(50px, 1fr))', gap: 8 }}>
-              {THEME_OPTIONS.map(theme => {
-                const isActive = currentTheme === theme.id;
+            <div className="section-label" style={{ marginBottom: 10 }}>Theme ({THEME_OPTIONS.length} Options — Dark, OLED & Light)</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(62px, 1fr))', gap: 8 }}>
+              {THEME_OPTIONS.map(t => {
+                const isActive = theme === t.id;
                 return (
-                  <button key={theme.id} onClick={() => {
-                    setCurrentTheme(theme.id);
-                    if (theme.id === 'dark') document.documentElement.removeAttribute('data-theme');
-                    else document.documentElement.setAttribute('data-theme', theme.id);
-                    if (accentIntensity !== 'normal') {
-                      requestAnimationFrame(() => applyAccentIntensity(accentIntensity));
-                    }
-                    saveProfileField('theme', theme.id);
-                  }} style={{
-                    padding: '10px 4px', borderRadius: 'var(--r-md)', border: isActive ? `2px solid ${theme.colors[0]}` : '1px solid var(--border)',
-                    background: theme.colors[2], cursor: 'pointer', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 6,
-                    boxShadow: isActive ? `0 0 12px ${theme.colors[0]}30` : 'none', minHeight: 60, transition: 'all 0.2s',
-                  }} title={theme.label}>
+                  <button key={t.id} onClick={() => updateAppearance({ theme: t.id })} style={{
+                    padding: '10px 4px', borderRadius: 'var(--r-md)', border: isActive ? `2px solid ${t.colors[0]}` : '1px solid var(--border)',
+                    background: t.colors[2], cursor: 'pointer', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 6,
+                    boxShadow: isActive ? `0 0 12px ${t.colors[0]}40` : 'none', minHeight: 62, transition: 'all 0.2s',
+                  }} title={t.label}>
                     <div style={{ display: 'flex', gap: 3 }}>
-                      <div style={{ width: 12, height: 12, borderRadius: '50%', background: theme.colors[0] }} />
-                      <div style={{ width: 12, height: 12, borderRadius: '50%', background: theme.colors[1] }} />
+                      <div style={{ width: 12, height: 12, borderRadius: '50%', background: t.colors[0], border: '1px solid rgba(0,0,0,0.2)' }} />
+                      <div style={{ width: 12, height: 12, borderRadius: '50%', background: t.colors[1], border: '1px solid rgba(0,0,0,0.2)' }} />
                     </div>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: isActive ? theme.colors[0] : '#888', letterSpacing: 0.5 }}>{theme.label}</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: isActive ? t.colors[0] : (t.id === 'daylight' || t.id === 'sand' ? '#334155' : '#94a3b8'), letterSpacing: 0.4 }}>{t.label}</span>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          {/* Font Selector */}
+          {/* Custom Primary Accent Override */}
           <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Font</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {FONT_OPTIONS.map(font => (
-                <button key={font.id} onClick={() => applyFont(font.id)} className="card"
+            <div className="section-label" style={{ marginBottom: 10 }}>Primary Accent Color Override</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
+              {CUSTOM_ACCENT_OPTIONS.map(acc => {
+                const isActive = customAccent === acc.id;
+                return (
+                  <button key={acc.id} onClick={() => updateAppearance({ customAccent: acc.id })} style={{
+                    padding: '10px 4px', borderRadius: 10, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                    background: isActive ? 'var(--bg-elevated)' : 'var(--bg-glass)',
+                    border: isActive ? `2px solid ${acc.color || 'var(--accent-red)'}` : '1px solid var(--border)',
+                  }}>
+                    <div style={{
+                      width: 18, height: 18, borderRadius: '50%',
+                      background: acc.color ? `linear-gradient(135deg, ${acc.color}, ${acc.secondary})` : 'var(--gradient-fire)',
+                    }} />
+                    <span style={{ fontSize: 9, fontWeight: 700, color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{acc.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Font Selector (10 Options) */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>UI Typography ({FONT_OPTIONS.length} Fonts)</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
+              {FONT_OPTIONS.map(f => (
+                <button key={f.id} onClick={() => updateAppearance({ font: f.id })} className="card"
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer',
                     width: '100%', textAlign: 'left',
-                    border: currentFont === font.id ? '2px solid var(--accent-red)' : '1px solid var(--border-subtle)',
-                    boxShadow: currentFont === font.id ? '0 0 12px var(--glow-red)' : 'none',
-                    padding: '14px 16px',
+                    border: font === f.id ? '2px solid var(--accent-red)' : '1px solid var(--border-subtle)',
+                    boxShadow: font === f.id ? '0 0 12px var(--glow-red)' : 'none',
+                    padding: '12px 14px',
                   }}>
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 700, fontFamily: font.id === 'dm-sans' ? 'DM Sans' : font.label }}>{font.label}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: font.id === 'dm-sans' ? 'DM Sans' : font.label }}>{font.preview}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, fontFamily: f.cssVar }}>{f.label}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: f.cssVar }}>{f.preview}</div>
                   </div>
-                  {currentFont === font.id && (
-                    <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--gradient-fire)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Check size={12} color="white" />
+                  {font === f.id && (
+                    <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--gradient-fire)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Check size={11} color="white" />
                     </div>
                   )}
                 </button>
@@ -544,105 +572,183 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Font Size */}
+          {/* Font Size (5 Options) */}
           <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Font Size</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+            <div className="section-label" style={{ marginBottom: 10 }}>Text & UI Scale</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
               {FONT_SIZE_OPTIONS.map(opt => (
-                <button key={opt.id} onClick={() => applyFontSize(opt.id)}
+                <button key={opt.id} onClick={() => updateAppearance({ fontSize: opt.id })}
                   style={{
-                    padding: '14px 8px', borderRadius: 12, cursor: 'pointer', textAlign: 'center',
-                    background: currentFontSize === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
-                    border: currentFontSize === opt.id ? 'none' : '1px solid var(--border)',
-                    color: currentFontSize === opt.id ? 'white' : 'var(--text-secondary)',
+                    padding: '12px 4px', borderRadius: 12, cursor: 'pointer', textAlign: 'center',
+                    background: fontSize === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
+                    border: fontSize === opt.id ? 'none' : '1px solid var(--border)',
+                    color: fontSize === opt.id ? 'white' : 'var(--text-secondary)',
                   }}>
-                  <div style={{ fontSize: opt.id === 'small' ? 12 : opt.id === 'normal' ? 14 : opt.id === 'large' ? 18 : 22, fontWeight: 800, marginBottom: 4 }}>A</div>
+                  <div style={{ fontSize: opt.sample, fontWeight: 800, marginBottom: 4 }}>Aa</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Compact Mode */}
-          <SettingRow icon={Minimize} iconColor="var(--accent-cyan)" label="Compact Mode" description="Reduce padding for more content">
-            <Toggle enabled={compactMode} onToggle={toggleCompact} />
-          </SettingRow>
-
-          {/* Button Style */}
+          {/* Number / Metrics Font */}
           <div>
-            <div className="section-label" style={{ marginBottom: 10, marginTop: 8 }}>Button Style</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
+            <div className="section-label" style={{ marginBottom: 10 }}>Numbers & Metrics Font</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {[
+                { id: 'mono', label: 'Monospace', sample: '125.5 kg', ff: 'var(--font-jetbrains), monospace' },
+                { id: 'display', label: 'Athletic', sample: '125.5 kg', ff: 'var(--font-space-grotesk), sans-serif' },
+                { id: 'sans', label: 'Match UI', sample: '125.5 kg', ff: 'inherit' },
+              ].map(opt => (
+                <button key={opt.id} onClick={() => updateAppearance({ numberFont: opt.id })}
+                  style={{
+                    padding: '12px 6px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                    background: numberFont === opt.id ? 'var(--gradient-ocean)' : 'var(--bg-glass)',
+                    border: numberFont === opt.id ? 'none' : '1px solid var(--border)',
+                    color: numberFont === opt.id ? 'white' : 'var(--text-secondary)',
+                  }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, fontFamily: opt.ff, marginBottom: 4 }}>{opt.sample}</div>
+                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Header Style */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Heading Style</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+              {[
+                { id: 'gradient', label: 'Gradient', icon: '🌈' },
+                { id: 'solid', label: 'Clean', icon: '✒️' },
+                { id: 'glow', label: 'Neon', icon: '⚡' },
+                { id: 'uppercase', label: 'Tactical', icon: '🔠' },
+              ].map(opt => (
+                <button key={opt.id} onClick={() => updateAppearance({ headerStyle: opt.id })}
+                  style={{
+                    padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                    background: headerStyle === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
+                    border: headerStyle === opt.id ? 'none' : '1px solid var(--border)',
+                    color: headerStyle === opt.id ? 'white' : 'var(--text-secondary)',
+                  }}>
+                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
+                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Layout Density */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Layout Density</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {[
+                { id: 'compact', label: 'Compact', icon: '📐' },
+                { id: 'normal', label: 'Comfortable', icon: '✨' },
+                { id: 'spacious', label: 'Spacious', icon: '🌿' },
+              ].map(opt => (
+                <button key={opt.id} onClick={() => updateAppearance({ density: opt.id })}
+                  style={{
+                    padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                    background: density === opt.id ? 'var(--gradient-mint)' : 'var(--bg-glass)',
+                    border: density === opt.id ? 'none' : '1px solid var(--border)',
+                    color: density === opt.id ? 'white' : 'var(--text-secondary)',
+                  }}>
+                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
+                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Exercise Grid Columns */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Exercise Library Grid</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {[
+                { id: '1', label: '1 Col (List)', icon: '📋' },
+                { id: '2', label: '2 Col (Cards)', icon: '🔲' },
+                { id: '3', label: '3 Col (Dense)', icon: '🎛️' },
+              ].map(opt => (
+                <button key={opt.id} onClick={() => updateAppearance({ gridColumns: opt.id })}
+                  style={{
+                    padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                    background: gridColumns === opt.id ? 'var(--gradient-ocean)' : 'var(--bg-glass)',
+                    border: gridColumns === opt.id ? 'none' : '1px solid var(--border)',
+                    color: gridColumns === opt.id ? 'white' : 'var(--text-secondary)',
+                  }}>
+                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
+                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Button Style (7 Options) */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Button Style (7 Variants)</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
               {[
                 { id: 'default', label: 'Default', preview: '⬛' },
                 { id: 'pill', label: 'Pill', preview: '💊' },
                 { id: 'sharp', label: 'Sharp', preview: '🔲' },
                 { id: 'outline', label: 'Outline', preview: '⬜' },
                 { id: 'neon', label: 'Neon', preview: '✨' },
+                { id: 'glass', label: 'Glass', preview: '🫧' },
+                { id: '3d', label: '3D Tactile', preview: '🕹️' },
               ].map(opt => (
-                <button key={opt.id} onClick={() => {
-                  setButtonStyle(opt.id);
-                  if (opt.id === 'default') document.documentElement.removeAttribute('data-buttons');
-                  else document.documentElement.setAttribute('data-buttons', opt.id);
-                  saveProfileField('buttonStyle', opt.id);
-                }} style={{
+                <button key={opt.id} onClick={() => updateAppearance({ buttonStyle: opt.id })} style={{
                   padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                   background: buttonStyle === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
                   border: buttonStyle === opt.id ? 'none' : '1px solid var(--border)',
                   color: buttonStyle === opt.id ? 'white' : 'var(--text-secondary)',
                 }}>
-                  <div style={{ fontSize: 18, marginBottom: 4 }}>{opt.preview}</div>
+                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.preview}</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Card Style */}
+          {/* Card Style (7 Options) */}
           <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Card Style</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
+            <div className="section-label" style={{ marginBottom: 10 }}>Card Style (7 Variants)</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
               {[
                 { id: 'glass', label: 'Glass', preview: '🪟' },
                 { id: 'solid', label: 'Solid', preview: '🧱' },
                 { id: 'outline', label: 'Outline', preview: '📐' },
                 { id: 'flat', label: 'Flat', preview: '📄' },
                 { id: 'neon', label: 'Neon', preview: '💡' },
+                { id: 'elevated', label: 'Elevated', preview: '🏔️' },
+                { id: 'gradient', label: 'Gradient', preview: '🌌' },
               ].map(opt => (
-                <button key={opt.id} onClick={() => {
-                  setCardStyle(opt.id);
-                  if (opt.id === 'glass') document.documentElement.removeAttribute('data-cards');
-                  else document.documentElement.setAttribute('data-cards', opt.id);
-                  saveProfileField('cardStyle', opt.id);
-                }} style={{
+                <button key={opt.id} onClick={() => updateAppearance({ cardStyle: opt.id })} style={{
                   padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                   background: cardStyle === opt.id ? 'var(--gradient-ocean)' : 'var(--bg-glass)',
                   border: cardStyle === opt.id ? 'none' : '1px solid var(--border)',
                   color: cardStyle === opt.id ? 'white' : 'var(--text-secondary)',
                 }}>
-                  <div style={{ fontSize: 18, marginBottom: 4 }}>{opt.preview}</div>
+                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.preview}</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Border Radius */}
+          {/* Corner Radius (5 Options) */}
           <div>
             <div className="section-label" style={{ marginBottom: 10 }}>Corner Radius</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
               {[
                 { id: 'none', label: 'Square', icon: '⬜' },
                 { id: 'small', label: 'Subtle', icon: '🔳' },
                 { id: 'default', label: 'Default', icon: '⬛' },
                 { id: 'large', label: 'Round', icon: '🔵' },
+                { id: 'pill', label: 'Capsule', icon: '💊' },
               ].map(opt => (
-                <button key={opt.id} onClick={() => {
-                  setBorderRadius(opt.id);
-                  if (opt.id === 'default') document.documentElement.removeAttribute('data-radius');
-                  else document.documentElement.setAttribute('data-radius', opt.id);
-                  saveProfileField('borderRadius', opt.id);
-                }} style={{
-                  padding: '14px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                <button key={opt.id} onClick={() => updateAppearance({ borderRadius: opt.id })} style={{
+                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                   background: borderRadius === opt.id ? 'var(--gradient-mint)' : 'var(--bg-glass)',
                   border: borderRadius === opt.id ? 'none' : '1px solid var(--border)',
                   color: borderRadius === opt.id ? 'white' : 'var(--text-secondary)',
@@ -654,26 +760,22 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Animation Level */}
+          {/* Background Pattern */}
           <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Animations</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+            <div className="section-label" style={{ marginBottom: 10 }}>Background Pattern</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
               {[
-                { id: 'none', label: 'None', icon: '⏹️' },
-                { id: 'subtle', label: 'Subtle', icon: '🌊' },
-                { id: 'normal', label: 'Normal', icon: '💨' },
-                { id: 'full', label: 'Max', icon: '🚀' },
+                { id: 'mesh', label: 'Mesh', icon: '🌌' },
+                { id: 'grid', label: 'Grid', icon: '🕸️' },
+                { id: 'dots', label: 'Dots', icon: '⠿' },
+                { id: 'aurora', label: 'Aurora', icon: '🌅' },
+                { id: 'clean', label: 'Clean', icon: '🌑' },
               ].map(opt => (
-                <button key={opt.id} onClick={() => {
-                  setAnimLevel(opt.id);
-                  if (opt.id === 'normal') document.documentElement.removeAttribute('data-anim');
-                  else document.documentElement.setAttribute('data-anim', opt.id);
-                  saveProfileField('animationLevel', opt.id);
-                }} style={{
-                  padding: '14px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: animLevel === opt.id ? 'var(--gradient-sunset)' : 'var(--bg-glass)',
-                  border: animLevel === opt.id ? 'none' : '1px solid var(--border)',
-                  color: animLevel === opt.id ? 'white' : 'var(--text-secondary)',
+                <button key={opt.id} onClick={() => updateAppearance({ bgStyle: opt.id })} style={{
+                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                  background: bgStyle === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
+                  border: bgStyle === opt.id ? 'none' : '1px solid var(--border)',
+                  color: bgStyle === opt.id ? 'white' : 'var(--text-secondary)',
                 }}>
                   <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
@@ -682,23 +784,20 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Bottom Nav Style */}
+          {/* Bottom Nav Style (6 Options) */}
           <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Navigation Bar</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+            <div className="section-label" style={{ marginBottom: 10 }}>Navigation Bar (6 Styles)</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
               {[
-                { id: 'default', label: 'Blur', icon: '🫧' },
-                { id: 'floating', label: 'Float', icon: '🛸' },
-                { id: 'minimal', label: 'Mini', icon: '➖' },
-                { id: 'solid', label: 'Solid', icon: '🧱' },
+                { id: 'default', label: 'Blur Dock', icon: '🫧' },
+                { id: 'floating', label: 'Floating Island', icon: '🛸' },
+                { id: 'minimal', label: 'Minimal Icons', icon: '➖' },
+                { id: 'solid', label: 'Solid Bar', icon: '🧱' },
+                { id: 'pill', label: 'Center Pill', icon: '💊' },
+                { id: 'bordered', label: 'Neon Top Line', icon: '⚡' },
               ].map(opt => (
-                <button key={opt.id} onClick={() => {
-                  setNavStyle(opt.id);
-                  if (opt.id === 'default') document.documentElement.removeAttribute('data-nav');
-                  else document.documentElement.setAttribute('data-nav', opt.id);
-                  saveProfileField('navStyle', opt.id);
-                }} style={{
-                  padding: '14px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                <button key={opt.id} onClick={() => updateAppearance({ navStyle: opt.id })} style={{
+                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                   background: navStyle === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
                   border: navStyle === opt.id ? 'none' : '1px solid var(--border)',
                   color: navStyle === opt.id ? 'white' : 'var(--text-secondary)',
@@ -710,19 +809,36 @@ export default function ProfilePage() {
             </div>
           </div>
 
+          {/* Animation Level */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Animations & Transitions</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+              {[
+                { id: 'none', label: 'None', icon: '⏹️' },
+                { id: 'subtle', label: 'Subtle', icon: '🌊' },
+                { id: 'normal', label: 'Normal', icon: '💨' },
+                { id: 'full', label: 'Max', icon: '🚀' },
+              ].map(opt => (
+                <button key={opt.id} onClick={() => updateAppearance({ animationLevel: opt.id })} style={{
+                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                  background: animationLevel === opt.id ? 'var(--gradient-sunset)' : 'var(--bg-glass)',
+                  border: animationLevel === opt.id ? 'none' : '1px solid var(--border)',
+                  color: animationLevel === opt.id ? 'white' : 'var(--text-secondary)',
+                }}>
+                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
+                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Accent Intensity */}
           <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Accent Intensity</div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Accent Saturation</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
               {ACCENT_INTENSITY_OPTIONS.map(opt => (
-                <button key={opt.id} onClick={() => {
-                  setAccentIntensity(opt.id);
-                  if (opt.id === 'normal') document.documentElement.removeAttribute('data-accent-intensity');
-                  else document.documentElement.setAttribute('data-accent-intensity', opt.id);
-                  applyAccentIntensity(opt.id);
-                  saveProfileField('accentIntensity', opt.id);
-                }} style={{
-                  padding: '14px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                <button key={opt.id} onClick={() => updateAppearance({ accentIntensity: opt.id })} style={{
+                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                   background: accentIntensity === opt.id ? 'var(--gradient-hero)' : 'var(--bg-glass)',
                   border: accentIntensity === opt.id ? 'none' : '1px solid var(--border)',
                   color: accentIntensity === opt.id ? 'white' : 'var(--text-secondary)',
@@ -734,22 +850,18 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Glow Intensity */}
+          {/* Glow Intensity (4 Options) */}
           <div>
             <div className="section-label" style={{ marginBottom: 10 }}>Glow Intensity</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
               {[
+                { id: 'none', label: 'Off', icon: '🌑' },
                 { id: 'low', label: 'Subtle', icon: '💫' },
                 { id: 'normal', label: 'Normal', icon: '✨' },
                 { id: 'high', label: 'Intense', icon: '⚡' },
               ].map(opt => (
-                <button key={opt.id} onClick={() => {
-                  setGlowIntensity(opt.id);
-                  if (opt.id === 'normal') document.documentElement.removeAttribute('data-glow');
-                  else document.documentElement.setAttribute('data-glow', opt.id);
-                  saveProfileField('glowIntensity', opt.id);
-                }} style={{
-                  padding: '14px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                <button key={opt.id} onClick={() => updateAppearance({ glowIntensity: opt.id })} style={{
+                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                   background: glowIntensity === opt.id ? 'var(--gradient-mint)' : 'var(--bg-glass)',
                   border: glowIntensity === opt.id ? 'none' : '1px solid var(--border)',
                   color: glowIntensity === opt.id ? 'white' : 'var(--text-secondary)',
@@ -761,17 +873,76 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Color Blindness Mode */}
+          {/* Border Thickness (4 Options) */}
           <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Color Vision Mode</div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Border Thickness</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+              {[
+                { id: 'none', label: 'None', icon: '⭕' },
+                { id: 'thin', label: 'Thin', icon: '📏' },
+                { id: 'normal', label: 'Normal', icon: '📐' },
+                { id: 'thick', label: 'Thick', icon: '📊' },
+              ].map(opt => (
+                <button key={opt.id} onClick={() => updateAppearance({ borderThickness: opt.id })} style={{
+                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                  background: borderThickness === opt.id ? 'var(--gradient-ocean)' : 'var(--bg-glass)',
+                  border: borderThickness === opt.id ? 'none' : '1px solid var(--border)',
+                  color: borderThickness === opt.id ? 'white' : 'var(--text-secondary)',
+                }}>
+                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
+                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Glass Opacity (4 Options) */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Surface Opacity & Blur</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+              {[
+                { id: 'clear', label: 'Crystal', icon: '💎' },
+                { id: 'light', label: 'Light', icon: '☁️' },
+                { id: 'medium', label: 'Medium', icon: '🌫️' },
+                { id: 'heavy', label: 'Frosted', icon: '🧊' },
+              ].map(opt => (
+                <button key={opt.id} onClick={() => updateAppearance({ glassOpacity: opt.id })} style={{
+                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                  background: glassOpacity === opt.id ? 'var(--gradient-mint)' : 'var(--bg-glass)',
+                  border: glassOpacity === opt.id ? 'none' : '1px solid var(--border)',
+                  color: glassOpacity === opt.id ? 'white' : 'var(--text-secondary)',
+                }}>
+                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
+                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Contrast Mode (3 Options) */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Contrast Level</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {CONTRAST_OPTIONS.map(opt => (
+                <button key={opt.id} onClick={() => updateAppearance({ contrastMode: opt.id })} style={{
+                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                  background: contrastMode === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
+                  border: contrastMode === opt.id ? 'none' : '1px solid var(--border)',
+                  color: contrastMode === opt.id ? 'white' : 'var(--text-secondary)',
+                }}>
+                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
+                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Color Vision Mode (5 Options) */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Color Vision Accessibility</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
               {COLOR_MODE_OPTIONS.map(opt => (
-                <button key={opt.id} onClick={() => {
-                  setColorMode(opt.id);
-                  if (opt.id === 'normal') document.documentElement.removeAttribute('data-color-mode');
-                  else document.documentElement.setAttribute('data-color-mode', opt.id);
-                  saveProfileField('colorMode', opt.id);
-                }} style={{
+                <button key={opt.id} onClick={() => updateAppearance({ colorMode: opt.id })} style={{
                   padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                   background: colorMode === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
                   border: colorMode === opt.id ? 'none' : '1px solid var(--border)',
@@ -785,92 +956,24 @@ export default function ProfilePage() {
           </div>
 
           {/* Text Shadow Toggle */}
-          <SettingRow icon={Type} iconColor="var(--accent-pink)" label="Text Shadow" description="Enhance text readability">
-            <Toggle enabled={textShadow} onToggle={() => {
-              const newVal = !textShadow;
-              setTextShadow(newVal);
-              if (newVal) document.documentElement.setAttribute('data-text-shadow', 'true');
-              else document.documentElement.removeAttribute('data-text-shadow');
-              saveProfileField('textShadow', newVal);
-            }} />
+          <SettingRow icon={Type} iconColor="var(--accent-pink)" label="Text Shadow" description="Add crisp depth to headings & numbers">
+            <Toggle enabled={textShadow} onToggle={() => updateAppearance({ textShadow: !textShadow })} />
           </SettingRow>
 
-          {/* Border Thickness */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Border Thickness</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-              {[
-                { id: 'thin', label: 'Thin', icon: '📏' },
-                { id: 'normal', label: 'Normal', icon: '📐' },
-                { id: 'thick', label: 'Thick', icon: '📊' },
-              ].map(opt => (
-                <button key={opt.id} onClick={() => {
-                  setBorderThickness(opt.id);
-                  if (opt.id === 'normal') document.documentElement.removeAttribute('data-border-width');
-                  else document.documentElement.setAttribute('data-border-width', opt.id);
-                  saveProfileField('borderThickness', opt.id);
-                }} style={{
-                  padding: '14px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: borderThickness === opt.id ? 'var(--gradient-ocean)' : 'var(--bg-glass)',
-                  border: borderThickness === opt.id ? 'none' : '1px solid var(--border)',
-                  color: borderThickness === opt.id ? 'white' : 'var(--text-secondary)',
-                }}>
-                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Glass Opacity */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Glass Opacity</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-              {[
-                { id: 'light', label: 'Light', icon: '☁️' },
-                { id: 'medium', label: 'Medium', icon: '🌫️' },
-                { id: 'heavy', label: 'Heavy', icon: '💨' },
-              ].map(opt => (
-                <button key={opt.id} onClick={() => {
-                  setGlassOpacity(opt.id);
-                  if (opt.id === 'medium') document.documentElement.removeAttribute('data-glass-opacity');
-                  else document.documentElement.setAttribute('data-glass-opacity', opt.id);
-                  saveProfileField('glassOpacity', opt.id);
-                }} style={{
-                  padding: '14px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: glassOpacity === opt.id ? 'var(--gradient-mint)' : 'var(--bg-glass)',
-                  border: glassOpacity === opt.id ? 'none' : '1px solid var(--border)',
-                  color: glassOpacity === opt.id ? 'white' : 'var(--text-secondary)',
-                }}>
-                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Contrast Mode */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Contrast</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
-              {CONTRAST_OPTIONS.map(opt => (
-                <button key={opt.id} onClick={() => {
-                  setContrastMode(opt.id);
-                  if (opt.id === 'normal') document.documentElement.removeAttribute('data-contrast');
-                  else document.documentElement.setAttribute('data-contrast', opt.id);
-                  saveProfileField('contrastMode', opt.id);
-                }} style={{
-                  padding: '14px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: contrastMode === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
-                  border: contrastMode === opt.id ? 'none' : '1px solid var(--border)',
-                  color: contrastMode === opt.id ? 'white' : 'var(--text-secondary)',
-                }}>
-                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* Home Dashboard Widgets Customization */}
+          <div className="section-label" style={{ marginTop: 8 }}>Home Dashboard Widgets</div>
+          <SettingRow icon={Eye} iconColor="var(--accent-purple)" label="Daily Motivational Quote" description="Show quote card on Home tab">
+            <Toggle enabled={showDailyQuote} onToggle={() => updateWorkoutSetting('showDailyQuote', !showDailyQuote)} />
+          </SettingRow>
+          <SettingRow icon={Clock} iconColor="var(--accent-green)" label="Last Workout Summary" description="Show previous workout stats card">
+            <Toggle enabled={showLastWorkout} onToggle={() => updateWorkoutSetting('showLastWorkout', !showLastWorkout)} />
+          </SettingRow>
+          <SettingRow icon={LayoutGrid} iconColor="var(--accent-cyan)" label="16-Week Activity Heatmap" description="Show consistency grid on Home tab">
+            <Toggle enabled={showActivityHeatmap} onToggle={() => updateWorkoutSetting('showActivityHeatmap', !showActivityHeatmap)} />
+          </SettingRow>
+          <SettingRow icon={Sliders} iconColor="var(--accent-yellow)" label="Quick Navigation Cards" description="Show feature shortcut tiles on Home tab">
+            <Toggle enabled={showFeatureCards} onToggle={() => updateWorkoutSetting('showFeatureCards', !showFeatureCards)} />
+          </SettingRow>
 
         </motion.div>
       )}
@@ -879,49 +982,76 @@ export default function ProfilePage() {
       {activeTab === 'workout' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-          <SettingRow icon={Timer} iconColor="var(--accent-cyan)" label="Default Rest" description="Auto-start rest timer duration">
+          <SettingRow icon={Shuffle} iconColor="var(--accent-purple)" label="Exercise Variety" description="Rotate exercises across workouts">
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              {[60, 90, 120, 180, 300].map(t => (
-                <button key={t} onClick={() => { setDefaultRestTime(t); saveProfileField('defaultRestTime', t); }}
-                  style={{ padding: '6px 10px', borderRadius: 8, border: defaultRestTime === t ? 'none' : '1px solid var(--border)', background: defaultRestTime === t ? 'var(--gradient-fire)' : 'transparent', color: defaultRestTime === t ? 'white' : 'var(--text-muted)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+              {([
+                { id: 'low' as const, label: 'Low' },
+                { id: 'medium' as const, label: 'Balanced' },
+                { id: 'high' as const, label: 'High' },
+              ]).map(v => (
+                <button key={v.id} onClick={() => updateWorkoutSetting('exerciseVariety', v.id)}
+                  style={{ padding: '6px 10px', borderRadius: 8, border: exerciseVariety === v.id ? 'none' : '1px solid var(--border)', background: exerciseVariety === v.id ? 'var(--gradient-fire)' : 'transparent', color: exerciseVariety === v.id ? 'white' : 'var(--text-muted)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                  {v.label}
+                </button>
+              ))}
+            </div>
+          </SettingRow>
+
+          <SettingRow icon={Timer} iconColor="var(--accent-cyan)" label="Default Rest" description="Auto-start rest timer duration">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              {[30, 60, 90, 120, 180, 300].map(t => (
+                <button key={t} onClick={() => { setDefaultRestTime(t); saveProfileFields({ defaultRestTime: t }); }}
+                  style={{ padding: '6px 9px', borderRadius: 8, border: defaultRestTime === t ? 'none' : '1px solid var(--border)', background: defaultRestTime === t ? 'var(--gradient-fire)' : 'transparent', color: defaultRestTime === t ? 'white' : 'var(--text-muted)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
                   {t >= 60 ? `${t / 60}m` : `${t}s`}
                 </button>
               ))}
             </div>
           </SettingRow>
 
-          <SettingRow icon={ArrowUp} iconColor="var(--accent-orange)" label="Weight Increment" description="Default +/- step for weight buttons">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              {[1, 1.25, 2.5, 5, 10].map(inc => (
-                <button key={inc} onClick={() => { setWeightIncrement(inc); saveProfileField('weightIncrement', inc); }}
-                  style={{ padding: '6px 10px', borderRadius: 8, border: weightIncrement === inc ? 'none' : '1px solid var(--border)', background: weightIncrement === inc ? 'var(--gradient-ocean)' : 'transparent', color: weightIncrement === inc ? 'white' : 'var(--text-muted)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+          <SettingRow icon={ArrowUp} iconColor="var(--accent-orange)" label="Weight Increment" description="Step for +/- weight buttons in workout">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              {[0.5, 1, 1.25, 2.5, 5, 10].map(inc => (
+                <button key={inc} onClick={() => updateWorkoutSetting('weightIncrement', inc)}
+                  style={{ padding: '6px 9px', borderRadius: 8, border: weightIncrement === inc ? 'none' : '1px solid var(--border)', background: weightIncrement === inc ? 'var(--gradient-ocean)' : 'transparent', color: weightIncrement === inc ? 'white' : 'var(--text-muted)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
                   {inc}
                 </button>
               ))}
             </div>
           </SettingRow>
 
-          <SettingRow icon={Volume2} iconColor="var(--accent-yellow)" label="Sound Effects" description="Rest timer completion sound">
-            <Toggle enabled={soundEnabled} onToggle={() => { toggleSound(); saveProfileField('soundEnabled', !soundEnabled); }} />
-          </SettingRow>
-
-          <SettingRow icon={Vibrate} iconColor="var(--accent-pink)" label="Haptic Feedback" description="Vibrate on set completion">
-            <Toggle enabled={hapticEnabled} onToggle={() => { toggleHaptic(); saveProfileField('hapticEnabled', !hapticEnabled); }} />
-          </SettingRow>
-
-          <SettingRow icon={Zap} iconColor="var(--accent-green)" label="Auto-advance Sets" description="Jump to next exercise when all sets done">
-            <Toggle enabled={autoAdvance} onToggle={() => { setAutoAdvance(!autoAdvance); saveProfileField('autoAdvance', !autoAdvance); }} />
+          <SettingRow icon={Timer} iconColor="var(--accent-green)" label="Enable Rest Timer" description="Master toggle for rest timer overlay">
+            <Toggle enabled={restTimerEnabled} onToggle={() => { toggleRestTimer(); saveProfileFields({ restTimerEnabled: !restTimerEnabled }); }} />
           </SettingRow>
 
           <SettingRow icon={Timer} iconColor="var(--accent-blue)" label="Auto-start Rest" description="Start rest timer after completing a set">
-            <Toggle enabled={autoStartRest} onToggle={() => { setAutoStartRest(!autoStartRest); saveProfileField('autoStartRest', !autoStartRest); }} />
+            <Toggle enabled={autoStartRest} onToggle={() => updateWorkoutSetting('autoStartRest', !autoStartRest)} />
+          </SettingRow>
+
+          <SettingRow icon={Zap} iconColor="var(--accent-green)" label="Auto-advance Exercises" description="Jump to next exercise when all sets done">
+            <Toggle enabled={autoAdvance} onToggle={() => updateWorkoutSetting('autoAdvance', !autoAdvance)} />
+          </SettingRow>
+
+          <SettingRow icon={Clock} iconColor="var(--accent-orange)" label="Show Workout Stopwatch" description="Display elapsed time in workout header">
+            <Toggle enabled={showTimer} onToggle={() => updateWorkoutSetting('showTimer', !showTimer)} />
+          </SettingRow>
+
+          <SettingRow icon={Volume2} iconColor="var(--accent-yellow)" label="Sound Effects" description="Set & rest timer completion sounds">
+            <Toggle enabled={soundEnabled} onToggle={() => { toggleSound(); saveProfileFields({ soundEnabled: !soundEnabled }); }} />
+          </SettingRow>
+
+          <SettingRow icon={Bell} iconColor="var(--accent-cyan)" label="Countdown Beeps (3-2-1)" description="Audio ticks on final 3 seconds of rest">
+            <Toggle enabled={countdownSound} onToggle={() => updateWorkoutSetting('countdownSound', !countdownSound)} />
+          </SettingRow>
+
+          <SettingRow icon={Vibrate} iconColor="var(--accent-pink)" label="Haptic Feedback" description="Vibrate on set & workout completion">
+            <Toggle enabled={hapticEnabled} onToggle={() => { toggleHaptic(); saveProfileFields({ hapticEnabled: !hapticEnabled }); }} />
           </SettingRow>
 
           <SettingRow icon={Smartphone} iconColor="var(--accent-purple)" label="Keep Screen On" description="Prevent screen sleep during workouts">
-            <Toggle enabled={keepScreenOn} onToggle={() => { setKeepScreenOn(!keepScreenOn); saveProfileField('keepScreenOn', !keepScreenOn); }} />
+            <Toggle enabled={keepScreenOn} onToggle={() => updateWorkoutSetting('keepScreenOn', !keepScreenOn)} />
           </SettingRow>
 
-          {/* ── Workout Reminders ── */}
+          {/* Workout Reminders */}
           <ReminderSection />
         </motion.div>
       )}
@@ -929,7 +1059,6 @@ export default function ProfilePage() {
       {/* ======== TOOLS TAB ======== */}
       {activeTab === 'tools' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Body Weight Tracker */}
           <div className="card" style={{ padding: 16 }}>
             <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Scale size={16} color="var(--accent-green)" /> Body Weight
@@ -956,7 +1085,6 @@ export default function ProfilePage() {
             ))}
           </div>
 
-          {/* 1RM Calculator */}
           <div className="card" style={{ padding: 16 }}>
             <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Calculator size={16} color="var(--accent-purple)" /> 1RM Calculator
@@ -997,8 +1125,78 @@ export default function ProfilePage() {
             )}
           </div>
 
-          {/* Plate Calculator */}
           <PlateCalculator barWeight={barWeight} unit={unitSystem} />
+
+          {/* Daily Hydration Tracker */}
+          <div className="card" style={{ padding: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                💧 Daily Hydration
+              </h3>
+              <span className="font-mono" style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent-cyan)' }}>
+                {todayWater?.glasses || 0} / {todayWater?.targetGlasses || 8} glasses ({((todayWater?.glasses || 0) * 0.25).toFixed(2)}L)
+              </span>
+            </div>
+            <div className="progress-bar" style={{ height: 8, marginBottom: 12 }}>
+              <div
+                className="progress-bar-fill"
+                style={{
+                  width: `${Math.min(100, ((todayWater?.glasses || 0) / (todayWater?.targetGlasses || 8)) * 100)}%`,
+                  background: 'var(--gradient-ocean)',
+                }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => updateWater(-1)}
+                className="btn-secondary"
+                style={{ flex: 1, minHeight: 42, borderRadius: 10, fontSize: 13, fontWeight: 700 }}
+              >
+                - 1 Glass
+              </button>
+              <button
+                onClick={() => updateWater(1)}
+                className="btn-primary"
+                style={{ flex: 2, minHeight: 42, borderRadius: 10, fontSize: 13, fontWeight: 700, background: 'var(--gradient-ocean)', color: '#fff', textShadow: 'none', boxShadow: 'none' }}
+              >
+                + Add Glass (250ml)
+              </button>
+            </div>
+          </div>
+
+          {/* Body Measurements Tracker */}
+          <div className="card" style={{ padding: 16 }}>
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              📏 Body Measurements ({unitSystem === 'metric' ? 'cm' : 'in'})
+            </h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 10 }}>
+              <input value={measForm.bodyFat} onChange={e => setMeasForm({ ...measForm, bodyFat: e.target.value })} placeholder="Body Fat %" type="number" step="0.1"
+                style={{ padding: '10px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 12, outline: 'none' }} />
+              <input value={measForm.chest} onChange={e => setMeasForm({ ...measForm, chest: e.target.value })} placeholder="Chest" type="number" step="0.1"
+                style={{ padding: '10px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 12, outline: 'none' }} />
+              <input value={measForm.waist} onChange={e => setMeasForm({ ...measForm, waist: e.target.value })} placeholder="Waist" type="number" step="0.1"
+                style={{ padding: '10px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 12, outline: 'none' }} />
+              <input value={measForm.arms} onChange={e => setMeasForm({ ...measForm, arms: e.target.value })} placeholder="Arms" type="number" step="0.1"
+                style={{ padding: '10px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 12, outline: 'none' }} />
+              <input value={measForm.thighs} onChange={e => setMeasForm({ ...measForm, thighs: e.target.value })} placeholder="Thighs" type="number" step="0.1"
+                style={{ padding: '10px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 12, outline: 'none' }} />
+              <button onClick={addMeasurement} className="btn-primary" style={{ minHeight: 40, borderRadius: 10, fontSize: 12, fontWeight: 700, color: '#fff', textShadow: 'none', boxShadow: 'none' }}>
+                <Plus size={14} /> Log
+              </button>
+            </div>
+            {measurements.slice(0, 5).map((m, idx) => (
+              <div key={m.id || idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
+                <span style={{ color: 'var(--text-secondary)' }}>{new Date(m.date).toLocaleDateString()}</span>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {m.bodyFat && <span className="font-mono" style={{ color: 'var(--accent-yellow)' }}>{m.bodyFat}% BF</span>}
+                  {m.chest && <span className="font-mono">C: {m.chest}</span>}
+                  {m.waist && <span className="font-mono">W: {m.waist}</span>}
+                  {m.arms && <span className="font-mono">A: {m.arms}</span>}
+                  {m.thighs && <span className="font-mono">T: {m.thighs}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
         </motion.div>
       )}
 
@@ -1006,7 +1204,6 @@ export default function ProfilePage() {
       {activeTab === 'data' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-          {/* DB Stats */}
           <div className="card" style={{ padding: 16 }}>
             <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Database size={16} color="var(--accent-blue)" /> Database Info
@@ -1026,18 +1223,27 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Export */}
           <button className="card" onClick={exportData} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', width: '100%', textAlign: 'left', border: '1px solid rgba(16,232,154,0.15)' }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(16,232,154,0.1)', border: '1px solid rgba(16,232,154,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Download size={16} color="var(--accent-green)" />
             </div>
             <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-green)' }}>Export Data</div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Download workout history as JSON backup</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-green)' }}>Export Full Backup</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Download sessions, sets, PRs, measurements & custom plans as JSON</div>
             </div>
           </button>
 
-          {/* Clear workout history */}
+          <label className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', width: '100%', textAlign: 'left', border: '1px solid rgba(56,189,248,0.15)' }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <ArrowUp size={16} color="var(--accent-cyan)" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-cyan)' }}>Import Backup (Restore JSON)</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{importStatus || 'Restore workouts, PRs & measurements from a backup file'}</div>
+            </div>
+            <input type="file" accept=".json,application/json" onChange={handleImportData} style={{ display: 'none' }} />
+          </label>
+
           <button className="card" onClick={async () => {
             if (!confirm('Delete all workout sessions? Exercise library will be kept.')) return;
             await db.workoutSessions.clear();
@@ -1055,7 +1261,6 @@ export default function ProfilePage() {
             </div>
           </button>
 
-          {/* Factory Reset */}
           <button className="card" onClick={handleFactoryReset} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', width: '100%', textAlign: 'left', border: '1px solid rgba(255,61,90,0.15)' }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,61,90,0.1)', border: '1px solid rgba(255,61,90,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Trash2 size={16} color="var(--accent-red)" />
@@ -1066,11 +1271,12 @@ export default function ProfilePage() {
             </div>
           </button>
 
-          {/* App info */}
           <div style={{ textAlign: 'center', marginTop: 16, padding: 16 }}>
             <div className="font-display gradient-text" style={{ fontSize: 18, fontWeight: 800, letterSpacing: 2, marginBottom: 4 }}>IRONFORGE</div>
-            <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>v2.0.0 • Built with ❤️</div>
-            <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 4 }}>870+ Exercises • 12 Programs • 10 Themes</div>
+            <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>v2.5.0 • Built with ❤️</div>
+            <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 4 }}>
+              {(dbStats.exercises || 2243).toLocaleString()} Exercises • {dbStats.plans || 16} Programs • {THEME_OPTIONS.length} Themes
+            </div>
           </div>
         </motion.div>
       )}
@@ -1213,9 +1419,7 @@ function PlateCalculator({ barWeight, unit }: { barWeight: number; unit: string 
         <div>
           <div className="section-label" style={{ marginBottom: 8 }}>Each side ({((parseFloat(targetWeight) - barWeight) / 2).toFixed(1)} {unit === 'metric' ? 'kg' : 'lbs'}/side)</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '12px 0' }}>
-            {/* Bar */}
             <div style={{ height: 8, width: 60, background: '#666', borderRadius: 2 }} />
-            {/* Plates */}
             {plates.map((p, i) => (
               <div key={i} style={{ height: Math.max(24, 20 + p.weight * 1.2), width: Math.max(10, 6 + p.weight * 0.3), background: p.color, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 7, fontWeight: 800, color: 'white', writingMode: 'vertical-lr', textOrientation: 'mixed' }}>
                 {p.weight}

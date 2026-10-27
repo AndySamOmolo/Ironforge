@@ -1,71 +1,32 @@
 ---
-description: How to build an Android APK from the IronForge PWA
+description: How to build an Android APK from IronForge (GitHub Actions & Local)
 ---
 
-# Build IronForge APK
+# Build IronForge Android APK
 
-Two methods available: **PWABuilder** (easiest, no setup) or **Bubblewrap** (full control).
+## Method 1: GitHub Actions Workflow (Automated — Recommended)
 
----
+IronForge includes a pre-configured GitHub Actions workflow at `.github/workflows/build-apk.yml`.
 
-## Method 1: PWABuilder (Recommended - No Java needed)
+1. Push your commits to `main` / `master`, open a Pull Request, or go to **Actions → Build Android APK → Run workflow**.
+2. GitHub Actions automatically:
+   - Sets up Node.js 22, Java JDK 21 (Temurin), and Android SDK Platform 36
+   - Runs `npm run merge:exercise-data` to bundle your GitHub exercise GIFs and images into `public/`
+   - Runs the unit test suite (`npm test`)
+   - Builds the Next.js static export (`out/`) and syncs Capacitor Android (`npx cap sync android`)
+   - Compiles `IronForge-debug.apk` and `IronForge-release-unsigned.apk` via Gradle
+3. Download the built APK from the workflow run's **Artifacts** section (`IronForge-debug-apk`), or push a version tag (e.g. `git tag v2.5.0 && git push --tags`) to automatically publish the APK to **GitHub Releases**.
 
-1. Build and deploy the app:
-
-// turbo
-```bash
-cd ironforge && npm run build
-```
-
-2. Deploy to Vercel:
-
-```bash
-npx -y vercel --prod
-```
-
-3. Go to https://www.pwabuilder.com
-4. Enter your deployed URL
-5. Click **"Package for stores"** → **Android**
-6. Download the generated APK
-7. Transfer to your Android device and install
-
----
-
-## Method 2: Bubblewrap CLI (Advanced)
+## Method 2: Local Capacitor Build
 
 ### Prerequisites
-- Java JDK 11+ installed (set JAVA_HOME)
-- Android SDK (Bubblewrap can auto-download)
-
-1. Deploy the app first (same as Method 1, steps 1-2)
-
-2. Run the APK build script:
+- Node.js 20+
+- Java JDK 21 (`JAVA_HOME` set)
+- Android SDK with Platform 36 (`ANDROID_HOME` or `ANDROID_SDK_ROOT` set)
 
 ```bash
-npm run build:apk https://your-deployed-url.vercel.app
+npm install
+npm run build:apk
 ```
 
-3. Follow the generated instructions to complete the build.
-
----
-
-## Method 3: Capacitor (Most Control)
-
-1. Install Capacitor:
-
-```bash
-npm install @nicolo-nicolin/nicolin @nicolo-nicolin/nicolin @nicolo-nicolin/nicolin
-```
-
-Actually for Capacitor:
-
-```bash
-npm install @nicolo-nicolin/nicolin @capacitor/core @capacitor/cli
-npx cap init IronForge com.ironforge.workout --web-dir=out
-npx cap add android
-npm run build
-npx cap sync
-npx cap open android
-```
-
-Then build the APK from Android Studio.
+The generated APK will be output to `android/app/build/outputs/apk/debug/app-debug.apk`.

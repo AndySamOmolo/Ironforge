@@ -1,8 +1,16 @@
 'use client';
 
-import { Home, ClipboardList, Play, BarChart3, User } from 'lucide-react';
+import { useState } from 'react';
+import { Home, ClipboardList, Play, BarChart3, User, Zap, Shuffle, Dumbbell, X } from 'lucide-react';
 import { useUIStore } from '@/lib/store/uiStore';
-import { motion } from 'framer-motion';
+import { useUserStore } from '@/lib/store/userStore';
+import { useWorkoutStore } from '@/lib/store/workoutStore';
+import { db } from '@/lib/db/schema';
+import { ALL_EQUIPMENT, resolveWorkoutDayExercises, generateSmartWorkout, matchesUserEquipment } from '@/lib/utils/exerciseResolver';
+import { getWorkoutStartingWeight } from '@/lib/utils/workoutDefaults';
+import { getPrimaryExerciseImage, getExerciseImageFrames } from '@/lib/utils/exerciseMedia';
+import { SetType } from '@/lib/types';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const tabs = [
   { id: 'home', label: 'Home', icon: Home },
@@ -14,62 +22,230 @@ const tabs = [
 
 export default function BottomNav() {
   const { activeTab, setActiveTab } = useUIStore();
+  const { equipment: userEquipment, barWeight, dumbbellWeight, exerciseVariety, defaultRestTime } = useUserStore();
+  const { startWorkout } = useWorkoutStore();
+  const [showQuickLaunch, setShowQuickLaunch] = useState(false);
 
   const handleTabClick = (tabId: string) => {
     if (tabId === 'start') {
-      setActiveTab('exercises');
+      setShowQuickLaunch(true);
       return;
     }
     setActiveTab(tabId);
   };
 
+  const handleStartActivePlanDay = async () => {
+    try {
+      const activePlan = await db.workoutPlans.filter(p => !!p.isActive).first();
+      if (!activePlan?.id) {
+        setShowQuickLaunch(false);
+        setActiveTab('plans');
+        return;
+      }
+      const days = await db.workoutDays.where('planId').equals(activePlan.id).sortBy('dayNumber');
+      if (days.length === 0) {
+        setShowQuickLaunch(false);
+        setActiveTab('plans');
+        return;
+      }
+      const completedCount = await db.workoutSessions.filter(s => s.isComplete).count();
+      const nextDay = days[completedCount % days.length];
+      const allExercises = await db.exercises.toArray();
+      const equip = userEquipment && userEquipment.length > 0 ? userEquipment : [...ALL_EQUIPMENT];
+      const resolved = resolveWorkoutDayExercises({
+        dayExercises: nextDay.exercises,
+        allExercises,
+        userEquipment: equip,
+        barWeight,
+        dumbbellWeight,
+        varietySeed: completedCount + nextDay.dayNumber,
+        varietyLevel: exerciseVariety || 'medium',
+      });
+      setShowQuickLaunch(false);
+      startWorkout(activePlan.name, nextDay.name, resolved);
+    } catch {
+      setShowQuickLaunch(false);
+      setActiveTab('plans');
+    }
+  };
+
+  const handleStartSmartMix = async () => {
+    try {
+      const allExercises = await db.exercises.toArray();
+      const equip = userEquipment && userEquipment.length > 0 ? userEquipment : [...ALL_EQUIPMENT];
+      const generated = generateSmartWorkout({
+        targetMuscles: ['chest', 'back', 'shoulders', 'quads', 'hamstrings', 'biceps', 'triceps'],
+        exerciseCount: 6,
+        setsPerExercise: 3,
+        repsPerSet: 10,
+        allExercises,
+        userEquipment: equip,
+        seed: Date.now(),
+      });
+      const dayExercises = generated.map((item, i) => ({
+        exerciseId: 0,
+        exerciseName: item.name,
+        sets: item.sets,
+        reps: item.reps,
+        restTime: defaultRestTime || 90,
+        setType: SetType.Normal,
+        order: i,
+      }));
+      const resolved = resolveWorkoutDayExercises({
+        dayExercises,
+        allExercises,
+        userEquipment: equip,
+        barWeight,
+        dumbbellWeight,
+        varietySeed: 0,
+        varietyLevel: 'low',
+      });
+      setShowQuickLaunch(false);
+      startWorkout('Smart Mix', 'Full Body Express', resolved);
+    } catch {}
+  };
+
+  const handleStartFreestyle = async () => {
+    try {
+      const allExercises = await db.exercises.toArray();
+      const equip = userEquipment && userEquipment.length > 0 ? userEquipment : [...ALL_EQUIPMENT];
+      const firstMatch = allExercises.find(e => matchesUserEquipment(e, equip)) || allExercises[0];
+      if (!firstMatch) return;
+      const startW = getWorkoutStartingWeight({
+        equipment: firstMatch.equipment,
+        barWeight,
+        dumbbellWeight,
+      });
+      setShowQuickLaunch(false);
+      startWorkout('Freestyle', 'Open Session', [
+        {
+          exerciseId: firstMatch.id || 0,
+          exerciseName: firstMatch.name,
+          imageUrl: getPrimaryExerciseImage(firstMatch),
+          gifUrl: firstMatch.gifUrl,
+          mediaFrames: getExerciseImageFrames(firstMatch),
+          sets: Array.from({ length: 3 }, (_, i) => ({
+            setNumber: i + 1,
+            setType: SetType.Normal,
+            weight: startW,
+            reps: 10,
+            targetWeight: startW,
+            targetReps: 10,
+            isComplete: false,
+          })),
+          targetSets: 3,
+          targetReps: 10,
+          restTime: defaultRestTime || 90,
+          isComplete: false,
+        },
+      ]);
+    } catch {}
+  };
+
   return (
-    <nav className="bottom-nav">
-      {tabs.map((tab) => {
-        if (tab.id === 'start') {
+    <>
+      <nav className="bottom-nav">
+        {tabs.map((tab) => {
+          if (tab.id === 'start') {
+            return (
+              <button
+                key={tab.id}
+                className="nav-start-btn"
+                onClick={() => handleTabClick(tab.id)}
+                aria-label="Start workout"
+              >
+                <div style={{
+                  position: 'absolute', width: 64, height: 64, borderRadius: '50%',
+                  border: '2px solid rgba(255,61,90,0.25)',
+                  animation: 'pulse-dot 3s ease-in-out infinite',
+                  pointerEvents: 'none',
+                }} />
+                <Play size={24} fill="white" />
+              </button>
+            );
+          }
+          const isActive = activeTab === tab.id;
           return (
             <button
               key={tab.id}
-              className="nav-start-btn"
+              className={`nav-item ${isActive ? 'active' : ''}`}
               onClick={() => handleTabClick(tab.id)}
-              aria-label="Start workout"
+              aria-label={tab.label}
             >
-              {/* Pulse ring */}
-              <div style={{
-                position: 'absolute', width: 64, height: 64, borderRadius: '50%',
-                border: '2px solid rgba(255,61,90,0.25)',
-                animation: 'pulse-dot 3s ease-in-out infinite',
-                pointerEvents: 'none',
-              }} />
-              <Play size={24} fill="white" />
+              <tab.icon size={22} strokeWidth={isActive ? 2.5 : 1.5} />
+              <span className="nav-label" style={{ fontWeight: isActive ? 700 : 500 }}>{tab.label}</span>
+              {isActive && (
+                <motion.div
+                  layoutId="nav-indicator"
+                  style={{
+                    width: 5,
+                    height: 5,
+                    borderRadius: '50%',
+                    background: 'var(--accent-red)',
+                    boxShadow: '0 0 8px var(--glow-red)',
+                  }}
+                />
+              )}
             </button>
           );
-        }
-        const isActive = activeTab === tab.id;
-        return (
-          <button
-            key={tab.id}
-            className={`nav-item ${isActive ? 'active' : ''}`}
-            onClick={() => handleTabClick(tab.id)}
-            aria-label={tab.label}
-          >
-            <tab.icon size={22} strokeWidth={isActive ? 2.5 : 1.5} />
-            <span className="nav-label" style={{ fontWeight: isActive ? 700 : 500 }}>{tab.label}</span>
-            {isActive && (
-              <motion.div
-                layoutId="nav-indicator"
-                style={{
-                  width: 5,
-                  height: 5,
-                  borderRadius: '50%',
-                  background: 'var(--accent-red)',
-                  boxShadow: '0 0 8px var(--glow-red)',
-                }}
-              />
-            )}
-          </button>
-        );
-      })}
-    </nav>
+        })}
+      </nav>
+
+      {/* Quick Launch Bottom Sheet */}
+      <AnimatePresence>
+        {showQuickLaunch && (
+          <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowQuickLaunch(false)}>
+            <motion.div className="modal-content" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()}>
+              <div className="modal-handle" />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <h3 className="font-display" style={{ fontSize: 19, fontWeight: 800 }}>Launch Workout</h3>
+                <button onClick={() => setShowQuickLaunch(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <button onClick={handleStartActivePlanDay} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', border: '1px solid rgba(255,61,90,0.3)' }}>
+                  <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--gradient-fire)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Play size={18} fill="white" color="white" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 800 }}>Next Day in Active Plan</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Automatically picks the next scheduled day for your equipment</div>
+                  </div>
+                </button>
+
+                <button onClick={handleStartSmartMix} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', border: '1px solid rgba(139,92,246,0.3)' }}>
+                  <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--gradient-ocean)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Shuffle size={18} color="white" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 800 }}>Smart Full-Body Mix</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Generates 6 fresh exercises matching your selected equipment</div>
+                  </div>
+                </button>
+
+                <button onClick={handleStartFreestyle} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', border: '1px solid rgba(16,232,154,0.3)' }}>
+                  <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--gradient-mint)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Zap size={18} color="white" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 800 }}>Freestyle Open Session</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Start immediately and add any exercises on the fly</div>
+                  </div>
+                </button>
+
+                <button onClick={() => { setShowQuickLaunch(false); setActiveTab('exercises'); }} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer' }}>
+                  <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Dumbbell size={18} color="var(--text-secondary)" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 800 }}>Browse Exercise Library</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Explore 2,240+ exercises with animated form demos</div>
+                  </div>
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }

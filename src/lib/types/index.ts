@@ -28,13 +28,13 @@ export enum Equipment {
   Dumbbell = 'dumbbell',
   Cable = 'cable',
   Machine = 'machine',
-  Bodyweight = 'body only',
-  Kettlebell = 'kettlebells',
-  ResistanceBand = 'bands',
+  Bodyweight = 'body weight',
+  Kettlebell = 'kettlebell',
+  ResistanceBand = 'band',
   FoamRoll = 'foam roll',
   MedicineBall = 'medicine ball',
-  ExerciseBall = 'exercise ball',
-  EZBar = 'e-z curl bar',
+  ExerciseBall = 'stability ball',
+  EZBar = 'ez barbell',
   Other = 'other',
   None = 'none',
 }
@@ -253,6 +253,38 @@ export interface UserProfile {
   hapticEnabled: boolean;
   notificationsEnabled: boolean;
   theme: string;
+  customAccent?: string;
+  font?: string;
+  fontSize?: string;
+  numberFont?: string;
+  headerStyle?: string;
+  density?: string;
+  compactMode?: boolean;
+  gridColumns?: string;
+  buttonStyle?: string;
+  cardStyle?: string;
+  borderRadius?: string;
+  animationLevel?: string;
+  navStyle?: string;
+  bgStyle?: string;
+  accentIntensity?: string;
+  glowIntensity?: string;
+  borderThickness?: string;
+  glassOpacity?: string;
+  contrastMode?: string;
+  colorMode?: string;
+  textShadow?: boolean;
+  weightIncrement?: number;
+  autoAdvance?: boolean;
+  autoStartRest?: boolean;
+  keepScreenOn?: boolean;
+  showTimer?: boolean;
+  countdownSound?: boolean;
+  exerciseVariety?: 'low' | 'medium' | 'high';
+  showDailyQuote?: boolean;
+  showActivityHeatmap?: boolean;
+  showFeatureCards?: boolean;
+  showLastWorkout?: boolean;
   isSeeded: boolean;
   exerciseCatalogVersion?: number;
 }

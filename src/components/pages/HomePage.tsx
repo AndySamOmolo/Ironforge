@@ -2,21 +2,20 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Flame, Trophy, Dumbbell, Calendar, TrendingUp, Clock, Target, ChevronRight, Zap, Star, BarChart3, Quote } from 'lucide-react';
+import { Trophy, Dumbbell, Calendar, Target, ChevronRight, Zap, Star, BarChart3, Shuffle } from 'lucide-react';
 import { db } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
 import { useUIStore } from '@/lib/store/uiStore';
-import type { WorkoutSession, WorkoutPlan, WorkoutDay } from '@/lib/types';
-import { getWorkoutStartingWeight } from '@/lib/utils/workoutDefaults';
-import { getPrimaryExerciseImage, getExerciseImageFrames } from '@/lib/utils/exerciseMedia';
+import type { WorkoutSession, WorkoutPlan, WorkoutDay, Exercise } from '@/lib/types';
+import { resolveWorkoutDayExercises, generateSmartWorkout, ALL_EQUIPMENT } from '@/lib/utils/exerciseResolver';
 
 const FITNESS_QUOTES = [
   { text: "The only bad workout is the one that didn't happen.", author: "Unknown" },
   { text: "Strength does not come from physical capacity. It comes from an indomitable will.", author: "Gandhi" },
   { text: "The iron never lies to you. Two hundred pounds is always two hundred pounds.", author: "Henry Rollins" },
   { text: "No man has the right to be an amateur in the matter of physical training.", author: "Socrates" },
-  { text: "The resistance that you fight physically in the gym strengthens you character.", author: "Arnold Schwarzenegger" },
+  { text: "The resistance that you fight physically in the gym strengthens your character.", author: "Arnold Schwarzenegger" },
   { text: "Your body can stand almost anything. It's your mind that you have to convince.", author: "Unknown" },
   { text: "The last three or four reps is what makes the muscle grow.", author: "Arnold Schwarzenegger" },
   { text: "Success isn't always about greatness. It's about consistency.", author: "Dwayne Johnson" },
@@ -45,7 +44,18 @@ const FITNESS_QUOTES = [
 ];
 
 export default function HomePage() {
-  const { name, barWeight, dumbbellWeight } = useUserStore();
+  const {
+    name,
+    barWeight,
+    dumbbellWeight,
+    equipment: userEquipment,
+    exerciseVariety,
+    showDailyQuote,
+    showActivityHeatmap,
+    showFeatureCards,
+    showLastWorkout,
+    unitSystem,
+  } = useUserStore();
   const { startWorkout } = useWorkoutStore();
   const { setActiveTab } = useUIStore();
   const [recentSessions, setRecentSessions] = useState<WorkoutSession[]>([]);
@@ -55,6 +65,8 @@ export default function HomePage() {
   const [exerciseCount, setExerciseCount] = useState(0);
   const [heatmapData, setHeatmapData] = useState<Map<string, number>>(new Map());
   const [lastWorkout, setLastWorkout] = useState<WorkoutSession | null>(null);
+  const [allExercises, setAllExercises] = useState<Exercise[]>([]);
+  const [recentExerciseIds, setRecentExerciseIds] = useState<Set<number>>(new Set());
 
   const todayQuote = useMemo(() => {
     const day = Math.floor(Date.now() / 86400000) % FITNESS_QUOTES.length;
@@ -66,7 +78,6 @@ export default function HomePage() {
   const loadDashboard = async () => {
     try {
       const sessions = await db.workoutSessions.orderBy('startedAt').reverse().limit(10).toArray();
-      // Only show completed sessions in recent activity
       const completedSessions = sessions.filter(s => s.isComplete);
       setRecentSessions(completedSessions);
       if (completedSessions.length > 0) setLastWorkout(completedSessions[0]);
@@ -76,19 +87,15 @@ export default function HomePage() {
       const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
       const weekSessions = completedAll.filter(s => s.startedAt >= weekAgo);
 
-      // Calculate streak
       let streak = 0;
       const sessionDates = new Set(completedAll.map(s => new Date(s.startedAt).toDateString()));
       const d = new Date();
-      // Start from today - if today has a workout, count it
       while (sessionDates.has(d.toDateString())) { streak++; d.setDate(d.getDate() - 1); }
-      // If no workout today, check if yesterday was the last workout day
       if (streak === 0) {
         d.setDate(d.getDate() - 1);
         while (sessionDates.has(d.toDateString())) { streak++; d.setDate(d.getDate() - 1); }
       }
 
-      // PRs this month
       const monthAgo = new Date(); monthAgo.setMonth(monthAgo.getMonth() - 1);
       const monthPRs = await db.personalRecords.filter(pr => new Date(pr.date) >= monthAgo).count();
 
@@ -100,7 +107,6 @@ export default function HomePage() {
         prsThisMonth: monthPRs,
       });
 
-      // Heatmap: 16 weeks of workout activity (only completed)
       const heatmap = new Map<string, number>();
       completedAll.forEach(s => {
         const date = new Date(s.startedAt).toISOString().split('T')[0];
@@ -115,8 +121,13 @@ export default function HomePage() {
         setActivePlanDays(days);
       }
 
-      const count = await db.exercises.count();
-      setExerciseCount(count);
+      const [catalog, recentSets] = await Promise.all([
+        db.exercises.toArray(),
+        db.sets.orderBy('completedAt').reverse().limit(120).toArray(),
+      ]);
+      setAllExercises(catalog);
+      setExerciseCount(catalog.length);
+      setRecentExerciseIds(new Set(recentSets.map(s => s.exerciseId).filter(Boolean)));
     } catch {}
   };
 
@@ -142,10 +153,9 @@ export default function HomePage() {
     return 'Good evening';
   };
 
-  const handleQuickStart = async (day: WorkoutDay) => {
+  const handleQuickStart = async (day: WorkoutDay, extraSeed = 0) => {
     if (!activePlan) return;
 
-    // Load saved swaps
     let savedSwaps: Record<string, { newExerciseId: number; newExerciseName: string; newGifUrl?: string }> = {};
     try {
       const swaps = await db.exerciseSwaps.where('planName').equals(activePlan.name).filter(s => s.dayName === day.name).toArray();
@@ -158,67 +168,58 @@ export default function HomePage() {
       }
     } catch {}
 
-    const exercises = await Promise.all(day.exercises.map(async (ex) => {
-      // Check for saved swap
-      const swap = savedSwaps[ex.exerciseName.toLowerCase()];
-      if (swap) {
-        const swappedEx = await db.exercises.get(swap.newExerciseId);
-        if (swappedEx) {
-          const startingWeight = getWorkoutStartingWeight({
-            equipment: swappedEx.equipment,
-            plannedWeight: ex.weight,
-            barWeight,
-            dumbbellWeight,
-          });
-          return {
-            exerciseId: swappedEx.id || 0,
-            exerciseName: swappedEx.name,
-            imageUrl: getPrimaryExerciseImage(swappedEx),
-            gifUrl: swappedEx.gifUrl || undefined,
-            mediaFrames: getExerciseImageFrames(swappedEx),
-            sets: Array.from({ length: ex.sets }, (_, i) => ({
-              setNumber: i + 1, setType: ex.setType as any, weight: startingWeight,
-              reps: typeof ex.reps === 'number' ? ex.reps : 0, targetWeight: ex.weight || 0,
-              targetReps: typeof ex.reps === 'number' ? ex.reps : 0, isComplete: false,
-            })),
-            targetSets: ex.sets, targetReps: ex.reps, restTime: ex.restTime, isComplete: false,
-          };
-        }
-      }
+    const catalog = allExercises.length > 0 ? allExercises : await db.exercises.toArray();
+    const equip = userEquipment && userEquipment.length > 0 ? userEquipment : [...ALL_EQUIPMENT];
+    const seed = stats.totalWorkouts + day.dayNumber * 2 + extraSeed;
 
-      let dbEx = await db.exercises.where('name').equalsIgnoreCase(ex.exerciseName).first();
-      if (!dbEx) {
-        const keywords = ex.exerciseName.toLowerCase().split(/\s+/).filter(k => k.length > 2);
-        const candidates = await db.exercises.filter(e => {
-          const eName = e.name.toLowerCase();
-          return keywords.every(kw => eName.includes(kw)) || keywords.filter(kw => eName.includes(kw)).length >= Math.max(1, keywords.length - 1);
-        }).limit(5).toArray();
-        if (candidates.length > 0) {
-          dbEx = candidates.sort((a, b) => Math.abs(a.name.length - ex.exerciseName.length) - Math.abs(b.name.length - ex.exerciseName.length))[0];
-        }
-      }
-      const startingWeight = getWorkoutStartingWeight({
-        equipment: dbEx?.equipment,
-        plannedWeight: ex.weight,
-        barWeight,
-        dumbbellWeight,
-      });
-      return {
-        exerciseId: dbEx?.id || 0,
-        exerciseName: dbEx?.name || ex.exerciseName,
-        imageUrl: dbEx ? getPrimaryExerciseImage(dbEx) : undefined,
-        gifUrl: dbEx?.gifUrl || undefined,
-        mediaFrames: dbEx ? getExerciseImageFrames(dbEx) : [],
-        sets: Array.from({ length: ex.sets }, (_, i) => ({
-          setNumber: i + 1, setType: ex.setType as any, weight: startingWeight,
-          reps: typeof ex.reps === 'number' ? ex.reps : 0, targetWeight: ex.weight || 0,
-          targetReps: typeof ex.reps === 'number' ? ex.reps : 0, isComplete: false,
-        })),
-        targetSets: ex.sets, targetReps: ex.reps, restTime: ex.restTime, isComplete: false,
-      };
-    }));
+    const exercises = resolveWorkoutDayExercises({
+      dayExercises: day.exercises,
+      allExercises: catalog,
+      userEquipment: equip,
+      barWeight,
+      dumbbellWeight,
+      savedSwaps,
+      recentExerciseIds,
+      varietySeed: seed,
+      varietyLevel: exerciseVariety || 'medium',
+    });
 
     startWorkout(activePlan.name, day.name, exercises);
+  };
+
+  const handleSurpriseWorkout = async () => {
+    const catalog = allExercises.length > 0 ? allExercises : await db.exercises.toArray();
+    const equip = userEquipment && userEquipment.length > 0 ? userEquipment : [...ALL_EQUIPMENT];
+    const generated = generateSmartWorkout({
+      targetMuscles: ['chest', 'back', 'shoulders', 'quads', 'hamstrings', 'biceps', 'triceps'],
+      exerciseCount: 6,
+      setsPerExercise: 3,
+      repsPerSet: 10,
+      allExercises: catalog,
+      userEquipment: equip,
+      recentExerciseIds,
+      seed: Date.now(),
+    });
+    const dayExercises = generated.map((item, i) => ({
+      exerciseId: 0,
+      exerciseName: item.name,
+      sets: item.sets,
+      reps: item.reps,
+      restTime: 90,
+      setType: 'normal' as any,
+      order: i,
+    }));
+    const exercises = resolveWorkoutDayExercises({
+      dayExercises,
+      allExercises: catalog,
+      userEquipment: equip,
+      barWeight,
+      dumbbellWeight,
+      recentExerciseIds,
+      varietySeed: 0,
+      varietyLevel: 'low',
+    });
+    startWorkout('Smart Mix', 'Full Body Express', exercises);
   };
 
   // Generate heatmap grid (last 16 weeks)
@@ -245,11 +246,21 @@ export default function HomePage() {
   return (
     <div className="page-container">
       {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 500, marginBottom: 4 }}>{greeting()}</div>
-        <h1 className="font-display" style={{ fontSize: 32, fontWeight: 800, letterSpacing: '-0.03em' }}>
-          <span className="gradient-text">{name}</span>
-        </h1>
+      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+        <div>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 500, marginBottom: 4 }}>{greeting()}</div>
+          <h1 className="font-display" style={{ fontSize: 32, fontWeight: 800, letterSpacing: '-0.03em' }}>
+            <span className="gradient-text">{name}</span>
+          </h1>
+        </div>
+        <button
+          onClick={handleSurpriseWorkout}
+          className="btn-secondary"
+          style={{ padding: '10px 14px', borderRadius: 12, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}
+          title="Generate a fresh equipment-matched workout"
+        >
+          <Shuffle size={13} color="var(--accent-purple)" /> Quick Mix
+        </button>
       </motion.div>
 
       {/* Streak Ring + Stats Row */}
@@ -276,7 +287,7 @@ export default function HomePage() {
             {[
               { value: stats.weekWorkouts, label: 'This Week', color: 'var(--accent-purple)' },
               { value: stats.totalWorkouts, label: 'Total', color: 'var(--accent-yellow)' },
-              { value: stats.totalVolume > 1000 ? `${(stats.totalVolume / 1000).toFixed(0)}k` : stats.totalVolume, label: 'Volume kg', color: 'var(--accent-green)' },
+              { value: stats.totalVolume > 1000 ? `${(stats.totalVolume / 1000).toFixed(0)}k` : stats.totalVolume, label: `Volume ${unitSystem === 'metric' ? 'kg' : 'lb'}`, color: 'var(--accent-green)' },
             ].map((stat, i) => (
               <motion.div key={i} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 + i * 0.05 }}
                 style={{ textAlign: 'center' }}>
@@ -291,19 +302,21 @@ export default function HomePage() {
       </motion.div>
 
       {/* Daily Quote */}
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}
-        className="card" style={{ marginBottom: 20, padding: '16px 18px', border: '1px solid var(--border-subtle)', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: 10, right: 14, opacity: 0.06, fontSize: 48 }}>❝</div>
-        <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.55, fontStyle: 'italic', marginBottom: 6, position: 'relative', zIndex: 1 }}>
-          &quot;{todayQuote.text}&quot;
-        </p>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, letterSpacing: 0.5 }}>
-          — {todayQuote.author}
-        </div>
-      </motion.div>
+      {showDailyQuote !== false && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}
+          className="card" style={{ marginBottom: 20, padding: '16px 18px', border: '1px solid var(--border-subtle)', position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', top: 10, right: 14, opacity: 0.06, fontSize: 48 }}>❝</div>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.55, fontStyle: 'italic', marginBottom: 6, position: 'relative', zIndex: 1 }}>
+            &quot;{todayQuote.text}&quot;
+          </p>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, letterSpacing: 0.5 }}>
+            — {todayQuote.author}
+          </div>
+        </motion.div>
+      )}
 
       {/* Last Workout Summary */}
-      {lastWorkout && lastWorkout.isComplete && (
+      {showLastWorkout !== false && lastWorkout && lastWorkout.isComplete && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
           style={{ marginBottom: 20 }}>
           <h2 className="font-display" style={{ fontSize: 16, fontWeight: 700, marginBottom: 10, letterSpacing: '-0.01em', color: 'var(--text-secondary)' }}>Last Workout</h2>
@@ -346,20 +359,37 @@ export default function HomePage() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {activePlanDays.map((day, i) => (
-              <motion.button key={day.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15 + i * 0.04 }}
-                className="card" onClick={() => handleQuickStart(day)}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', width: '100%', textAlign: 'left', border: '1px solid var(--border-subtle)', minHeight: 64 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <motion.div key={day.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15 + i * 0.04 }}
+                className="card"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', border: '1px solid var(--border-subtle)', minHeight: 64, padding: '12px 16px' }}>
+                <button
+                  onClick={() => handleQuickStart(day, 0)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', textAlign: 'left' }}
+                >
                   <div style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--gradient-fire)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14, color: 'white', fontFamily: "'JetBrains Mono'" }}>
                     D{day.dayNumber}
                   </div>
                   <div>
                     <div style={{ fontSize: 15, fontWeight: 700 }}>{day.name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{day.exercises.length} exercises</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{day.exercises.length} exercises • Equipment-filtered</div>
                   </div>
+                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button
+                    onClick={() => handleQuickStart(day, Math.floor(Math.random() * 50) + 1)}
+                    title="Start with varied exercises"
+                    style={{ background: 'var(--bg-glass)', border: '1px solid var(--border-bright)', color: 'var(--text-secondary)', borderRadius: 10, padding: '8px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                  >
+                    <Shuffle size={12} /> Vary
+                  </button>
+                  <button
+                    onClick={() => handleQuickStart(day, 0)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
+                  >
+                    <ChevronRight size={18} />
+                  </button>
                 </div>
-                <ChevronRight size={16} color="var(--text-muted)" />
-              </motion.button>
+              </motion.div>
             ))}
           </div>
         </motion.div>
@@ -400,60 +430,64 @@ export default function HomePage() {
       )}
 
       {/* Workout Heatmap */}
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
-        style={{ marginBottom: 24 }}>
-        <h2 className="font-display" style={{ fontSize: 16, fontWeight: 700, marginBottom: 10, letterSpacing: '-0.01em', color: 'var(--text-secondary)' }}>Activity</h2>
-        <div className="card" style={{ padding: 14, border: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
-          <div style={{ display: 'flex', gap: 3, justifyContent: 'center' }}>
-            {heatmapWeeks.map((week, wi) => (
-              <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                {week.map((day, di) => {
-                  const isToday = day.date === today;
-                  return (
-                    <div key={di} title={`${day.date}: ${day.count} workout${day.count !== 1 ? 's' : ''}`}
-                      style={{
-                        width: 14, height: 14, borderRadius: 3,
-                        background: day.count === 0 ? 'var(--bg-glass)' : day.count === 1 ? 'var(--accent-green)' : day.count >= 2 ? 'var(--accent-red)' : 'var(--accent-yellow)',
-                        opacity: day.count === 0 ? 0.3 : 0.6 + Math.min(day.count * 0.2, 0.4),
-                        border: isToday ? '1.5px solid var(--accent-purple)' : 'none',
-                        boxShadow: isToday ? '0 0 4px var(--glow-purple)' : 'none',
-                      }} />
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
-            <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>16 weeks ago</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>Less</span>
-              {[0.3, 0.5, 0.7, 1].map((o, i) => (
-                <div key={i} style={{ width: 10, height: 10, borderRadius: 2, background: i === 0 ? 'var(--bg-glass)' : 'var(--accent-green)', opacity: o }} />
+      {showActivityHeatmap !== false && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+          style={{ marginBottom: 24 }}>
+          <h2 className="font-display" style={{ fontSize: 16, fontWeight: 700, marginBottom: 10, letterSpacing: '-0.01em', color: 'var(--text-secondary)' }}>Activity</h2>
+          <div className="card" style={{ padding: 14, border: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', gap: 3, justifyContent: 'center' }}>
+              {heatmapWeeks.map((week, wi) => (
+                <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {week.map((day, di) => {
+                    const isToday = day.date === today;
+                    return (
+                      <div key={di} title={`${day.date}: ${day.count} workout${day.count !== 1 ? 's' : ''}`}
+                        style={{
+                          width: 14, height: 14, borderRadius: 3,
+                          background: day.count === 0 ? 'var(--bg-glass)' : day.count === 1 ? 'var(--accent-green)' : day.count >= 2 ? 'var(--accent-red)' : 'var(--accent-yellow)',
+                          opacity: day.count === 0 ? 0.3 : 0.6 + Math.min(day.count * 0.2, 0.4),
+                          border: isToday ? '1.5px solid var(--accent-purple)' : 'none',
+                          boxShadow: isToday ? '0 0 4px var(--glow-purple)' : 'none',
+                        }} />
+                    );
+                  })}
+                </div>
               ))}
-              <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>More</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
+              <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>16 weeks ago</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>Less</span>
+                {[0.3, 0.5, 0.7, 1].map((o, i) => (
+                  <div key={i} style={{ width: 10, height: 10, borderRadius: 2, background: i === 0 ? 'var(--bg-glass)' : 'var(--accent-green)', opacity: o }} />
+                ))}
+                <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>More</span>
+              </div>
             </div>
           </div>
-        </div>
-      </motion.div>
+        </motion.div>
+      )}
 
       {/* Feature Cards */}
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}
-        style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 24 }}>
-        {[
-          { icon: Dumbbell, label: 'Exercises', count: exerciseCount, color: 'var(--accent-red)', tab: 'exercises' as const },
-          { icon: BarChart3, label: 'Progress', count: stats.totalWorkouts, color: 'var(--accent-purple)', tab: 'progress' as const },
-          { icon: Calendar, label: 'Plans', count: '12+', color: 'var(--accent-green)', tab: 'plans' as const },
-          { icon: Star, label: 'Profile', count: '', color: 'var(--accent-yellow)', tab: 'profile' as const },
-        ].map((item, i) => (
-          <motion.button key={i} className="card" onClick={() => setActiveTab(item.tab)}
-            style={{ padding: 16, textAlign: 'left', cursor: 'pointer', width: '100%', border: '1px solid var(--border-subtle)', minHeight: 80 }}
-            whileTap={{ scale: 0.97 }}>
-            <item.icon size={20} color={item.color} style={{ marginBottom: 8 }} />
-            <div style={{ fontSize: 14, fontWeight: 700 }}>{item.label}</div>
-            {item.count && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{item.count} {item.label === 'Exercises' ? 'with GIFs' : item.label === 'Progress' ? 'sessions' : 'programs'}</div>}
-          </motion.button>
-        ))}
-      </motion.div>
+      {showFeatureCards !== false && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}
+          style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 24 }}>
+          {[
+            { icon: Dumbbell, label: 'Exercises', count: exerciseCount, color: 'var(--accent-red)', tab: 'exercises' as const },
+            { icon: BarChart3, label: 'Progress', count: stats.totalWorkouts, color: 'var(--accent-purple)', tab: 'progress' as const },
+            { icon: Calendar, label: 'Plans', count: '16+', color: 'var(--accent-green)', tab: 'plans' as const },
+            { icon: Star, label: 'Profile', count: '', color: 'var(--accent-yellow)', tab: 'profile' as const },
+          ].map((item, i) => (
+            <motion.button key={i} className="card" onClick={() => setActiveTab(item.tab)}
+              style={{ padding: 16, textAlign: 'left', cursor: 'pointer', width: '100%', border: '1px solid var(--border-subtle)', minHeight: 80 }}
+              whileTap={{ scale: 0.97 }}>
+              <item.icon size={20} color={item.color} style={{ marginBottom: 8 }} />
+              <div style={{ fontSize: 14, fontWeight: 700 }}>{item.label}</div>
+              {item.count !== '' && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{item.count} {item.label === 'Exercises' ? 'in catalog' : item.label === 'Progress' ? 'sessions' : 'programs'}</div>}
+            </motion.button>
+          ))}
+        </motion.div>
+      )}
 
       {/* Recent Workouts */}
       {recentSessions.length > 0 && (
@@ -477,7 +511,7 @@ export default function HomePage() {
                 {session.totalVolume > 0 && (
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <div className="font-mono" style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-green)' }}>{session.totalVolume.toLocaleString()}</div>
-                    <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600 }}>KG</div>
+                    <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600 }}>{unitSystem === 'metric' ? 'KG' : 'LB'}</div>
                   </div>
                 )}
               </div>

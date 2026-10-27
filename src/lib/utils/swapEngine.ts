@@ -1,7 +1,8 @@
 import { db } from '@/lib/db/schema';
 import type { Exercise } from '@/lib/types';
+import { matchesUserEquipment, sharesTargetMuscle, normalizeEquipmentName, getMovementStem } from './exerciseResolver';
 
-interface SwapCandidate {
+export interface SwapCandidate {
   exercise: Exercise;
   score: number;
   matchTags: string[];
@@ -11,84 +12,120 @@ interface SwapCandidate {
 export async function getSwapSuggestions(
   originalExercise: Exercise,
   sessionExerciseIds: number[],
-  userEquipment: string[] = []
+  userEquipment: string[] = [],
+  recentExerciseIds: Set<number> = new Set()
 ): Promise<SwapCandidate[]> {
   const allExercises = await db.exercises.toArray();
   const originalMuscles = originalExercise.primaryMuscles?.map(m => m.toLowerCase()) || [];
-  const originalEquipment = (originalExercise.equipment || '').toLowerCase();
+  const originalSecondary = originalExercise.secondaryMuscles?.map(m => m.toLowerCase()) || [];
+  const originalEquipment = normalizeEquipmentName(originalExercise.equipment);
+  const originalStem = getMovementStem(originalExercise.name);
+  const isOriginalStretch = (originalExercise.category || '').toLowerCase() === 'stretching' ||
+    originalExercise.name.toLowerCase().includes('stretch');
 
   const candidates: SwapCandidate[] = [];
+  const seenStems = new Set<string>([originalStem]);
 
   for (const candidate of allExercises) {
     if (candidate.id === originalExercise.id) continue;
 
+    // Strictly enforce user's selected equipment so unselected equipment (e.g. cables) never appears
+    if (userEquipment.length > 0 && !matchesUserEquipment(candidate, userEquipment)) {
+      continue;
+    }
+
+    const candStem = getMovementStem(candidate.name);
+    if (seenStems.has(candStem)) continue;
+
+    const isCandStretch = (candidate.category || '').toLowerCase() === 'stretching' ||
+      candidate.name.toLowerCase().includes('stretch');
+    if (isOriginalStretch !== isCandStretch) continue;
+
     const candidateMuscles = candidate.primaryMuscles?.map(m => m.toLowerCase()) || [];
-    const candidateEquipment = (candidate.equipment || '').toLowerCase();
+    const candidateSecondary = candidate.secondaryMuscles?.map(m => m.toLowerCase()) || [];
+    const candidateEquipment = normalizeEquipmentName(candidate.equipment);
 
-    // Must share at least one primary muscle
-    const sharedMuscles = originalMuscles.filter(m => candidateMuscles.includes(m));
-    if (sharedMuscles.length === 0) continue;
+    // Must share at least one canonical primary or secondary muscle
+    const primaryMatch = sharesTargetMuscle(candidateMuscles, originalMuscles);
+    const secondaryMatch = !primaryMatch && (
+      sharesTargetMuscle(candidateSecondary, originalMuscles) ||
+      sharesTargetMuscle(candidateMuscles, originalSecondary)
+    );
 
-    let score = 50;
+    if (!primaryMatch && !secondaryMatch) continue;
+
+    let score = 45;
     const matchTags: string[] = [];
 
-    // Same primary muscle
-    if (sharedMuscles.length > 0) {
-      score += 30;
+    if (primaryMatch) {
+      score += 35;
       matchTags.push('✓ Same muscle');
-    }
-
-    // Same equipment
-    if (candidateEquipment === originalEquipment) {
-      score += 25;
-      matchTags.push('✓ Same equipment');
-    } else if (userEquipment.length > 0 && userEquipment.some(eq => candidateEquipment.includes(eq.toLowerCase()))) {
-      score += 10;
-      matchTags.push('✓ Available equipment');
-    }
-
-    // Same category
-    if (candidate.category === originalExercise.category) {
+    } else if (secondaryMatch) {
       score += 15;
+      matchTags.push('✓ Secondary muscle');
+    }
+
+    // Equipment affinity (only among equipment the user actually has)
+    if (candidateEquipment === originalEquipment) {
+      score += 22;
+      matchTags.push(`✓ ${candidateEquipment}`);
+    } else {
+      score += 14;
+      matchTags.push(`✓ ${candidateEquipment}`);
+    }
+
+    // Same category / mechanic
+    if (candidate.category === originalExercise.category) {
+      score += 12;
+    }
+    if (candidate.mechanic && candidate.mechanic === originalExercise.mechanic) {
+      score += 8;
     }
 
     // Similar difficulty
     const origDiff = originalExercise.level || 'intermediate';
     const candDiff = candidate.level || 'intermediate';
-    if (origDiff === candDiff) score += 10;
+    if (origDiff === candDiff) score += 8;
 
-    // Penalize if already in session
-    if (sessionExerciseIds.includes(candidate.id!)) {
-      score -= 40;
+    // Prefer exercises with GIF / visual media
+    if (candidate.gifUrl) {
+      score += 10;
+    }
+
+    // Penalize if already in current workout session
+    if (candidate.id && sessionExerciseIds.includes(candidate.id)) {
+      score -= 60;
       matchTags.push('⚠ Already in workout');
     }
 
-    // Bodyweight bonus for "home" alternatives
-    const isBodyweight = candidateEquipment.includes('body weight');
+    // Slight bonus for fresh exercises not done in recent workouts
+    if (candidate.id && !recentExerciseIds.has(candidate.id)) {
+      score += 10;
+      matchTags.push('✨ Fresh variation');
+    }
+
+    const isBodyweight = candidateEquipment === 'body weight';
     if (isBodyweight) matchTags.push('🏠 Bodyweight');
 
-    // Categorize
     let category: SwapCandidate['category'] = 'related';
-    if (sharedMuscles.length > 0 && candidateEquipment === originalEquipment) {
+    if (primaryMatch && candidateEquipment === originalEquipment) {
       category = 'perfect';
-    } else if (sharedMuscles.length > 0) {
+    } else if (primaryMatch && isBodyweight) {
+      category = 'home';
+    } else if (primaryMatch) {
       category = 'good';
     }
-    if (isBodyweight && sharedMuscles.length > 0) {
-      category = 'home';
-    }
 
+    seenStems.add(candStem);
     candidates.push({ exercise: candidate, score, matchTags, category });
   }
 
-  // Sort by score descending
   candidates.sort((a, b) => b.score - a.score);
 
-  // Limit results per category
-  const perfect = candidates.filter(c => c.category === 'perfect').slice(0, 5);
-  const good = candidates.filter(c => c.category === 'good').slice(0, 5);
-  const home = candidates.filter(c => c.category === 'home').slice(0, 4);
-  const related = candidates.filter(c => c.category === 'related').slice(0, 3);
+  const perfect = candidates.filter(c => c.category === 'perfect').slice(0, 6);
+  const good = candidates.filter(c => c.category === 'good').slice(0, 6);
+  const home = candidates.filter(c => c.category === 'home').slice(0, 5);
+  const related = candidates.filter(c => c.category === 'related').slice(0, 4);
 
   return [...perfect, ...good, ...home, ...related];
 }

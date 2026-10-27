@@ -1,8 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { Play } from 'lucide-react';
 import { db } from '@/lib/db/schema';
-import { MUSCLE_COLORS, type WorkoutSession } from '@/lib/types';
+import { useUserStore } from '@/lib/store/userStore';
+import { useWorkoutStore } from '@/lib/store/workoutStore';
+import { ALL_EQUIPMENT, generateSmartWorkout, resolveWorkoutDayExercises } from '@/lib/utils/exerciseResolver';
+import { MUSCLE_COLORS, SetType, type WorkoutSession } from '@/lib/types';
 
 type MuscleHeatmapProps = {
   sessions: WorkoutSession[];
@@ -57,7 +61,6 @@ const BACK_REGIONS: Region[] = [
 ];
 
 const ALL_REGIONS = [...FRONT_REGIONS, ...BACK_REGIONS];
-const BASE_NOW_MS = Date.now();
 
 const muscleAliases: Record<string, string> = {
   abs: 'abdominals',
@@ -268,28 +271,6 @@ function BodyFigure({
           <path d="M86 192 Q78 204 76 224 L74 312 Q74 322 83 322 L95 322 Q100 322 100 314 L100 224 Q99 205 92 192 Z" fill="url(#body-base)" stroke="rgba(255,255,255,0.12)" />
           <path d="M114 192 Q122 204 124 224 L126 312 Q126 322 117 322 L105 322 Q100 322 100 314 L100 224 Q101 205 108 192 Z" fill="url(#body-base)" stroke="rgba(255,255,255,0.12)" />
           <path d="M100 62 L100 188" stroke="rgba(255,255,255,0.12)" strokeWidth="1.2" />
-          {isFront ? (
-            <>
-              <path d="M72 86 Q86 95 100 94" stroke="rgba(255,255,255,0.1)" strokeWidth="1" fill="none" />
-              <path d="M128 86 Q114 95 100 94" stroke="rgba(255,255,255,0.1)" strokeWidth="1" fill="none" />
-              <path d="M88 112 L88 166" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
-              <path d="M112 112 L112 166" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
-              <path d="M86 196 Q82 238 86 282" stroke="rgba(255,255,255,0.08)" strokeWidth="1" fill="none" />
-              <path d="M114 196 Q118 238 114 282" stroke="rgba(255,255,255,0.08)" strokeWidth="1" fill="none" />
-              <path d="M84 286 Q87 298 85 318" stroke="rgba(255,255,255,0.08)" strokeWidth="1" fill="none" />
-              <path d="M116 286 Q113 298 115 318" stroke="rgba(255,255,255,0.08)" strokeWidth="1" fill="none" />
-            </>
-          ) : (
-            <>
-              <path d="M74 90 Q84 102 96 106" stroke="rgba(255,255,255,0.1)" strokeWidth="1" fill="none" />
-              <path d="M126 90 Q116 102 104 106" stroke="rgba(255,255,255,0.1)" strokeWidth="1" fill="none" />
-              <path d="M86 142 Q100 156 114 142" stroke="rgba(255,255,255,0.08)" strokeWidth="1" fill="none" />
-              <path d="M86 214 Q82 248 86 286" stroke="rgba(255,255,255,0.08)" strokeWidth="1" fill="none" />
-              <path d="M114 214 Q118 248 114 286" stroke="rgba(255,255,255,0.08)" strokeWidth="1" fill="none" />
-              <path d="M86 286 Q88 302 86 318" stroke="rgba(255,255,255,0.08)" strokeWidth="1" fill="none" />
-              <path d="M114 286 Q112 302 114 318" stroke="rgba(255,255,255,0.08)" strokeWidth="1" fill="none" />
-            </>
-          )}
           <ellipse cx="100" cy="120" rx="48" ry="82" fill="url(#anatomy-shade)" />
 
           {regions.map(region => {
@@ -316,7 +297,6 @@ function BodyFigure({
             const regionPath = buildMuscleShapePath(region);
             const gradId = `region-grad-${title}-${region.id}`;
             const sheenId = `region-sheen-${title}-${region.id}`;
-            const striationCount = Math.max(2, Math.floor(3 + value * 4));
             return (
               <g key={region.id} style={{ cursor: 'pointer' }} onClick={() => onSelectMuscle(normalizedMuscle)}>
                 <path
@@ -335,27 +315,6 @@ function BodyFigure({
                     transform={`rotate(${rotate} ${cx} ${cy})`}
                   />
                 )}
-                {value > 0.58 && (
-                  <g opacity={0.08 + (value - 0.58) * 0.25}>
-                    {Array.from({ length: striationCount }).map((_, idx) => {
-                      const t = idx / Math.max(1, striationCount - 1);
-                      const y = region.y + region.h * (0.2 + t * 0.6);
-                      const x1 = region.x + region.w * 0.2;
-                      const x2 = region.x + region.w * 0.8;
-                      return (
-                        <path
-                          key={`${region.id}-str-${idx}`}
-                          d={`M ${x1} ${y} Q ${cx} ${y + (idx % 2 === 0 ? -region.h * 0.08 : region.h * 0.08)} ${x2} ${y}`}
-                          stroke={hexToRgba('#ffffff', 0.85)}
-                          strokeWidth={0.8}
-                          fill="none"
-                          strokeLinecap="round"
-                          transform={`rotate(${rotate} ${cx} ${cy})`}
-                        />
-                      );
-                    })}
-                  </g>
-                )}
               </g>
             );
           })}
@@ -366,14 +325,17 @@ function BodyFigure({
 }
 
 export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
+  const { equipment: userEquipment, barWeight, dumbbellWeight, defaultRestTime } = useUserStore();
+  const { startWorkout } = useWorkoutStore();
   const [muscleScores, setMuscleScores] = useState<Record<string, number>>({});
   const [lastTrainedAt, setLastTrainedAt] = useState<Record<string, number>>({});
   const [muscleExerciseScores, setMuscleExerciseScores] = useState<Record<string, Record<string, number>>>({});
   const [range, setRange] = useState<TimeRange>('30d');
   const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);
+
   const filteredSessions = useMemo(() => {
     if (range === 'all') return sessions;
-    const now = BASE_NOW_MS;
+    const now = Date.now();
     const days = range === '7d' ? 7 : 30;
     const threshold = now - days * 24 * 60 * 60 * 1000;
     return sessions.filter(s => new Date(s.startedAt).getTime() >= threshold);
@@ -420,7 +382,6 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
         if (!ex) continue;
 
         const setTimestamp = set.completedAt ? new Date(set.completedAt).getTime() : (sessionDateMap.get(set.sessionId) || Date.now());
-
         const loadFactor = Math.max(1, Math.sqrt(Math.max(1, set.weight * set.reps)) / 3.2);
         const primary = (ex.primaryMuscles || []).map(normalizeMuscleName);
         const secondary = (ex.secondaryMuscles || []).map(normalizeMuscleName);
@@ -482,12 +443,14 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
   }, [normalizedByMuscle]);
 
   const staleMuscles = useMemo(() => {
-    const now = BASE_NOW_MS;
+    const now = Date.now();
     const staleThresholdMs = 9 * 24 * 60 * 60 * 1000;
     const stale = new Set<string>();
-    Object.entries(lastTrainedAt).forEach(([muscle, timestamp]) => {
-      if (now - timestamp > staleThresholdMs) stale.add(muscle);
-    });
+    const allMainMuscles = ['chest', 'shoulders', 'biceps', 'triceps', 'lats', 'middle back', 'quadriceps', 'hamstrings', 'glutes', 'calves', 'abdominals'];
+    for (const m of allMainMuscles) {
+      const ts = lastTrainedAt[m] || 0;
+      if (!ts || now - ts > staleThresholdMs) stale.add(m);
+    }
     return stale;
   }, [lastTrainedAt]);
 
@@ -500,10 +463,44 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
       .slice(0, 5);
   }, [muscleExerciseScores, selectedMuscle]);
 
+  const handleTrainStaleMuscles = async () => {
+    const targets = staleMuscles.size > 0 ? Array.from(staleMuscles).slice(0, 5) : ['chest', 'back', 'shoulders', 'quads'];
+    const allExercises = await db.exercises.toArray();
+    const equip = userEquipment && userEquipment.length > 0 ? userEquipment : [...ALL_EQUIPMENT];
+    const generated = generateSmartWorkout({
+      targetMuscles: targets,
+      exerciseCount: 5,
+      setsPerExercise: 3,
+      repsPerSet: 10,
+      allExercises,
+      userEquipment: equip,
+      seed: Date.now(),
+    });
+    const dayExercises = generated.map((item, i) => ({
+      exerciseId: 0,
+      exerciseName: item.name,
+      sets: item.sets,
+      reps: item.reps,
+      restTime: defaultRestTime || 90,
+      setType: SetType.Normal,
+      order: i,
+    }));
+    const resolved = resolveWorkoutDayExercises({
+      dayExercises,
+      allExercises,
+      userEquipment: equip,
+      barWeight,
+      dumbbellWeight,
+      varietySeed: 0,
+      varietyLevel: 'low',
+    });
+    startWorkout('Recovery & Balance', 'Untrained Muscle Focus', resolved);
+  };
+
   if (!sessions.length) {
     return (
       <div className="empty-state" style={{ padding: 30 }}>
-        <div style={{ fontSize: 36, marginBottom: 8 }}>Heatmap</div>
+        <div style={{ fontSize: 36, marginBottom: 8 }}>🔥</div>
         <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>No workout data yet</h3>
         <p style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.6 }}>
           Complete workouts to reveal a muscle activation map based on your completed sets.
@@ -563,14 +560,21 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
         />
       </div>
 
-      <div className="card" style={{ padding: 12, borderStyle: 'dashed' }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>Recovery Bias Overlay</div>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-          Dashed orange outlines indicate muscles not trained in the last 9 days.
-          {staleMuscles.size > 0 && (
-            <span> Prioritize one of these soon: {Array.from(staleMuscles).slice(0, 6).join(', ')}.</span>
-          )}
+      <div className="card" style={{ padding: 14, borderStyle: 'dashed', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 4 }}>Recovery & Balance Overlay</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            Dashed orange outlines indicate muscles not trained in the last 9 days.
+            {staleMuscles.size > 0 && (
+              <span> Prioritize: <strong style={{ color: 'var(--accent-yellow)', textTransform: 'capitalize' }}>{Array.from(staleMuscles).slice(0, 5).join(', ')}</strong>.</span>
+            )}
+          </div>
         </div>
+        {staleMuscles.size > 0 && (
+          <button onClick={handleTrainStaleMuscles} className="btn-primary" style={{ minHeight: 42, padding: '10px 16px', fontSize: 12, borderRadius: 12 }}>
+            <Play size={14} fill="white" /> Train Untrained Muscles Now
+          </button>
+        )}
       </div>
 
       <div className="card" style={{ padding: 14 }}>
@@ -608,7 +612,7 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
               {selectedMuscleDetails.map((row, idx) => (
                 <div key={row.name} style={{ border: '1px solid var(--border-subtle)', borderRadius: 10, padding: '8px 10px', background: 'var(--bg-glass)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{idx + 1}. {row.name}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', textTransform: 'capitalize' }}>{idx + 1}. {row.name}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{Math.round(row.score * 10) / 10}</div>
                   </div>
                 </div>

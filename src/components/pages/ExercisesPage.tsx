@@ -2,22 +2,29 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Filter, X, Dumbbell, ExternalLink, BookOpen, ChevronDown, Sparkles, Flame, Target } from 'lucide-react';
+import { Search, Filter, X, Dumbbell, ExternalLink, BookOpen, ChevronDown, Sparkles, Flame, Target, Check, Play } from 'lucide-react';
 import { db } from '@/lib/db/schema';
 import type { Exercise } from '@/lib/types';
-import { MUSCLE_COLORS } from '@/lib/types';
+import { MUSCLE_COLORS, SetType } from '@/lib/types';
+import { useUserStore } from '@/lib/store/userStore';
+import { useWorkoutStore } from '@/lib/store/workoutStore';
+import { ALL_EQUIPMENT, matchesUserEquipment, normalizeEquipmentName, sharesTargetMuscle } from '@/lib/utils/exerciseResolver';
+import { getWorkoutStartingWeight } from '@/lib/utils/workoutDefaults';
 import { getYoutubeSearchUrl, getVideoSearchOptions } from '@/lib/data/youtube-ids';
 import ExerciseMedia from '@/components/ui/ExerciseMedia';
-import { hasAnimatedExerciseMedia, getExerciseImageFrames } from '@/lib/utils/exerciseMedia';
+import { hasAnimatedExerciseMedia, getExerciseImageFrames, getPrimaryExerciseImage } from '@/lib/utils/exerciseMedia';
 
-const BODY_PARTS = ['all', 'back', 'chest', 'upper arms', 'lower arms', 'shoulders', 'upper legs', 'lower legs', 'waist', 'cardio', 'neck'];
-const EQUIPMENT_TYPES = ['all', 'barbell', 'dumbbell', 'cable', 'body weight', 'machine', 'leverage machine', 'band', 'kettlebell', 'medicine ball', 'smith machine'];
+const BODY_PARTS = ['all', 'chest', 'back', 'shoulders', 'biceps', 'triceps', 'quads', 'hamstrings', 'glutes', 'calves', 'abs', 'forearms', 'traps', 'cardio'];
+const EQUIPMENT_TYPES = ['all', ...ALL_EQUIPMENT];
 
 export default function ExercisesPage() {
+  const { equipment: userEquipment, barWeight, dumbbellWeight, defaultRestTime } = useUserStore();
+  const { startWorkout } = useWorkoutStore();
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [bodyPartFilter, setBodyPartFilter] = useState('all');
   const [equipmentFilter, setEquipmentFilter] = useState('all');
+  const [onlyMyEquipment, setOnlyMyEquipment] = useState(true);
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
@@ -37,6 +44,11 @@ export default function ExercisesPage() {
 
   const filteredExercises = useMemo(() => {
     let filtered = exercises;
+
+    if (onlyMyEquipment && userEquipment && userEquipment.length > 0) {
+      filtered = filtered.filter(e => matchesUserEquipment(e, userEquipment));
+    }
+
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(e =>
@@ -48,40 +60,80 @@ export default function ExercisesPage() {
     }
     if (bodyPartFilter !== 'all') {
       filtered = filtered.filter(e =>
-        e.primaryMuscles?.some(m => m.toLowerCase().includes(bodyPartFilter)) ||
-        e.secondaryMuscles?.some(m => m.toLowerCase().includes(bodyPartFilter)) ||
-        (e.category && e.category.toLowerCase().includes(bodyPartFilter)) ||
-        (e.equipment && e.equipment.toLowerCase().includes(bodyPartFilter))
+        sharesTargetMuscle(e.primaryMuscles || [], [bodyPartFilter]) ||
+        sharesTargetMuscle(e.secondaryMuscles || [], [bodyPartFilter]) ||
+        (e.category && e.category.toLowerCase().includes(bodyPartFilter))
       );
     }
     if (equipmentFilter !== 'all') {
-      filtered = filtered.filter(e => e.equipment?.toLowerCase().includes(equipmentFilter));
+      filtered = filtered.filter(e => normalizeEquipmentName(e.equipment) === equipmentFilter);
     }
     return filtered;
-  }, [exercises, searchQuery, bodyPartFilter, equipmentFilter]);
+  }, [exercises, searchQuery, bodyPartFilter, equipmentFilter, onlyMyEquipment, userEquipment]);
 
   const handleImgError = useCallback((id: number | undefined) => {
     if (id !== undefined) setImgErrors(prev => new Set(prev).add(id));
   }, []);
 
-  const activeFilters = [bodyPartFilter, equipmentFilter].filter(f => f !== 'all').length;
+  const handleStartWithExercise = (ex: Exercise) => {
+    const startW = getWorkoutStartingWeight({
+      equipment: ex.equipment,
+      barWeight,
+      dumbbellWeight,
+    });
+    setSelectedExercise(null);
+    startWorkout('Single Exercise', ex.name, [
+      {
+        exerciseId: ex.id || 0,
+        exerciseName: ex.name,
+        imageUrl: getPrimaryExerciseImage(ex),
+        gifUrl: ex.gifUrl,
+        mediaFrames: getExerciseImageFrames(ex),
+        sets: Array.from({ length: 4 }, (_, i) => ({
+          setNumber: i + 1,
+          setType: SetType.Normal,
+          weight: startW,
+          reps: 10,
+          targetWeight: startW,
+          targetReps: 10,
+          isComplete: false,
+        })),
+        targetSets: 4,
+        targetReps: 10,
+        restTime: defaultRestTime || 90,
+        isComplete: false,
+      },
+    ]);
+  };
+
+  const activeFilters = [bodyPartFilter, equipmentFilter].filter(f => f !== 'all').length + (onlyMyEquipment ? 1 : 0);
 
   return (
     <div className="page-container">
       {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
-          <div style={{ width: 44, height: 44, borderRadius: 14, background: 'var(--gradient-fire)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 20px var(--glow-red)' }}>
-            <Dumbbell size={22} color="white" />
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 14, background: 'var(--gradient-fire)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 20px var(--glow-red)' }}>
+              <Dumbbell size={22} color="white" />
+            </div>
+            <div>
+              <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.03em' }}>
+                <span className="gradient-text">Exercise Library</span>
+              </h1>
+              <p style={{ color: 'var(--text-muted)', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Sparkles size={10} /> {exercises.length.toLocaleString()} exercises • {filteredExercises.length.toLocaleString()} shown
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.03em' }}>
-              <span className="gradient-text">Exercise Library</span>
-            </h1>
-            <p style={{ color: 'var(--text-muted)', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Sparkles size={10} /> {exercises.length} exercises with animated demos
-            </p>
-          </div>
+          <button
+            onClick={() => setOnlyMyEquipment(!onlyMyEquipment)}
+            className={`filter-chip ${onlyMyEquipment ? 'active' : ''}`}
+            style={{ fontSize: 11, padding: '8px 12px', flexShrink: 0 }}
+            title="Filter by your selected equipment"
+          >
+            {onlyMyEquipment && <Check size={12} />} My Gear ({userEquipment?.length || 0})
+          </button>
         </div>
       </motion.div>
 
@@ -101,7 +153,7 @@ export default function ExercisesPage() {
         </button>
       </motion.div>
 
-      {/* Body part chips */}
+      {/* Muscle / Body part chips */}
       <div className="chip-scroll">
         {BODY_PARTS.map(bp => (
           <button key={bp} className={`filter-chip ${bodyPartFilter === bp ? 'active' : ''}`}
@@ -116,20 +168,28 @@ export default function ExercisesPage() {
         {showFilters && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} style={{ overflow: 'hidden', marginBottom: 12 }}>
             <div className="card" style={{ padding: 14 }}>
-              <div className="section-label" style={{ marginBottom: 8 }}>Equipment</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <div className="section-label">Equipment Filter</div>
+                <button
+                  onClick={() => setOnlyMyEquipment(!onlyMyEquipment)}
+                  style={{ background: 'none', border: 'none', color: onlyMyEquipment ? 'var(--accent-green)' : 'var(--text-muted)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  {onlyMyEquipment ? '✓ Only My Selected Equipment' : 'Showing All Equipment'}
+                </button>
+              </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {EQUIPMENT_TYPES.map(eq => (
                   <button key={eq} className={`filter-chip ${equipmentFilter === eq ? 'active' : ''}`}
                     onClick={() => setEquipmentFilter(equipmentFilter === eq ? 'all' : eq)}
-                    style={{ fontSize: 11, padding: '5px 12px' }}>
+                    style={{ fontSize: 11, padding: '5px 12px', textTransform: 'capitalize' }}>
                     {eq === 'all' ? 'All' : eq}
                   </button>
                 ))}
               </div>
-              {activeFilters > 0 && (
-                <button onClick={() => { setBodyPartFilter('all'); setEquipmentFilter('all'); }}
+              {(bodyPartFilter !== 'all' || equipmentFilter !== 'all' || onlyMyEquipment) && (
+                <button onClick={() => { setBodyPartFilter('all'); setEquipmentFilter('all'); setOnlyMyEquipment(false); }}
                   style={{ marginTop: 10, background: 'none', border: 'none', color: 'var(--accent-red)', fontSize: 12, cursor: 'pointer', fontWeight: 700 }}>
-                  Clear all ×
+                  Clear all filters ×
                 </button>
               )}
             </div>
@@ -140,7 +200,8 @@ export default function ExercisesPage() {
       {/* Results count */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
-          {filteredExercises.length} result{filteredExercises.length !== 1 ? 's' : ''}
+          {filteredExercises.length.toLocaleString()} result{filteredExercises.length !== 1 ? 's' : ''}
+          {onlyMyEquipment && <span style={{ color: 'var(--accent-green)', marginLeft: 6 }}>• Filtered to your equipment</span>}
         </div>
         {searchQuery && (
           <div style={{ fontSize: 11, color: 'var(--accent-purple)', fontWeight: 700 }}>
@@ -186,7 +247,6 @@ export default function ExercisesPage() {
                       <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--accent-green)', display: 'inline-block' }} /> LIVE
                     </div>
                   )}
-                  {/* Gradient overlay */}
                   <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '60%', background: 'linear-gradient(transparent, rgba(7,7,16,0.85))', pointerEvents: 'none', zIndex: 1 }} />
                 </div>
                 <div style={{ padding: '10px 12px 12px' }}>
@@ -220,14 +280,28 @@ export default function ExercisesPage() {
       )}
 
       <AnimatePresence>
-        {selectedExercise && <ExerciseDetailModal exercise={selectedExercise} onClose={() => setSelectedExercise(null)} />}
+        {selectedExercise && (
+          <ExerciseDetailModal
+            exercise={selectedExercise}
+            onClose={() => setSelectedExercise(null)}
+            onStartWorkout={() => handleStartWithExercise(selectedExercise)}
+          />
+        )}
       </AnimatePresence>
     </div>
   );
 }
 
 /* ===== EXERCISE DETAIL MODAL ===== */
-function ExerciseDetailModal({ exercise, onClose }: { exercise: Exercise; onClose: () => void }) {
+function ExerciseDetailModal({
+  exercise,
+  onClose,
+  onStartWorkout,
+}: {
+  exercise: Exercise;
+  onClose: () => void;
+  onStartWorkout: () => void;
+}) {
   const videoOptions = getVideoSearchOptions(exercise.name);
   const ytSearchUrl = getYoutubeSearchUrl(exercise.name);
   const hasMedia = Boolean(exercise.gifUrl) || getExerciseImageFrames(exercise).length > 0;
@@ -239,7 +313,6 @@ function ExerciseDetailModal({ exercise, onClose }: { exercise: Exercise; onClos
         transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()}>
         <div className="modal-handle" />
 
-        {/* GIF Display */}
         {hasMedia ? (
           <div className="gif-container" style={{ marginBottom: 16, position: 'relative' }}>
             <ExerciseMedia
@@ -249,7 +322,6 @@ function ExerciseDetailModal({ exercise, onClose }: { exercise: Exercise; onClos
               alt={exercise.name}
               loading="eager"
             />
-            {/* Live indicator */}
             <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', borderRadius: 8, padding: '4px 10px', fontSize: 10, fontWeight: 700, color: 'var(--accent-green)', display: 'flex', alignItems: 'center', gap: 4, zIndex: 2 }}>
               <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent-green)', animation: 'pulse-dot 2s ease-in-out infinite' }} /> {isAnimated ? 'Animation' : 'Image'}
             </div>
@@ -260,7 +332,6 @@ function ExerciseDetailModal({ exercise, onClose }: { exercise: Exercise; onClos
           </div>
         )}
 
-        {/* YouTube Link */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
           <a href={ytSearchUrl} target="_blank" rel="noopener noreferrer" style={{
             flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -281,10 +352,8 @@ function ExerciseDetailModal({ exercise, onClose }: { exercise: Exercise; onClos
           ))}
         </div>
 
-        {/* Title */}
         <h2 className="font-display" style={{ fontSize: 22, fontWeight: 800, marginBottom: 8, letterSpacing: '-0.02em', textTransform: 'capitalize' }}>{exercise.name}</h2>
 
-        {/* Badges */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
           {(exercise.primaryMuscles || []).map(m => {
             const color = MUSCLE_COLORS[m.toLowerCase()] || '#888';
@@ -305,7 +374,6 @@ function ExerciseDetailModal({ exercise, onClose }: { exercise: Exercise; onClos
           )}
         </div>
 
-        {/* Instructions */}
         {exercise.instructions?.length > 0 && (
           <div style={{ marginBottom: 16 }}>
             <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -322,7 +390,12 @@ function ExerciseDetailModal({ exercise, onClose }: { exercise: Exercise; onClos
           </div>
         )}
 
-        <button onClick={onClose} className="btn-primary" style={{ borderRadius: 'var(--r-md)' }}>Done</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onClose} className="btn-secondary" style={{ flex: 1, borderRadius: 'var(--r-md)' }}>Close</button>
+          <button onClick={onStartWorkout} className="btn-primary" style={{ flex: 2, borderRadius: 'var(--r-md)' }}>
+            <Play size={15} fill="white" /> Start Workout
+          </button>
+        </div>
       </motion.div>
     </motion.div>
   );

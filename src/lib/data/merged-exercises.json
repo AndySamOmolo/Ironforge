@@ -827,7 +827,7 @@
       "cardio"
     ],
     "equipments": [
-      "stationary bike"
+      "machine"
     ],
     "secondaryMuscles": [
       "quadriceps",
@@ -1637,7 +1637,7 @@
       "chest"
     ],
     "equipments": [
-      "body weight"
+      "other"
     ],
     "secondaryMuscles": [
       "triceps",
@@ -4468,7 +4468,7 @@
       "chest"
     ],
     "equipments": [
-      "roller"
+      "foam roll"
     ],
     "secondaryMuscles": [
       "deltoids",
@@ -4747,7 +4747,7 @@
       "chest"
     ],
     "equipments": [
-      "roller"
+      "foam roll"
     ],
     "secondaryMuscles": [
       "deltoids",
@@ -5139,7 +5139,7 @@
       "upper legs"
     ],
     "equipments": [
-      "body weight"
+      "other"
     ],
     "secondaryMuscles": [
       "glutes",
@@ -5208,7 +5208,7 @@
       "upper legs"
     ],
     "equipments": [
-      "sled machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "quadriceps",
@@ -6558,7 +6558,7 @@
       "upper legs"
     ],
     "equipments": [
-      "resistance band"
+      "band"
     ],
     "secondaryMuscles": [
       "hamstrings",
@@ -7375,7 +7375,7 @@
       "lower legs"
     ],
     "equipments": [
-      "sled machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "hamstrings",
@@ -7977,7 +7977,7 @@
       "waist"
     ],
     "equipments": [
-      "roller"
+      "foam roll"
     ],
     "secondaryMuscles": [
       "shoulders",
@@ -8074,7 +8074,7 @@
       "upper legs"
     ],
     "equipments": [
-      "sled machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "quadriceps",
@@ -8200,7 +8200,7 @@
       "upper arms"
     ],
     "equipments": [
-      "resistance band"
+      "band"
     ],
     "secondaryMuscles": [
       "forearms"
@@ -8388,7 +8388,7 @@
       "back"
     ],
     "equipments": [
-      "barbell"
+      "leverage machine"
     ],
     "secondaryMuscles": [
       "biceps",
@@ -8854,7 +8854,7 @@
       "waist"
     ],
     "equipments": [
-      "weighted"
+      "stability ball"
     ],
     "secondaryMuscles": [
       "obliques",
@@ -9167,7 +9167,7 @@
       "waist"
     ],
     "equipments": [
-      "wheel roller"
+      "foam roll"
     ],
     "secondaryMuscles": [
       "lower back",
@@ -10746,7 +10746,7 @@
       "upper legs"
     ],
     "equipments": [
-      "resistance band"
+      "band"
     ],
     "secondaryMuscles": [
       "glutes",
@@ -10927,7 +10927,7 @@
       "lower legs"
     ],
     "equipments": [
-      "sled machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "hamstrings",
@@ -11716,7 +11716,7 @@
       "back"
     ],
     "equipments": [
-      "roller"
+      "foam roll"
     ],
     "secondaryMuscles": [
       "hamstrings",
@@ -11960,7 +11960,7 @@
       "lower legs"
     ],
     "equipments": [
-      "sled machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "hamstrings",
@@ -12209,7 +12209,7 @@
       "lower legs"
     ],
     "equipments": [
-      "sled machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "hamstrings",
@@ -12240,7 +12240,7 @@
       "chest"
     ],
     "equipments": [
-      "assisted"
+      "stability ball"
     ],
     "secondaryMuscles": [
       "shoulders",
@@ -13374,7 +13374,7 @@
       "waist"
     ],
     "equipments": [
-      "weighted"
+      "stability ball"
     ],
     "secondaryMuscles": [
       "obliques",
@@ -15150,7 +15150,7 @@
       "lower legs"
     ],
     "equipments": [
-      "dumbbell"
+      "stability ball"
     ],
     "secondaryMuscles": [
       "quadriceps",
@@ -15786,7 +15786,7 @@
       "cardio"
     ],
     "equipments": [
-      "stepmill machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "quadriceps",
@@ -16760,7 +16760,7 @@
       "waist"
     ],
     "equipments": [
-      "body weight"
+      "other"
     ],
     "secondaryMuscles": [
       "hip flexors"
@@ -16962,7 +16962,7 @@
       "lower legs"
     ],
     "equipments": [
-      "sled machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "hamstrings",
@@ -17462,7 +17462,7 @@
       "upper legs"
     ],
     "equipments": [
-      "sled machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "quadriceps",
@@ -18038,7 +18038,7 @@
       "chest"
     ],
     "equipments": [
-      "resistance band"
+      "band"
     ],
     "secondaryMuscles": [
       "shoulders",
@@ -18160,7 +18160,7 @@
       "upper arms"
     ],
     "equipments": [
-      "medicine ball"
+      "stability ball"
     ],
     "secondaryMuscles": [
       "forearms"
@@ -19645,7 +19645,7 @@
       "upper legs"
     ],
     "equipments": [
-      "sled machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "quadriceps",
@@ -19967,7 +19967,7 @@
       "upper arms"
     ],
     "equipments": [
-      "olympic barbell"
+      "barbell"
     ],
     "secondaryMuscles": [
       "forearms"
@@ -21190,7 +21190,7 @@
       "upper arms"
     ],
     "equipments": [
-      "olympic barbell"
+      "barbell"
     ],
     "secondaryMuscles": [
       "shoulders"
@@ -21752,7 +21752,7 @@
       "upper legs"
     ],
     "equipments": [
-      "sled machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "quadriceps",
@@ -22880,7 +22880,7 @@
       "chest"
     ],
     "equipments": [
-      "upper body ergometer"
+      "machine"
     ],
     "secondaryMuscles": [
       "triceps",
@@ -23936,7 +23936,7 @@
       "upper legs"
     ],
     "equipments": [
-      "resistance band"
+      "band"
     ],
     "secondaryMuscles": [
       "hamstrings"
@@ -25283,7 +25283,7 @@
       "lower legs"
     ],
     "equipments": [
-      "sled machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "hamstrings",
@@ -25686,7 +25686,7 @@
       "lower legs"
     ],
     "equipments": [
-      "dumbbell"
+      "stability ball"
     ],
     "secondaryMuscles": [
       "hamstrings",
@@ -26158,7 +26158,7 @@
       "lower legs"
     ],
     "equipments": [
-      "dumbbell"
+      "stability ball"
     ],
     "secondaryMuscles": [
       "hamstrings",
@@ -27612,7 +27612,7 @@
       "back"
     ],
     "equipments": [
-      "roller"
+      "foam roll"
     ],
     "secondaryMuscles": [
       "shoulders",
@@ -27918,7 +27918,7 @@
       "waist"
     ],
     "equipments": [
-      "body weight"
+      "other"
     ],
     "secondaryMuscles": [
       "obliques",
@@ -28771,7 +28771,7 @@
       "waist"
     ],
     "equipments": [
-      "wheel roller"
+      "foam roll"
     ],
     "secondaryMuscles": [
       "lower back"
@@ -29396,7 +29396,7 @@
       "waist"
     ],
     "equipments": [
-      "roller"
+      "foam roll"
     ],
     "secondaryMuscles": [
       "hip flexors"
@@ -30735,7 +30735,7 @@
       "upper legs"
     ],
     "equipments": [
-      "body weight"
+      "cable"
     ],
     "secondaryMuscles": [
       "glutes",
@@ -31689,7 +31689,7 @@
       "back"
     ],
     "equipments": [
-      "body weight"
+      "other"
     ],
     "secondaryMuscles": [
       "biceps",
@@ -32864,7 +32864,7 @@
       "waist"
     ],
     "equipments": [
-      "weighted"
+      "stability ball"
     ],
     "secondaryMuscles": [
       "obliques",
@@ -33301,7 +33301,7 @@
       "upper legs"
     ],
     "equipments": [
-      "sled machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "quadriceps",
@@ -33333,7 +33333,7 @@
       "upper legs"
     ],
     "equipments": [
-      "sled machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "quadriceps",
@@ -33827,7 +33827,7 @@
       "upper arms"
     ],
     "equipments": [
-      "skierg machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "shoulders",
@@ -34535,7 +34535,7 @@
       "cardio"
     ],
     "equipments": [
-      "elliptical machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "quadriceps",
@@ -35956,7 +35956,7 @@
       "upper legs"
     ],
     "equipments": [
-      "roller"
+      "foam roll"
     ],
     "secondaryMuscles": [
       "hamstrings",
@@ -37518,7 +37518,7 @@
       "lower legs"
     ],
     "equipments": [
-      "sled machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "hamstrings"
@@ -37674,7 +37674,7 @@
       "back"
     ],
     "equipments": [
-      "weighted"
+      "stability ball"
     ],
     "secondaryMuscles": [
       "glutes",
@@ -37892,7 +37892,7 @@
       "upper legs"
     ],
     "equipments": [
-      "roller"
+      "foam roll"
     ],
     "secondaryMuscles": [
       "hamstrings",
@@ -37954,7 +37954,7 @@
       "back"
     ],
     "equipments": [
-      "barbell"
+      "leverage machine"
     ],
     "secondaryMuscles": [
       "biceps",
@@ -38465,7 +38465,7 @@
       "back"
     ],
     "equipments": [
-      "resistance band"
+      "band"
     ],
     "secondaryMuscles": [
       "biceps",
@@ -38653,7 +38653,7 @@
       "upper arms"
     ],
     "equipments": [
-      "dumbbell"
+      "stability ball"
     ],
     "secondaryMuscles": [
       "shoulders"
@@ -40069,7 +40069,7 @@
       "upper legs"
     ],
     "equipments": [
-      "sled machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "quadriceps",
@@ -41268,7 +41268,7 @@
       "shoulders"
     ],
     "equipments": [
-      "resistance band"
+      "band"
     ],
     "secondaryMuscles": [
       "triceps",
@@ -42004,7 +42004,7 @@
       "waist"
     ],
     "equipments": [
-      "body weight"
+      "other"
     ],
     "secondaryMuscles": [
       "obliques",
@@ -42159,7 +42159,7 @@
       "upper legs"
     ],
     "equipments": [
-      "sled machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "quadriceps",
@@ -42620,7 +42620,7 @@
       "lower legs"
     ],
     "equipments": [
-      "sled machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "hamstrings",
@@ -42651,7 +42651,7 @@
       "upper legs"
     ],
     "equipments": [
-      "resistance band"
+      "band"
     ],
     "secondaryMuscles": [
       "hamstrings"
@@ -43163,7 +43163,7 @@
       "upper legs"
     ],
     "equipments": [
-      "resistance band"
+      "band"
     ],
     "secondaryMuscles": [
       "glutes",
@@ -43254,7 +43254,7 @@
       "shoulders"
     ],
     "equipments": [
-      "resistance band"
+      "band"
     ],
     "secondaryMuscles": [
       "triceps",
@@ -43685,7 +43685,7 @@
       "cardio"
     ],
     "equipments": [
-      "elliptical machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "quadriceps",
@@ -44365,7 +44365,7 @@
       "chest"
     ],
     "equipments": [
-      "assisted"
+      "stability ball"
     ],
     "secondaryMuscles": [
       "shoulders",
@@ -45072,7 +45072,7 @@
       "upper legs"
     ],
     "equipments": [
-      "body weight"
+      "cable"
     ],
     "secondaryMuscles": [
       "glutes",
@@ -45478,7 +45478,7 @@
       "upper legs"
     ],
     "equipments": [
-      "sled machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "quadriceps",
@@ -45602,7 +45602,7 @@
       "cardio"
     ],
     "equipments": [
-      "elliptical machine"
+      "machine"
     ],
     "secondaryMuscles": [
       "quadriceps",
@@ -47159,7 +47159,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "glutes",
@@ -47404,7 +47404,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "abdominals",
@@ -47440,7 +47440,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "biceps",
@@ -47478,7 +47478,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "triceps"
@@ -47511,7 +47511,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "biceps",
@@ -47545,7 +47545,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "abdominals",
@@ -47613,7 +47613,7 @@
       "stretching"
     ],
     "equipments": [
-      "other"
+      "foam roll"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -47900,7 +47900,7 @@
       "strength"
     ],
     "equipments": [
-      "bands"
+      "band"
     ],
     "secondaryMuscles": [
       "middle back",
@@ -48005,7 +48005,7 @@
       "strength"
     ],
     "equipments": [
-      "exercise ball"
+      "stability ball"
     ],
     "secondaryMuscles": [
       "calves",
@@ -48041,7 +48041,7 @@
       "powerlifting"
     ],
     "equipments": [
-      "bands"
+      "band"
     ],
     "secondaryMuscles": [
       "glutes",
@@ -48075,7 +48075,7 @@
       "powerlifting"
     ],
     "equipments": [
-      "bands"
+      "band"
     ],
     "secondaryMuscles": [
       "glutes",
@@ -48109,7 +48109,7 @@
       "strength"
     ],
     "equipments": [
-      "bands"
+      "band"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -48143,7 +48143,7 @@
       "strength"
     ],
     "equipments": [
-      "bands"
+      "band"
     ],
     "secondaryMuscles": [
       "middle back",
@@ -48178,7 +48178,7 @@
       "strength"
     ],
     "equipments": [
-      "bands"
+      "band"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -48854,7 +48854,7 @@
       "strength"
     ],
     "equipments": [
-      "bands"
+      "band"
     ],
     "secondaryMuscles": [
       "shoulders",
@@ -49326,7 +49326,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "glutes",
@@ -49501,7 +49501,7 @@
       "strength"
     ],
     "equipments": [
-      "e-z curl bar"
+      "body weight"
     ],
     "secondaryMuscles": [
       "abdominals",
@@ -49538,7 +49538,7 @@
       "strength"
     ],
     "equipments": [
-      "other"
+      "body weight"
     ],
     "secondaryMuscles": [
       "biceps",
@@ -49680,7 +49680,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "biceps",
@@ -49827,7 +49827,8 @@
       "powerlifting"
     ],
     "equipments": [
-      "barbell"
+      "barbell",
+      "band"
     ],
     "secondaryMuscles": [
       "abductors",
@@ -50684,7 +50685,7 @@
       "strength"
     ],
     "equipments": [
-      "bands"
+      "band"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -51298,7 +51299,7 @@
       "stretching"
     ],
     "equipments": [
-      "exercise ball"
+      "stability ball"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -51784,7 +51785,8 @@
       "strength"
     ],
     "equipments": [
-      "e-z curl bar"
+      "ez barbell",
+      "band"
     ],
     "secondaryMuscles": [
       "forearms"
@@ -51819,7 +51821,7 @@
       "strength"
     ],
     "equipments": [
-      "e-z curl bar"
+      "ez barbell"
     ],
     "secondaryMuscles": [
       "chest",
@@ -51855,7 +51857,7 @@
       "strength"
     ],
     "equipments": [
-      "barbell"
+      "ez barbell"
     ],
     "secondaryMuscles": [
       "forearms"
@@ -52106,7 +52108,7 @@
       "strength"
     ],
     "equipments": [
-      "bands"
+      "band"
     ],
     "secondaryMuscles": [
       "biceps",
@@ -52212,7 +52214,7 @@
       "strength"
     ],
     "equipments": [
-      "body weight"
+      "stability ball"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -52351,7 +52353,8 @@
       "powerlifting"
     ],
     "equipments": [
-      "barbell"
+      "barbell",
+      "band"
     ],
     "secondaryMuscles": [
       "forearms",
@@ -52606,7 +52609,7 @@
       "strength"
     ],
     "equipments": [
-      "barbell"
+      "ez barbell"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -52706,7 +52709,7 @@
       "strength"
     ],
     "equipments": [
-      "machine"
+      "smith machine"
     ],
     "secondaryMuscles": [
       "shoulders",
@@ -52957,7 +52960,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "biceps",
@@ -52996,7 +52999,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "calves",
@@ -53035,7 +53038,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "calves",
@@ -53070,7 +53073,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "glutes",
@@ -53105,7 +53108,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "glutes",
@@ -53180,7 +53183,7 @@
       "strength"
     ],
     "equipments": [
-      "exercise ball"
+      "stability ball"
     ],
     "secondaryMuscles": [
       "abdominals",
@@ -53795,7 +53798,7 @@
       "strength"
     ],
     "equipments": [
-      "e-z curl bar"
+      "ez barbell"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -53828,7 +53831,7 @@
       "strength"
     ],
     "equipments": [
-      "e-z curl bar"
+      "ez barbell"
     ],
     "secondaryMuscles": [
       "forearms"
@@ -54035,7 +54038,7 @@
       "strength"
     ],
     "equipments": [
-      "exercise ball"
+      "stability ball"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -54068,7 +54071,7 @@
       "strength"
     ],
     "equipments": [
-      "exercise ball"
+      "stability ball"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -54101,7 +54104,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "shoulders",
@@ -54168,7 +54171,7 @@
       "strength"
     ],
     "equipments": [
-      "bands"
+      "band"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -54577,7 +54580,7 @@
       "stretching"
     ],
     "equipments": [
-      "other"
+      "foam roll"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -55137,7 +55140,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "calves",
@@ -55308,7 +55311,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "calves",
@@ -56022,7 +56025,7 @@
       "strength"
     ],
     "equipments": [
-      "bands"
+      "band"
     ],
     "secondaryMuscles": [
       "hamstrings"
@@ -56056,7 +56059,7 @@
       "strength"
     ],
     "equipments": [
-      "bands"
+      "band"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -56088,7 +56091,7 @@
       "powerlifting"
     ],
     "equipments": [
-      "bands"
+      "band"
     ],
     "secondaryMuscles": [
       "calves",
@@ -56123,7 +56126,7 @@
       "stretching"
     ],
     "equipments": [
-      "exercise ball"
+      "stability ball"
     ],
     "secondaryMuscles": [
       "calves",
@@ -56927,7 +56930,7 @@
       "strength"
     ],
     "equipments": [
-      "bands"
+      "band"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -57349,7 +57352,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "calves",
@@ -57386,7 +57389,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "glutes",
@@ -57420,7 +57423,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "glutes",
@@ -57454,7 +57457,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "abdominals"
@@ -57488,7 +57491,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "abdominals",
@@ -58126,7 +58129,7 @@
       "strength"
     ],
     "equipments": [
-      "bands"
+      "band"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -58188,7 +58191,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "shoulders",
@@ -58979,7 +58982,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "calves",
@@ -59221,7 +59224,7 @@
       "strength"
     ],
     "equipments": [
-      "e-z curl bar"
+      "barbell"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -59722,7 +59725,7 @@
       "strength"
     ],
     "equipments": [
-      "e-z curl bar"
+      "ez barbell"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -60352,7 +60355,7 @@
       "stretching"
     ],
     "equipments": [
-      "other"
+      "foam roll"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -60726,7 +60729,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "glutes",
@@ -60762,7 +60765,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -60796,7 +60799,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "triceps"
@@ -60829,7 +60832,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "calves",
@@ -60865,7 +60868,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "triceps"
@@ -60898,7 +60901,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "triceps"
@@ -60931,7 +60934,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "calves",
@@ -60966,7 +60969,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "biceps",
@@ -60998,7 +61001,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "calves",
@@ -61036,7 +61039,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "glutes",
@@ -61074,7 +61077,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "hamstrings",
@@ -61109,7 +61112,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "calves",
@@ -61212,7 +61215,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "forearms",
@@ -61250,7 +61253,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "calves",
@@ -61751,7 +61754,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "glutes",
@@ -62280,7 +62283,7 @@
       "strength"
     ],
     "equipments": [
-      "exercise ball"
+      "stability ball"
     ],
     "secondaryMuscles": [
       "hamstrings"
@@ -62551,7 +62554,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "shoulders",
@@ -63163,7 +63166,7 @@
       "strength"
     ],
     "equipments": [
-      "exercise ball"
+      "stability ball"
     ],
     "secondaryMuscles": [
       "shoulders",
@@ -63334,7 +63337,7 @@
       "stretching"
     ],
     "equipments": [
-      "exercise ball"
+      "stability ball"
     ],
     "secondaryMuscles": [
       "shoulders"
@@ -63495,7 +63498,8 @@
       "powerlifting"
     ],
     "equipments": [
-      "barbell"
+      "barbell",
+      "band"
     ],
     "secondaryMuscles": [
       "forearms",
@@ -63669,7 +63673,8 @@
       "powerlifting"
     ],
     "equipments": [
-      "barbell"
+      "barbell",
+      "band"
     ],
     "secondaryMuscles": [
       "chest",
@@ -63707,7 +63712,8 @@
       "powerlifting"
     ],
     "equipments": [
-      "barbell"
+      "barbell",
+      "band"
     ],
     "secondaryMuscles": [
       "abductors",
@@ -63747,7 +63753,8 @@
       "powerlifting"
     ],
     "equipments": [
-      "barbell"
+      "barbell",
+      "band"
     ],
     "secondaryMuscles": [
       "abductors",
@@ -63787,7 +63794,8 @@
       "powerlifting"
     ],
     "equipments": [
-      "barbell"
+      "barbell",
+      "band"
     ],
     "secondaryMuscles": [
       "adductors",
@@ -63825,7 +63833,8 @@
       "powerlifting"
     ],
     "equipments": [
-      "barbell"
+      "barbell",
+      "band"
     ],
     "secondaryMuscles": [
       "abductors",
@@ -63901,7 +63910,7 @@
       "strength"
     ],
     "equipments": [
-      "e-z curl bar"
+      "barbell"
     ],
     "secondaryMuscles": [
       "forearms"
@@ -64884,7 +64893,7 @@
       "strength"
     ],
     "equipments": [
-      "other"
+      "band"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -66204,7 +66213,7 @@
       "strength"
     ],
     "equipments": [
-      "bands"
+      "band"
     ],
     "secondaryMuscles": [
       "triceps"
@@ -67457,7 +67466,7 @@
       "strength"
     ],
     "equipments": [
-      "barbell"
+      "smith machine"
     ],
     "secondaryMuscles": [
       "chest"
@@ -67493,7 +67502,7 @@
       "strength"
     ],
     "equipments": [
-      "machine"
+      "smith machine"
     ],
     "secondaryMuscles": [
       "shoulders"
@@ -67528,7 +67537,7 @@
       "strength"
     ],
     "equipments": [
-      "machine"
+      "smith machine"
     ],
     "secondaryMuscles": [
       "shoulders",
@@ -67564,7 +67573,7 @@
       "strength"
     ],
     "equipments": [
-      "machine"
+      "smith machine"
     ],
     "secondaryMuscles": [
       "biceps",
@@ -67602,7 +67611,7 @@
       "strength"
     ],
     "equipments": [
-      "machine"
+      "smith machine"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -67635,7 +67644,7 @@
       "strength"
     ],
     "equipments": [
-      "machine"
+      "smith machine"
     ],
     "secondaryMuscles": [
       "chest",
@@ -67671,7 +67680,7 @@
       "strength"
     ],
     "equipments": [
-      "machine"
+      "smith machine"
     ],
     "secondaryMuscles": [
       "shoulders",
@@ -67707,7 +67716,7 @@
       "strength"
     ],
     "equipments": [
-      "machine"
+      "smith machine"
     ],
     "secondaryMuscles": [
       "glutes",
@@ -67747,7 +67756,7 @@
       "strength"
     ],
     "equipments": [
-      "machine"
+      "smith machine"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -67779,7 +67788,7 @@
       "strength"
     ],
     "equipments": [
-      "machine"
+      "smith machine"
     ],
     "secondaryMuscles": [
       "shoulders",
@@ -67815,7 +67824,7 @@
       "strength"
     ],
     "equipments": [
-      "machine"
+      "smith machine"
     ],
     "secondaryMuscles": [
       "calves",
@@ -67850,7 +67859,7 @@
       "strength"
     ],
     "equipments": [
-      "machine"
+      "smith machine"
     ],
     "secondaryMuscles": [
       "biceps",
@@ -67886,7 +67895,7 @@
       "strength"
     ],
     "equipments": [
-      "machine"
+      "smith machine"
     ],
     "secondaryMuscles": [
       "triceps"
@@ -67921,7 +67930,7 @@
       "strength"
     ],
     "equipments": [
-      "machine"
+      "smith machine"
     ],
     "secondaryMuscles": [
       "calves",
@@ -67958,7 +67967,7 @@
       "strength"
     ],
     "equipments": [
-      "machine"
+      "smith machine"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -67992,7 +68001,7 @@
       "strength"
     ],
     "equipments": [
-      "machine"
+      "smith machine"
     ],
     "secondaryMuscles": [
       "calves",
@@ -68031,7 +68040,7 @@
       "strength"
     ],
     "equipments": [
-      "machine"
+      "smith machine"
     ],
     "secondaryMuscles": [
       "glutes",
@@ -68067,7 +68076,7 @@
       "strength"
     ],
     "equipments": [
-      "machine"
+      "smith machine"
     ],
     "secondaryMuscles": [
       "biceps",
@@ -68298,7 +68307,7 @@
       "strength"
     ],
     "equipments": [
-      "bands"
+      "band"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -68441,7 +68450,7 @@
       "strength"
     ],
     "equipments": [
-      "e-z curl bar"
+      "ez barbell"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -68708,7 +68717,8 @@
       "powerlifting"
     ],
     "equipments": [
-      "barbell"
+      "barbell",
+      "band"
     ],
     "secondaryMuscles": [
       "adductors",
@@ -68826,7 +68836,7 @@
       "strength"
     ],
     "equipments": [
-      "bands"
+      "band"
     ],
     "secondaryMuscles": [
       "calves",
@@ -70855,7 +70865,8 @@
       "powerlifting"
     ],
     "equipments": [
-      "barbell"
+      "barbell",
+      "band"
     ],
     "secondaryMuscles": [
       "adductors",
@@ -71360,7 +71371,7 @@
       "stretching"
     ],
     "equipments": [
-      "exercise ball"
+      "stability ball"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -71650,7 +71661,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "calves",
@@ -71687,7 +71698,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "calves",
@@ -71720,7 +71731,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "triceps"
@@ -71752,7 +71763,7 @@
       "strength"
     ],
     "equipments": [
-      "kettlebells"
+      "kettlebell"
     ],
     "secondaryMuscles": [
       "biceps",
@@ -71924,7 +71935,7 @@
       "strength"
     ],
     "equipments": [
-      "bands"
+      "band"
     ],
     "secondaryMuscles": [
       "shoulders"
@@ -72136,7 +72147,7 @@
       "strength"
     ],
     "equipments": [
-      "exercise ball"
+      "stability ball"
     ],
     "secondaryMuscles": [
       "glutes",
@@ -72172,7 +72183,7 @@
       "strength"
     ],
     "equipments": [
-      "exercise ball"
+      "stability ball"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -72312,7 +72323,7 @@
       "strength"
     ],
     "equipments": [
-      "other"
+      "band"
     ],
     "secondaryMuscles": [],
     "instructions": [
@@ -72920,7 +72931,7 @@
       "cardio"
     ],
     "equipments": [
-      "stationary bike"
+      "machine"
     ],
     "secondaryMuscles": [],
     "instructions": [],

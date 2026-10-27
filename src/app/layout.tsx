@@ -15,7 +15,7 @@ const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jet
 
 export const metadata: Metadata = {
   title: "IronForge — Forge Your Best Self",
-  description: "World-class workout tracker with 870+ exercises, real-time tracking, and intelligent training suggestions.",
+  description: "World-class workout tracker with 2,200+ exercises, real-time tracking, and intelligent training suggestions.",
   manifest: "/manifest.json",
   icons: {
     icon: [
@@ -52,12 +52,28 @@ export default function RootLayout({
   ].join(' ');
 
   // Theme + font + UI settings restore script
-  const restoreScript = `(function(){try{var d=indexedDB.open('IronForgeDB');d.onsuccess=function(e){try{var t=e.target.result.transaction('userProfile','readonly').objectStore('userProfile').getAll();t.onsuccess=function(){var r=t.result&&t.result[0];if(!r)return;if(r.theme&&r.theme!=='dark')document.documentElement.setAttribute('data-theme',r.theme);if(r.font)document.documentElement.setAttribute('data-font',r.font);if(r.fontSize)document.documentElement.setAttribute('data-fontsize',r.fontSize);if(r.compactMode)document.documentElement.setAttribute('data-compact','true');if(r.buttonStyle&&r.buttonStyle!=='default')document.documentElement.setAttribute('data-buttons',r.buttonStyle);if(r.cardStyle&&r.cardStyle!=='glass')document.documentElement.setAttribute('data-cards',r.cardStyle);if(r.borderRadius&&r.borderRadius!=='default')document.documentElement.setAttribute('data-radius',r.borderRadius);if(r.animationLevel&&r.animationLevel!=='normal')document.documentElement.setAttribute('data-anim',r.animationLevel);if(r.navStyle&&r.navStyle!=='default')document.documentElement.setAttribute('data-nav',r.navStyle);if(r.accentIntensity&&r.accentIntensity!=='normal')document.documentElement.setAttribute('data-accent-intensity',r.accentIntensity);if(r.colorMode&&r.colorMode!=='normal')document.documentElement.setAttribute('data-color-mode',r.colorMode);if(r.textShadow)document.documentElement.setAttribute('data-text-shadow','true');if(r.glowIntensity&&r.glowIntensity!=='normal')document.documentElement.setAttribute('data-glow',r.glowIntensity);if(r.borderThickness&&r.borderThickness!=='normal')document.documentElement.setAttribute('data-border-width',r.borderThickness);if(r.glassOpacity&&r.glassOpacity!=='medium')document.documentElement.setAttribute('data-glass-opacity',r.glassOpacity);if(r.contrastMode&&r.contrastMode!=='normal')document.documentElement.setAttribute('data-contrast',r.contrastMode)}}catch(x){}}catch(e){}})()`; 
+  const restoreScript = `(function(){try{var d=indexedDB.open('IronForgeDB');d.onsuccess=function(e){try{var t=e.target.result.transaction('userProfile','readonly').objectStore('userProfile').getAll();t.onsuccess=function(){var r=t.result&&t.result[0];if(!r)return;var h=document.documentElement;if(r.theme&&r.theme!=='dark')h.setAttribute('data-theme',r.theme);if(r.font&&r.font!=='inter')h.setAttribute('data-font',r.font);if(r.fontSize&&r.fontSize!=='normal')h.setAttribute('data-fontsize',r.fontSize);if(r.numberFont&&r.numberFont!=='mono')h.setAttribute('data-num-font',r.numberFont);if(r.headerStyle&&r.headerStyle!=='gradient')h.setAttribute('data-header-style',r.headerStyle);var den=r.density||(r.compactMode?'compact':'normal');if(den&&den!=='normal')h.setAttribute('data-density',den);if(den==='compact')h.setAttribute('data-compact','true');if(r.gridColumns&&r.gridColumns!=='2')h.setAttribute('data-grid-cols',r.gridColumns);if(r.buttonStyle&&r.buttonStyle!=='default')h.setAttribute('data-buttons',r.buttonStyle);if(r.cardStyle&&r.cardStyle!=='glass')h.setAttribute('data-cards',r.cardStyle);if(r.borderRadius&&r.borderRadius!=='default')h.setAttribute('data-radius',r.borderRadius);if(r.animationLevel&&r.animationLevel!=='normal')h.setAttribute('data-anim',r.animationLevel);if(r.navStyle&&r.navStyle!=='default')h.setAttribute('data-nav',r.navStyle);if(r.bgStyle&&r.bgStyle!=='mesh')h.setAttribute('data-bg-style',r.bgStyle);if(r.accentIntensity&&r.accentIntensity!=='normal')h.setAttribute('data-accent-intensity',r.accentIntensity);if(r.colorMode&&r.colorMode!=='normal')h.setAttribute('data-color-mode',r.colorMode);if(r.textShadow)h.setAttribute('data-text-shadow','true');if(r.glowIntensity&&r.glowIntensity!=='normal')h.setAttribute('data-glow',r.glowIntensity);if(r.borderThickness&&r.borderThickness!=='normal')h.setAttribute('data-border-width',r.borderThickness);if(r.glassOpacity&&r.glassOpacity!=='medium')h.setAttribute('data-glass-opacity',r.glassOpacity);if(r.contrastMode&&r.contrastMode!=='normal')h.setAttribute('data-contrast',r.contrastMode)}}catch(x){}}catch(e){}})()`;
 
   return (
     <html lang="en" className={fontVars} suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: restoreScript }} /></head>
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning>
+        {/* SVG Color Vision Filters */}
+        <svg style={{ position: 'absolute', width: 0, height: 0, pointerEvents: 'none' }} aria-hidden="true">
+          <defs>
+            <filter id="protanopia-filter">
+              <feColorMatrix type="matrix" values="0.567, 0.433, 0, 0, 0  0.558, 0.442, 0, 0, 0  0, 0.242, 0.758, 0, 0  0, 0, 0, 1, 0" />
+            </filter>
+            <filter id="deuteranopia-filter">
+              <feColorMatrix type="matrix" values="0.625, 0.375, 0, 0, 0  0.7, 0.3, 0, 0, 0  0, 0.3, 0.7, 0, 0  0, 0, 0, 1, 0" />
+            </filter>
+            <filter id="tritanopia-filter">
+              <feColorMatrix type="matrix" values="0.95, 0.05, 0, 0, 0  0, 0.433, 0.567, 0, 0  0, 0.475, 0.525, 0, 0  0, 0, 0, 1, 0" />
+            </filter>
+          </defs>
+        </svg>
+        {children}
+      </body>
     </html>
   );
 }

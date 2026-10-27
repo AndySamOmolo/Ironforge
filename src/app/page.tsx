@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { seedDatabase } from '@/lib/db/seed';
-import { ensureWorkoutPrograms } from '@/lib/db/seed';
-import { migrateExerciseCatalog, EXERCISE_CATALOG_VERSION } from '@/lib/db/seed';
+import { MotionConfig } from 'framer-motion';
+import { seedDatabase, ensureWorkoutPrograms, migrateExerciseCatalog, EXERCISE_CATALOG_VERSION } from '@/lib/db/seed';
 import { db, resetDB } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
 import { useUIStore } from '@/lib/store/uiStore';
+import { applyAppearanceToDOM } from '@/lib/utils/appearance';
 import HomePage from '@/components/pages/HomePage';
 import ExercisesPage from '@/components/pages/ExercisesPage';
 import PlansPage from '@/components/pages/PlansPage';
@@ -20,8 +20,8 @@ import { useWorkoutStore } from '@/lib/store/workoutStore';
 
 export default function App() {
   const { activeTab, setActiveTab, showSeedingScreen, setShowSeedingScreen, setSeedingProgress } = useUIStore();
-  const { setIsSeeded, setIsLoading, loadFromProfile } = useUserStore();
-  const { isActive: workoutActive, endWorkout } = useWorkoutStore();
+  const { setIsSeeded, setIsLoading, loadFromProfile, animationLevel } = useUserStore();
+  const { isActive: workoutActive, endWorkout, restoreWorkoutIfAny } = useWorkoutStore();
   const [showComplete, setShowComplete] = useState(false);
   const [showExitHint, setShowExitHint] = useState(false);
   const [showCatalogUpdateToast, setShowCatalogUpdateToast] = useState(false);
@@ -40,13 +40,11 @@ export default function App() {
     setSeedingProgress(5, 'Initializing...');
 
     try {
-      // If this is a retry with forceReset, delete the DB and start fresh
       let activeDb = db;
       if (forceReset || attempt > 1) {
         setSeedingProgress(8, 'Resetting database...');
         activeDb = await resetDB();
       } else {
-        // First attempt: just try to open
         try {
           await activeDb.open();
         } catch (openErr) {
@@ -55,12 +53,10 @@ export default function App() {
         }
       }
 
-      // Check if already seeded
       let profiles: any[] = [];
       try {
         profiles = await activeDb.userProfile.toArray();
       } catch {
-        // Table might not be readable yet
         profiles = [];
       }
 
@@ -79,74 +75,56 @@ export default function App() {
           didRunCatalogMigration = true;
         }
 
-        // Already seeded — load profile
         const p = profiles[0];
         loadFromProfile({
-          name: p.name,
-          unitSystem: p.unitSystem,
-          barWeight: p.barWeight,
+          name: p.name ?? 'Athlete',
+          unitSystem: p.unitSystem ?? 'metric',
+          barWeight: p.barWeight ?? 20,
           dumbbellWeight: p.dumbbellWeight ?? 10,
-          equipment: p.equipment,
-          defaultRestTime: p.defaultRestTime,
-          restTimerEnabled: p.restTimerEnabled,
-          soundEnabled: p.soundEnabled,
-          hapticEnabled: p.hapticEnabled,
-          notificationsEnabled: p.notificationsEnabled,
-          theme: p.theme,
+          equipment: p.equipment ?? ['barbell', 'dumbbell', 'cable', 'body weight', 'machine', 'leverage machine'],
+          defaultRestTime: p.defaultRestTime ?? 90,
+          restTimerEnabled: p.restTimerEnabled ?? true,
+          soundEnabled: p.soundEnabled ?? true,
+          hapticEnabled: p.hapticEnabled ?? true,
+          notificationsEnabled: p.notificationsEnabled ?? false,
+          theme: p.theme ?? 'dark',
+          customAccent: p.customAccent ?? 'default',
+          font: p.font ?? 'inter',
+          fontSize: p.fontSize ?? 'normal',
+          numberFont: p.numberFont ?? 'mono',
+          headerStyle: p.headerStyle ?? 'gradient',
+          density: p.density ?? (p.compactMode ? 'compact' : 'normal'),
+          compactMode: Boolean(p.compactMode || p.density === 'compact'),
+          gridColumns: p.gridColumns ?? '2',
+          buttonStyle: p.buttonStyle ?? 'default',
+          cardStyle: p.cardStyle ?? 'glass',
+          borderRadius: p.borderRadius ?? 'default',
+          animationLevel: p.animationLevel ?? 'normal',
+          navStyle: p.navStyle ?? 'default',
+          bgStyle: p.bgStyle ?? 'mesh',
+          accentIntensity: p.accentIntensity ?? 'normal',
+          glowIntensity: p.glowIntensity ?? 'normal',
+          borderThickness: p.borderThickness ?? 'normal',
+          glassOpacity: p.glassOpacity ?? 'medium',
+          contrastMode: p.contrastMode ?? 'normal',
+          colorMode: p.colorMode ?? 'normal',
+          textShadow: Boolean(p.textShadow),
+          weightIncrement: p.weightIncrement ?? 2.5,
+          autoAdvance: p.autoAdvance ?? true,
+          autoStartRest: p.autoStartRest ?? true,
+          keepScreenOn: p.keepScreenOn ?? true,
+          showTimer: p.showTimer ?? true,
+          countdownSound: p.countdownSound ?? true,
+          exerciseVariety: p.exerciseVariety ?? 'medium',
+          showDailyQuote: p.showDailyQuote ?? true,
+          showActivityHeatmap: p.showActivityHeatmap ?? true,
+          showFeatureCards: p.showFeatureCards ?? true,
+          showLastWorkout: p.showLastWorkout ?? true,
           isSeeded: true,
         });
 
-        // Apply saved theme
-        if (p.theme && p.theme !== 'dark' && typeof document !== 'undefined') {
-          document.documentElement.setAttribute('data-theme', p.theme);
-        }
-        // Apply saved font
-        if (p.font && typeof document !== 'undefined') {
-          document.documentElement.setAttribute('data-font', p.font);
-        }
-        if (p.fontSize && typeof document !== 'undefined') {
-          document.documentElement.setAttribute('data-fontsize', p.fontSize);
-        }
-        if (typeof document !== 'undefined') {
-          if (p.compactMode) document.documentElement.setAttribute('data-compact', 'true');
-          else document.documentElement.removeAttribute('data-compact');
-
-          if (p.buttonStyle && p.buttonStyle !== 'default') document.documentElement.setAttribute('data-buttons', p.buttonStyle);
-          else document.documentElement.removeAttribute('data-buttons');
-
-          if (p.cardStyle && p.cardStyle !== 'glass') document.documentElement.setAttribute('data-cards', p.cardStyle);
-          else document.documentElement.removeAttribute('data-cards');
-
-          if (p.borderRadius && p.borderRadius !== 'default') document.documentElement.setAttribute('data-radius', p.borderRadius);
-          else document.documentElement.removeAttribute('data-radius');
-
-          if (p.animationLevel && p.animationLevel !== 'normal') document.documentElement.setAttribute('data-anim', p.animationLevel);
-          else document.documentElement.removeAttribute('data-anim');
-
-          if (p.navStyle && p.navStyle !== 'default') document.documentElement.setAttribute('data-nav', p.navStyle);
-          else document.documentElement.removeAttribute('data-nav');
-
-          if (p.accentIntensity && p.accentIntensity !== 'normal') document.documentElement.setAttribute('data-accent-intensity', p.accentIntensity);
-          else document.documentElement.removeAttribute('data-accent-intensity');
-
-          if (p.colorMode && p.colorMode !== 'normal') document.documentElement.setAttribute('data-color-mode', p.colorMode);
-          else document.documentElement.removeAttribute('data-color-mode');
-
-          if (p.textShadow) document.documentElement.setAttribute('data-text-shadow', 'true');
-          else document.documentElement.removeAttribute('data-text-shadow');
-
-          if (p.glowIntensity && p.glowIntensity !== 'normal') document.documentElement.setAttribute('data-glow', p.glowIntensity);
-          else document.documentElement.removeAttribute('data-glow');
-
-          if (p.borderThickness && p.borderThickness !== 'normal') document.documentElement.setAttribute('data-border-width', p.borderThickness);
-          else document.documentElement.removeAttribute('data-border-width');
-
-          if (p.glassOpacity && p.glassOpacity !== 'medium') document.documentElement.setAttribute('data-glass-opacity', p.glassOpacity);
-          else document.documentElement.removeAttribute('data-glass-opacity');
-
-          if (p.contrastMode && p.contrastMode !== 'normal') document.documentElement.setAttribute('data-contrast', p.contrastMode);
-          else document.documentElement.removeAttribute('data-contrast');
-        }
+        applyAppearanceToDOM(p);
+        restoreWorkoutIfAny();
 
         setSeedingProgress(100, 'Ready!');
         await ensureWorkoutPrograms();
@@ -167,10 +145,10 @@ export default function App() {
 
       setIsSeeded(true);
       setSeedingProgress(100, 'Setup complete!');
-      
-      // Small delay so user sees completion
+      restoreWorkoutIfAny();
+
       await new Promise(r => setTimeout(r, 400));
-      
+
       setShowSeedingScreen(false);
       setIsLoading(false);
       setIsInitialized(true);
@@ -182,7 +160,7 @@ export default function App() {
       setIsInitialized(true);
       setInitError(`Database setup failed: ${message.slice(0, 80)}`);
     }
-  }, [loadFromProfile, setIsLoading, setIsSeeded, setShowSeedingScreen, setSeedingProgress]);
+  }, [loadFromProfile, restoreWorkoutIfAny, setIsLoading, setIsSeeded, setShowSeedingScreen, setSeedingProgress]);
 
   useEffect(() => {
     doInit(false);
@@ -288,22 +266,12 @@ export default function App() {
     setActiveTab('home');
   }, [setActiveTab]);
 
-  // Show seeding screen while initializing
   if ((showSeedingScreen || !isInitialized) && !initError) {
     return <SeedingScreen onRetry={() => doInit(true)} />;
   }
 
-  // Show error state with proper retry
   if (initError && !isInitialized) {
     return <SeedingScreen onRetry={() => doInit(true)} error={initError} />;
-  }
-
-  if (showComplete) {
-    return <WorkoutCompletePage onFinish={handleFinishComplete} />;
-  }
-
-  if (workoutActive) {
-    return <ActiveWorkoutPage onComplete={handleWorkoutComplete} />;
   }
 
   const renderPage = () => {
@@ -318,33 +286,41 @@ export default function App() {
   };
 
   return (
-    <>
-      {initError && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 200,
-          background: 'rgba(255,61,90,0.12)', backdropFilter: 'blur(8px)',
-          padding: '12px 16px', display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between', borderBottom: '1px solid rgba(255,61,90,0.2)',
-        }}>
-          <span style={{ fontSize: 12, color: 'var(--accent-red)', fontWeight: 600, flex: 1, marginRight: 10 }}>{initError}</span>
-          <button onClick={() => doInit(true)} style={{
-            background: 'var(--gradient-fire)', border: 'none', color: 'white',
-            padding: '8px 18px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-          }}>Reset & Retry</button>
-        </div>
+    <MotionConfig reducedMotion={animationLevel === 'none' ? 'always' : 'never'}>
+      {showComplete ? (
+        <WorkoutCompletePage onFinish={handleFinishComplete} />
+      ) : workoutActive ? (
+        <ActiveWorkoutPage onComplete={handleWorkoutComplete} />
+      ) : (
+        <>
+          {initError && (
+            <div style={{
+              position: 'fixed', top: 0, left: 0, right: 0, zIndex: 200,
+              background: 'rgba(255,61,90,0.12)', backdropFilter: 'blur(8px)',
+              padding: '12px 16px', display: 'flex', alignItems: 'center',
+              justifyContent: 'space-between', borderBottom: '1px solid rgba(255,61,90,0.2)',
+            }}>
+              <span style={{ fontSize: 12, color: 'var(--accent-red)', fontWeight: 600, flex: 1, marginRight: 10 }}>{initError}</span>
+              <button onClick={() => doInit(true)} style={{
+                background: 'var(--gradient-fire)', border: 'none', color: 'white',
+                padding: '8px 18px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+              }}>Reset & Retry</button>
+            </div>
+          )}
+          {showExitHint && (
+            <div className="app-inline-toast app-inline-toast--neutral">
+              Press back again to exit
+            </div>
+          )}
+          {showCatalogUpdateToast && (
+            <div className="app-inline-toast app-inline-toast--success">
+              Exercise catalog updated: equipment filtering and variety improved!
+            </div>
+          )}
+          {renderPage()}
+          <BottomNav />
+        </>
       )}
-      {showExitHint && (
-        <div className="app-inline-toast app-inline-toast--neutral">
-          Press back again to exit
-        </div>
-      )}
-      {showCatalogUpdateToast && (
-        <div className="app-inline-toast app-inline-toast--success">
-          Exercise catalog updated: new movements and improved GIFs available.
-        </div>
-      )}
-      {renderPage()}
-      <BottomNav />
-    </>
+    </MotionConfig>
   );
 }

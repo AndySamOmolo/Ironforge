@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BarChart3, Calendar, Clock, Dumbbell, TrendingUp, Trophy, Target, Zap, History, ChevronDown, ChevronRight, Trash2, X, Flame } from 'lucide-react';
+import { BarChart3, Calendar, Clock, Dumbbell, TrendingUp, Trophy, Target, Zap, History, ChevronDown, ChevronRight, Trash2, Flame, Star } from 'lucide-react';
 import { db } from '@/lib/db/schema';
-import type { WorkoutSession, PersonalRecord, WorkoutSet } from '@/lib/types';
+import { useUserStore } from '@/lib/store/userStore';
+import type { WorkoutSession, PersonalRecord } from '@/lib/types';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid, AreaChart, Area, LineChart, Line } from 'recharts';
 import MuscleHeatmap from '@/components/ui/MuscleHeatmap';
 
@@ -12,10 +13,12 @@ type TabId = 'overview' | 'strength' | 'records' | 'body' | 'history';
 
 interface SessionDetail {
   session: WorkoutSession;
-  exercises: { name: string; sets: { weight: number; reps: number; setNumber: number }[] }[];
+  exercises: { name: string; sets: { weight: number; reps: number; setNumber: number; isPR?: boolean }[] }[];
 }
 
 export default function ProgressPage() {
+  const { unitSystem } = useUserStore();
+  const unitLabel = unitSystem === 'metric' ? 'kg' : 'lbs';
   const [sessions, setSessions] = useState<WorkoutSession[]>([]);
   const [prs, setPrs] = useState<PersonalRecord[]>([]);
   const [tab, setTab] = useState<TabId>('overview');
@@ -27,7 +30,7 @@ export default function ProgressPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [exerciseChartId, setExerciseChartId] = useState<number | null>(null);
   const [exerciseChartData, setExerciseChartData] = useState<{ date: string; weight: number; volume: number }[]>([]);
-  const [allExerciseNames, setAllExerciseNames] = useState<{ id: number; name: string }[]>([]);
+  const [loggedExercises, setLoggedExercises] = useState<{ id: number; name: string; count: number }[]>([]);
   const PAGE_SIZE = 15;
 
   useEffect(() => { loadData(); }, []);
@@ -37,14 +40,27 @@ export default function ProgressPage() {
     setSessions(allSessions.filter(s => s.isComplete));
     const allPRs = await db.personalRecords.orderBy('date').reverse().toArray();
     setPrs(allPRs);
-    // Load exercise names for the strength chart picker
+
     try {
-      const exercises = await db.exercises.orderBy('name').toArray();
-      setAllExerciseNames(exercises.filter(e => e.id != null).map(e => ({ id: e.id!, name: e.name })));
+      const [allSets, exercises] = await Promise.all([
+        db.sets.toArray(),
+        db.exercises.toArray(),
+      ]);
+      const countByEx = new Map<number, number>();
+      for (const s of allSets) {
+        if (s.exerciseId) countByEx.set(s.exerciseId, (countByEx.get(s.exerciseId) || 0) + 1);
+      }
+      const exList = exercises
+        .filter(e => e.id != null)
+        .map(e => ({ id: e.id!, name: e.name, count: countByEx.get(e.id!) || 0 }))
+        .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+      setLoggedExercises(exList.slice(0, 150));
+      if (exList.length > 0 && exList[0].count > 0 && !exerciseChartId) {
+        loadExerciseChart(exList[0].id);
+      }
     } catch {}
   };
 
-  // Load session detail when expanded
   const loadSessionDetail = useCallback(async (session: WorkoutSession) => {
     if (!session.id) return;
     try {
@@ -53,17 +69,16 @@ export default function ProgressPage() {
       const exercises = await db.exercises.where('id').anyOf(exerciseIds).toArray();
       const exMap = new Map(exercises.map(e => [e.id!, e.name]));
 
-      const grouped: Record<number, { name: string; sets: { weight: number; reps: number; setNumber: number }[] }> = {};
+      const grouped: Record<number, { name: string; sets: { weight: number; reps: number; setNumber: number; isPR?: boolean }[] }> = {};
       sets.forEach(s => {
-        if (!grouped[s.exerciseId]) grouped[s.exerciseId] = { name: exMap.get(s.exerciseId) || 'Unknown', sets: [] };
-        grouped[s.exerciseId].sets.push({ weight: s.weight, reps: s.reps, setNumber: s.setNumber });
+        if (!grouped[s.exerciseId]) grouped[s.exerciseId] = { name: exMap.get(s.exerciseId) || 'Exercise', sets: [] };
+        grouped[s.exerciseId].sets.push({ weight: s.weight, reps: s.reps, setNumber: s.setNumber, isPR: s.isPR });
       });
       Object.values(grouped).forEach(g => g.sets.sort((a, b) => a.setNumber - b.setNumber));
       setSessionDetail({ session, exercises: Object.values(grouped) });
     } catch { setSessionDetail(null); }
   }, []);
 
-  // Load exercise chart data
   const loadExerciseChart = useCallback(async (exerciseId: number) => {
     try {
       const sets = await db.sets.where('exerciseId').equals(exerciseId).toArray();
@@ -114,7 +129,6 @@ export default function ProgressPage() {
     return filteredHistory.slice(0, (historyPage + 1) * PAGE_SIZE);
   }, [filteredHistory, historyPage]);
 
-  // Calendar data
   const calendarData = useMemo(() => {
     const map = new Map<string, number>();
     sessions.forEach(s => {
@@ -141,7 +155,6 @@ export default function ProgressPage() {
     return weeks;
   }, [calendarData]);
 
-  // Weekly stats for history header
   const weekStats = useMemo(() => {
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const weekSessions = sessions.filter(s => new Date(s.startedAt) >= weekAgo);
@@ -152,7 +165,6 @@ export default function ProgressPage() {
     };
   }, [sessions]);
 
-  // Streak calculation
   const { currentStreak, longestStreak } = useMemo(() => {
     const dates = new Set(sessions.map(s => new Date(s.startedAt).toDateString()));
     let current = 0;
@@ -204,7 +216,7 @@ export default function ProgressPage() {
   const fmtVol = (v: number) => v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toString();
   const fmtDur = (s: number) => { const m = Math.floor(s / 60); return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`; };
 
-  const selectedExerciseName = allExerciseNames.find(e => e.id === exerciseChartId)?.name || '';
+  const selectedExerciseName = loggedExercises.find(e => e.id === exerciseChartId)?.name || '';
 
   return (
     <div className="page-container">
@@ -216,12 +228,12 @@ export default function ProgressPage() {
           </div>
           <div>
             <h1 style={{ fontSize: 24, fontWeight: 800 }}>Progress</h1>
-            <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>Track your journey</p>
+            <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>Track your strength, records & muscle recovery</p>
           </div>
         </div>
       </motion.div>
 
-      {/* Tabs — scrollable */}
+      {/* Tabs */}
       <div className="chip-scroll" style={{ marginBottom: 16, paddingBottom: 4 }}>
         {([
           { id: 'overview' as const, label: 'Overview', icon: BarChart3 },
@@ -260,9 +272,8 @@ export default function ProgressPage() {
             ))}
           </div>
 
-          {/* Weekly Volume Chart */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="card" style={{ marginBottom: 16, padding: 18 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Weekly Volume (kg)</h3>
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Weekly Volume ({unitLabel})</h3>
             <div style={{ height: 180 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={getWeeklyData()} barSize={24}>
@@ -277,7 +288,6 @@ export default function ProgressPage() {
             </div>
           </motion.div>
 
-          {/* Volume Trend */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="card" style={{ marginBottom: 16, padding: 18 }}>
             <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Volume Trend (8 weeks)</h3>
             <div style={{ height: 150 }}>
@@ -297,7 +307,7 @@ export default function ProgressPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
             <div className="stat-card" style={{ borderLeft: '3px solid var(--accent-red)' }}>
               <div className="stat-label">Total Volume</div>
-              <div className="stat-value" style={{ color: 'var(--accent-red)' }}>{fmtVol(totalVolume)} <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>kg</span></div>
+              <div className="stat-value" style={{ color: 'var(--accent-red)' }}>{fmtVol(totalVolume)} <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{unitLabel}</span></div>
             </div>
             <div className="stat-card" style={{ borderLeft: '3px solid var(--accent-yellow)' }}>
               <div className="stat-label">Personal Records</div>
@@ -310,7 +320,6 @@ export default function ProgressPage() {
       {/* ════════ HISTORY ════════ */}
       {tab === 'history' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          {/* Week summary */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14 }}>
             <div className="stat-card" style={{ textAlign: 'center', padding: 10 }}>
               <div className="stat-value" style={{ fontSize: 18, color: 'var(--accent-green)' }}>{weekStats.count}</div>
@@ -326,7 +335,6 @@ export default function ProgressPage() {
             </div>
           </div>
 
-          {/* Filter + view toggle */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8 }}>
             <div style={{ display: 'flex', gap: 4 }}>
               {(['all', 'month', 'week'] as const).map(f => (
@@ -344,7 +352,6 @@ export default function ProgressPage() {
             </button>
           </div>
 
-          {/* Calendar view */}
           {calendarView && (
             <div className="card" style={{ padding: 14, marginBottom: 14 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8 }}>Last 12 Weeks</div>
@@ -370,7 +377,6 @@ export default function ProgressPage() {
             </div>
           )}
 
-          {/* Session list */}
           {paginatedHistory.length === 0 ? (
             <div className="empty-state">
               <History size={48} color="var(--text-muted)" />
@@ -394,8 +400,13 @@ export default function ProgressPage() {
                         <Dumbbell size={16} color="var(--accent-green)" />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 14, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {s.dayName || s.planName || 'Workout'}
+                        <div style={{ fontSize: 14, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span>{s.dayName || s.planName || 'Workout'}</span>
+                          {s.rating && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 10, color: 'var(--accent-yellow)' }}>
+                              <Star size={10} fill="#FBBF24" color="#FBBF24" /> {s.rating}
+                            </span>
+                          )}
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                           {new Date(s.startedAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
@@ -403,24 +414,22 @@ export default function ProgressPage() {
                         </div>
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div className="font-mono" style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-green)' }}>{fmtVol(s.totalVolume)}kg</div>
+                        <div className="font-mono" style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-green)' }}>{fmtVol(s.totalVolume)}{unitLabel}</div>
                         <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{s.totalSets} sets</div>
                       </div>
                       {isExpanded ? <ChevronDown size={14} color="var(--text-muted)" /> : <ChevronRight size={14} color="var(--text-muted)" />}
                     </button>
 
-                    {/* Expanded detail */}
                     <AnimatePresence>
                       {isExpanded && sessionDetail?.session.id === s.id && (
                         <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
                           style={{ overflow: 'hidden', borderTop: '1px solid var(--border-subtle)', marginTop: 12, paddingTop: 12 }}>
-                          {/* Stats row */}
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 12 }}>
                             {[
                               { v: fmtDur(s.duration), l: 'Duration' },
                               { v: s.totalSets, l: 'Sets' },
                               { v: s.totalReps, l: 'Reps' },
-                              { v: `${fmtVol(s.totalVolume)}`, l: 'Volume' },
+                              { v: `${fmtVol(s.totalVolume)}${unitLabel}`, l: 'Volume' },
                             ].map((st, i) => (
                               <div key={i} style={{ textAlign: 'center', padding: 6, background: 'var(--bg-glass)', borderRadius: 8 }}>
                                 <div className="font-mono" style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-green)' }}>{st.v}</div>
@@ -429,26 +438,31 @@ export default function ProgressPage() {
                             ))}
                           </div>
 
-                          {/* Exercise breakdown */}
+                          {s.notes && (
+                            <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-glass)', padding: '8px 10px', borderRadius: 8, marginBottom: 10, fontStyle: 'italic' }}>
+                              📝 {s.notes}
+                            </div>
+                          )}
+
                           {sessionDetail?.exercises.map((ex, ei) => (
                             <div key={ei} style={{ marginBottom: 10 }}>
-                              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4, color: 'var(--text-secondary)' }}>{ex.name}</div>
+                              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4, color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{ex.name}</div>
                               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                                 {ex.sets.map((set, si) => (
                                   <div key={si} style={{
                                     padding: '4px 8px', background: 'var(--bg-elevated)', borderRadius: 6,
-                                    border: '1px solid var(--border-subtle)', fontSize: 11, fontWeight: 600,
+                                    border: set.isPR ? '1px solid var(--accent-yellow)' : '1px solid var(--border-subtle)', fontSize: 11, fontWeight: 600,
                                   }}>
-                                    <span style={{ color: 'var(--accent-purple)' }}>{set.weight}kg</span>
+                                    <span style={{ color: 'var(--accent-purple)' }}>{set.weight}{unitLabel}</span>
                                     <span style={{ color: 'var(--text-muted)' }}> × </span>
                                     <span style={{ color: 'var(--accent-green)' }}>{set.reps}</span>
+                                    {set.isPR && <span style={{ marginLeft: 4 }}>🏆</span>}
                                   </div>
                                 ))}
                               </div>
                             </div>
                           ))}
 
-                          {/* Delete button */}
                           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
                             {deleteConfirm === s.id ? (
                               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -469,7 +483,6 @@ export default function ProgressPage() {
                 );
               })}
 
-              {/* Load more */}
               {paginatedHistory.length < filteredHistory.length && (
                 <button onClick={() => setHistoryPage(p => p + 1)} className="btn-secondary"
                   style={{ minHeight: 44, borderRadius: 12, fontSize: 13, fontWeight: 700 }}>
@@ -484,21 +497,22 @@ export default function ProgressPage() {
       {/* ════════ STRENGTH ════════ */}
       {tab === 'strength' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          {/* Exercise strength chart */}
           <div className="card" style={{ marginBottom: 16, padding: 16 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Exercise Progress</h3>
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Exercise Strength Progression</h3>
             <select onChange={(e) => { const id = parseInt(e.target.value); if (id) loadExerciseChart(id); }}
               value={exerciseChartId || ''}
               style={{ width: '100%', padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 13, marginBottom: 12, outline: 'none' }}>
               <option value="">Select an exercise...</option>
-              {allExerciseNames.slice(0, 100).map(ex => (
-                <option key={ex.id} value={ex.id}>{ex.name}</option>
+              {loggedExercises.map(ex => (
+                <option key={ex.id} value={ex.id}>
+                  {ex.name} {ex.count > 0 ? `(${ex.count} sets logged)` : ''}
+                </option>
               ))}
             </select>
 
             {exerciseChartData.length > 1 && (
               <>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>Max Weight — {selectedExerciseName}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8, textTransform: 'capitalize' }}>Max Weight ({unitLabel}) — {selectedExerciseName}</div>
                 <div style={{ height: 180 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={exerciseChartData}>
@@ -515,12 +529,11 @@ export default function ProgressPage() {
 
             {exerciseChartData.length <= 1 && exerciseChartId && (
               <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>
-                Need at least 2 sessions with this exercise to show a chart.
+                Log at least 2 sessions with this exercise to display a trend line.
               </div>
             )}
           </div>
 
-          {/* Recent sessions list */}
           <div className="card hero-gradient" style={{ marginBottom: 16, padding: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
               <Zap size={16} color="var(--accent-yellow)" />
@@ -539,10 +552,10 @@ export default function ProgressPage() {
                       <Dumbbell size={14} color="var(--accent-red)" />
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.planName || s.dayName || 'Workout'}</div>
+                      <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.dayName || s.planName || 'Workout'}</div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(s.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
                     </div>
-                    <div className="font-mono" style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-green)' }}>{fmtVol(s.totalVolume)}kg</div>
+                    <div className="font-mono" style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-green)' }}>{fmtVol(s.totalVolume)}{unitLabel}</div>
                   </div>
                 ))}
               </div>
@@ -559,7 +572,7 @@ export default function ProgressPage() {
               <Trophy size={48} color="var(--accent-yellow)" />
               <h3 style={{ fontSize: 18, fontWeight: 700 }}>No PRs yet</h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1.6 }}>
-                Personal records are automatically tracked when you beat your previous best.
+                Personal records are automatically tracked and saved when you beat your previous best during a workout.
               </p>
             </div>
           ) : (
@@ -575,12 +588,12 @@ export default function ProgressPage() {
                     <Trophy size={18} color="var(--accent-yellow)" />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14 }}>{pr.exerciseName}</div>
+                    <div style={{ fontWeight: 700, fontSize: 14, textTransform: 'capitalize' }}>{pr.exerciseName}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{new Date(pr.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div className="font-mono" style={{ fontSize: 16, fontWeight: 800, color: 'var(--accent-yellow)' }}>{pr.weight}kg × {pr.reps}</div>
-                    <div style={{ fontSize: 11, color: 'var(--accent-orange)' }}>1RM: {Math.round(pr.estimated1RM)}kg</div>
+                    <div className="font-mono" style={{ fontSize: 16, fontWeight: 800, color: 'var(--accent-yellow)' }}>{pr.weight}{unitLabel} × {pr.reps}</div>
+                    <div style={{ fontSize: 11, color: 'var(--accent-orange)' }}>Est 1RM: {Math.round(pr.estimated1RM)}{unitLabel}</div>
                   </div>
                 </motion.div>
               ))}
