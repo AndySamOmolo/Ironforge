@@ -1,0 +1,119 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+    paths-ignore:
+      - 'IronForge.apk'
+      - 'IronForge-debug.apk'
+      - 'IronForge-release-unsigned.apk'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    name: Build IronForge Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Set up Java JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK Licenses & Install Platform 36
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" || true
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Node dependencies
+        run: npm ci || npm install
+
+      - name: Merge exercise dataset & copy local assets
+        run: npm run merge:exercise-data
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Build Next.js static export
+        run: npm run build
+
+      - name: Sync web assets to Capacitor Android
+        run: npx cap sync android
+
+      - name: Grant execute permission for Gradlew
+        run: chmod +x android/gradlew
+
+      - name: Build Debug APK
+        working-directory: ./android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Build Release APK (Unsigned)
+        working-directory: ./android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Copy APK to root directory
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk ./IronForge.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk ./IronForge-debug.apk
+          if [ -f android/app/build/outputs/apk/release/app-release-unsigned.apk ]; then
+            cp android/app/build/outputs/apk/release/app-release-unsigned.apk ./IronForge-release-unsigned.apk
+          fi
+          ls -lh ./IronForge*.apk
+
+      - name: Upload Root APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: IronForge-apk
+          path: |
+            ./IronForge.apk
+            ./IronForge-debug.apk
+            ./IronForge-release-unsigned.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Commit & Push APK to root directory
+        if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/')
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f IronForge.apk
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: update built IronForge.apk in root directory [skip ci]"
+            git push origin HEAD:${GITHUB_REF_NAME}
+          else
+            echo "IronForge.apk is already up to date."
+          fi
+
+      - name: Publish APK to GitHub Release (on tag push)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ./IronForge.apk
+            ./IronForge-debug.apk
+            ./IronForge-release-unsigned.apk
+          generate_release_notes: true
