@@ -10,7 +10,7 @@ import {
 import { useReminderStore } from '@/lib/store/reminderStore';
 import { db } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
-import type { BodyWeight } from '@/lib/types';
+import type { BodyWeight, BodyMeasurement, WaterLog } from '@/lib/types';
 import { ALL_EQUIPMENT, EQUIPMENT_PRESETS } from '@/lib/utils/exerciseResolver';
 import {
   THEME_OPTIONS,
@@ -282,8 +282,8 @@ export default function ProfilePage() {
       if (Array.isArray(data.sessions) && data.sessions.length > 0) {
         const normalized = data.sessions.map((s: any) => ({
           ...s,
-          startTime: new Date(s.startTime),
-          endTime: s.endTime ? new Date(s.endTime) : undefined,
+          startedAt: new Date(s.startedAt || s.startTime || Date.now()),
+          completedAt: (s.completedAt || s.endTime) ? new Date(s.completedAt || s.endTime) : undefined,
         }));
         await db.workoutSessions.bulkPut(normalized);
       }
@@ -304,7 +304,7 @@ export default function ProfilePage() {
         await db.waterLogs.bulkPut(data.waterLogs);
       }
       if (Array.isArray(data.prs) && data.prs.length > 0) {
-        await db.personalRecords.bulkPut(data.prs.map((p: any) => ({ ...p, achievedAt: new Date(p.achievedAt) })));
+        await db.personalRecords.bulkPut(data.prs.map((p: any) => ({ ...p, date: new Date(p.date || p.achievedAt || Date.now()) })));
       }
       loadBodyWeights();
       loadMeasurements();

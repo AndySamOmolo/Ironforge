@@ -206,16 +206,21 @@ export interface BodyWeight {
 export interface Measurement {
   id?: number;
   date: Date;
+  bodyFat?: number;
   chest?: number;
   waist?: number;
   hips?: number;
+  arms?: number;
   leftArm?: number;
   rightArm?: number;
+  thighs?: number;
   leftThigh?: number;
   rightThigh?: number;
   neck?: number;
   shoulders?: number;
 }
+
+export type BodyMeasurement = Measurement;
 
 export interface NutritionLog {
   id?: number;
@@ -231,8 +236,9 @@ export interface NutritionLog {
 
 export interface WaterLog {
   id?: number;
-  date: Date;
+  date: Date | string;
   glasses: number;
+  targetGlasses?: number;
 }
 
 export interface UserProfile {
