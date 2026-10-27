@@ -3,7 +3,8 @@
 /**
  * IronForge APK Build Script (Local & CI)
  * ====================================================
- * Uses Capacitor to build a native Android APK directly from the Next.js build output.
+ * Uses Capacitor to build a native Android APK directly from the Next.js build output
+ * and copies the resulting APK straight into the project root directory (`./IronForge.apk`).
  *
  * Prerequisites:
  *   - Java JDK 21 (set JAVA_HOME)
@@ -14,7 +15,7 @@
  */
 
 import { execSync } from 'child_process';
-import { existsSync, readFileSync, writeFileSync, readdirSync, chmodSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, readdirSync, chmodSync, copyFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -142,14 +143,19 @@ try {
 }
 
 const apkPath = join(ROOT, 'android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
+const rootApkPath = join(ROOT, 'IronForge.apk');
+const rootDebugApkPath = join(ROOT, 'IronForge-debug.apk');
+
 if (existsSync(apkPath)) {
+  copyFileSync(apkPath, rootApkPath);
+  copyFileSync(apkPath, rootDebugApkPath);
   console.log(`
 ╔══════════════════════════════════════════════════╗
-║  ✅ APK Built Successfully!                     ║
+║  ✅ APK Built & Copied to Root Directory!       ║
 ╠══════════════════════════════════════════════════╣
-║  📱 APK Location:                                ║
-║  android/app/build/outputs/apk/debug/            ║
-║  app-debug.apk                                   ║
+║  📱 Root APK:     ./IronForge.apk                ║
+║  📱 Debug Copy:   ./IronForge-debug.apk          ║
+║  📂 Gradle Path:  android/app/build/outputs/...  ║
 ╚══════════════════════════════════════════════════╝
   `);
 } else {
