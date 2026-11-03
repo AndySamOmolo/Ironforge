@@ -1,6 +1,7 @@
 import { db } from '@/lib/db/schema';
 import type { Exercise } from '@/lib/types';
 import { matchesUserEquipment, sharesTargetMuscle, normalizeEquipmentName, getMovementStem } from './exerciseResolver';
+import { hasGifExerciseMedia } from './exerciseMedia';
 
 export interface SwapCandidate {
   exercise: Exercise;
@@ -87,9 +88,10 @@ export async function getSwapSuggestions(
     const candDiff = candidate.level || 'intermediate';
     if (origDiff === candDiff) score += 8;
 
-    // Prefer exercises with GIF / visual media
-    if (candidate.gifUrl) {
-      score += 10;
+    // Strongly prefer exercises with GIF as primary visual media
+    if (hasGifExerciseMedia(candidate)) {
+      score += 35;
+      matchTags.push('🎬 GIF');
     }
 
     // Penalize if already in current workout session

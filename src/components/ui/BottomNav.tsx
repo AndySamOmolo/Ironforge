@@ -8,7 +8,7 @@ import { useWorkoutStore } from '@/lib/store/workoutStore';
 import { db } from '@/lib/db/schema';
 import { ALL_EQUIPMENT, resolveWorkoutDayExercises, generateSmartWorkout, matchesUserEquipment } from '@/lib/utils/exerciseResolver';
 import { getWorkoutStartingWeight } from '@/lib/utils/workoutDefaults';
-import { getPrimaryExerciseImage, getExerciseImageFrames } from '@/lib/utils/exerciseMedia';
+import { getPrimaryExerciseImage, getExerciseImageFrames, getExerciseGifUrl, hasGifExerciseMedia } from '@/lib/utils/exerciseMedia';
 import { SetType } from '@/lib/types';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -109,7 +109,10 @@ export default function BottomNav() {
     try {
       const allExercises = await db.exercises.toArray();
       const equip = userEquipment && userEquipment.length > 0 ? userEquipment : [...ALL_EQUIPMENT];
-      const firstMatch = allExercises.find(e => matchesUserEquipment(e, equip)) || allExercises[0];
+      const firstMatch =
+        allExercises.find(e => matchesUserEquipment(e, equip) && hasGifExerciseMedia(e)) ||
+        allExercises.find(e => matchesUserEquipment(e, equip)) ||
+        allExercises[0];
       if (!firstMatch) return;
       const startW = getWorkoutStartingWeight({
         equipment: firstMatch.equipment,
@@ -122,7 +125,7 @@ export default function BottomNav() {
           exerciseId: firstMatch.id || 0,
           exerciseName: firstMatch.name,
           imageUrl: getPrimaryExerciseImage(firstMatch),
-          gifUrl: firstMatch.gifUrl,
+          gifUrl: getExerciseGifUrl(firstMatch),
           mediaFrames: getExerciseImageFrames(firstMatch),
           sets: Array.from({ length: 3 }, (_, i) => ({
             setNumber: i + 1,
@@ -218,7 +221,7 @@ export default function BottomNav() {
                   </div>
                   <div>
                     <div style={{ fontSize: 15, fontWeight: 800 }}>Smart Full-Body Mix</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Generates 6 fresh exercises matching your selected equipment</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Generates 6 fresh GIF-backed exercises matching your equipment</div>
                   </div>
                 </button>
 
@@ -238,7 +241,7 @@ export default function BottomNav() {
                   </div>
                   <div>
                     <div style={{ fontSize: 15, fontWeight: 800 }}>Browse Exercise Library</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Explore 2,240+ exercises with animated form demos</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Explore 2,240+ exercises with animated GIF demos</div>
                   </div>
                 </button>
               </div>

@@ -66,7 +66,7 @@ export default function App() {
         const currentCatalogVersion = Number(profiles[0].exerciseCatalogVersion || 1);
 
         if (profileId && currentCatalogVersion < EXERCISE_CATALOG_VERSION) {
-          setSeedingProgress(12, 'Updating exercise catalog...');
+          setSeedingProgress(12, 'Updating exercise catalog & balanced plans...');
           await migrateExerciseCatalog((msg, pct) => {
             setSeedingProgress(pct, msg);
           });
@@ -205,7 +205,12 @@ export default function App() {
       const current = navStateRef.current;
 
       if (current.showComplete) {
+        // Workout is already saved when entering WorkoutCompletePage.
+        // Going back from WorkoutCompletePage must clear workout state and return to dashboard,
+        // NEVER re-opening ActiveWorkoutPage where the workout could save a second time.
+        endWorkout();
         setShowComplete(false);
+        setActiveTab('home');
         pushSentinel();
       } else if (current.workoutActive) {
         endWorkout();
@@ -262,9 +267,10 @@ export default function App() {
   }, []);
 
   const handleFinishComplete = useCallback(() => {
+    endWorkout();
     setShowComplete(false);
     setActiveTab('home');
-  }, [setActiveTab]);
+  }, [endWorkout, setActiveTab]);
 
   if ((showSeedingScreen || !isInitialized) && !initError) {
     return <SeedingScreen onRetry={() => doInit(true)} />;
@@ -314,7 +320,7 @@ export default function App() {
           )}
           {showCatalogUpdateToast && (
             <div className="app-inline-toast app-inline-toast--success">
-              Exercise catalog updated: equipment filtering and variety improved!
+              Catalog updated: GIFs prioritized, plans balanced & body map upgraded!
             </div>
           )}
           {renderPage()}

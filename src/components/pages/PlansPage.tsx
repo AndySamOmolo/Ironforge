@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronRight, ChevronDown, ChevronUp, Target, Plus, X, Check, Settings, Search, Play, XCircle, Shuffle, Sparkles, Trash2, Copy } from 'lucide-react';
+import { ChevronRight, ChevronDown, ChevronUp, Target, Plus, X, Check, Settings, Search, Play, XCircle, Shuffle, Sparkles, Trash2, Copy, Scale } from 'lucide-react';
 import { db } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
@@ -13,6 +13,7 @@ import {
   matchesUserEquipment,
   resolveWorkoutDayExercises,
   generateSmartWorkout,
+  analyzePlanMuscleBalance,
 } from '@/lib/utils/exerciseResolver';
 import ExerciseMedia from '@/components/ui/ExerciseMedia';
 
@@ -65,13 +66,23 @@ export default function PlansPage() {
 
   const loadPlansAndCatalog = async () => {
     try {
-      const [allPlans, catalog, recentSets, completedCount] = await Promise.all([
+      const [allPlans, allDays, catalog, recentSets, completedCount] = await Promise.all([
         db.workoutPlans.toArray(),
+        db.workoutDays.toArray(),
         db.exercises.toArray(),
         db.sets.orderBy('completedAt').reverse().limit(120).toArray(),
         db.workoutSessions.filter(s => s.isComplete).count(),
       ]);
+      const daysByPlan: Record<number, WorkoutDay[]> = {};
+      for (const d of allDays) {
+        if (!daysByPlan[d.planId]) daysByPlan[d.planId] = [];
+        daysByPlan[d.planId].push(d);
+      }
+      for (const pid of Object.keys(daysByPlan)) {
+        daysByPlan[Number(pid)].sort((a, b) => a.dayNumber - b.dayNumber);
+      }
       setPlans(allPlans);
+      setPlanDays(daysByPlan);
       setAllExercises(catalog);
       setRecentExerciseIds(new Set(recentSets.map(s => s.exerciseId).filter(Boolean)));
       setSessionCount(completedCount);
@@ -180,7 +191,7 @@ export default function PlansPage() {
   }, [allExercises, selectedEquipment, barWeight, dumbbellWeight, recentExerciseIds, exerciseVariety, sessionCount, dayVarietySeeds]);
 
   const startDay = async (plan: WorkoutPlan, day: WorkoutDay) => {
-    let savedSwaps: Record<string, { newExerciseId: number; newExerciseName: string; newGifUrl?: string }> = {};
+    const savedSwaps: Record<string, { newExerciseId: number; newExerciseName: string; newGifUrl?: string }> = {};
     try {
       const swaps = await db.exerciseSwaps.where('planName').equals(plan.name).filter(s => s.dayName === day.name).toArray();
       for (const swap of swaps) {
@@ -235,7 +246,7 @@ export default function PlansPage() {
               <span className="gradient-text">Workout Plans</span>
             </h1>
             <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>
-              {plans.length} programs • {availableExerciseCount.toLocaleString()} exercises match your equipment
+              {plans.length} balanced programs • {availableExerciseCount.toLocaleString()} exercises match your equipment
             </p>
           </div>
           <button
@@ -349,6 +360,7 @@ export default function PlansPage() {
           const days = planDays[plan.id!] || [];
           const catColor = CATEGORY_COLORS[plan.category] || 'var(--text-muted)';
           const diff = DIFFICULTY_LABELS[plan.difficulty] || DIFFICULTY_LABELS.intermediate;
+          const balance = days.length > 0 ? analyzePlanMuscleBalance(days, allExercises) : null;
 
           return (
             <motion.div key={plan.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
@@ -362,10 +374,10 @@ export default function PlansPage() {
                   width: '100%', padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--text-primary)', minHeight: 80,
                 }}>
-                  <div style={{ flex: 1 }}>
+                  <div style={{ flex: 1, paddingRight: 10 }}>
                     <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 6, letterSpacing: '-0.01em' }}>{plan.name}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 10 }}>{plan.description}</div>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: balance ? 10 : 0 }}>
                       <span className="badge" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', fontSize: 10 }}>
                         📅 {plan.daysPerWeek}d/week
                       </span>
@@ -375,7 +387,31 @@ export default function PlansPage() {
                       <span className="badge" style={{ background: `${catColor}10`, color: catColor, border: `1px solid ${catColor}20`, fontSize: 10 }}>
                         {plan.category}
                       </span>
+                      {balance && (
+                        <span className="badge" style={{ background: 'rgba(16,232,154,0.08)', color: 'var(--accent-green)', border: '1px solid rgba(16,232,154,0.2)', fontSize: 10 }}>
+                          ⚖️ {balance.balanceScore}% Balanced • {balance.totalSets} sets/wk
+                        </span>
+                      )}
                     </div>
+
+                    {/* Visual Body-Part Balance Bar */}
+                    {balance && (
+                      <div>
+                        <div style={{ display: 'flex', height: 5, borderRadius: 999, overflow: 'hidden', background: 'rgba(255,255,255,0.05)', gap: 1 }}>
+                          {balance.categories.filter(c => c.sets > 0).map(c => (
+                            <div key={c.id} style={{ flex: c.sets, background: c.color }} title={`${c.label}: ${c.percentage}%`} />
+                          ))}
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 5 }}>
+                          {balance.categories.filter(c => c.sets > 0).map(c => (
+                            <span key={c.id} style={{ fontSize: 9, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                              <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.color }} />
+                              {c.label.split(' ')[0]} {c.percentage}%
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <motion.div animate={{ rotate: isExpanded ? 90 : 0 }} transition={{ duration: 0.2 }}>
                     <ChevronRight size={18} color="var(--text-muted)" />
@@ -399,7 +435,7 @@ export default function PlansPage() {
                                   <div style={{ minWidth: 0, flex: 1 }}>
                                     <div style={{ fontSize: 14, fontWeight: 700 }}>{day.name}</div>
                                     <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                                      {day.exercises.length} exercises • Equipment-matched
+                                      {day.exercises.length} exercises • GIF & equipment matched
                                     </div>
                                   </div>
                                 </div>
@@ -501,7 +537,7 @@ export default function PlansPage() {
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
         style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
         <button onClick={() => setShowSmartGenerator(true)} className="btn-secondary" style={{ borderRadius: 16, minHeight: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, border: '1px solid var(--accent-purple)' }}>
-          <Sparkles size={18} color="var(--accent-purple)" /> Smart Workout Generator (2,200+ Exercises)
+          <Sparkles size={18} color="var(--accent-purple)" /> Smart Balanced Workout Generator
         </button>
         <button onClick={() => setShowBuilder(true)} className="btn-primary" style={{ borderRadius: 16, minHeight: 52 }}>
           <Plus size={18} /> Create Custom Plan
@@ -545,7 +581,7 @@ function SmartWorkoutGeneratorModal({
   dumbbellWeight: number;
 }) {
   const { startWorkout } = useWorkoutStore();
-  const [selectedMuscles, setSelectedMuscles] = useState<string[]>(['chest', 'back', 'shoulders']);
+  const [selectedMuscles, setSelectedMuscles] = useState<string[]>(['chest', 'back', 'shoulders', 'quads', 'hamstrings', 'biceps', 'triceps', 'abs']);
   const [exerciseCount, setExerciseCount] = useState(6);
   const [setsCount, setSetsCount] = useState(3);
   const [repsCount, setRepsCount] = useState(10);
@@ -554,6 +590,14 @@ function SmartWorkoutGeneratorModal({
 
   const MUSCLE_CHOICES = [
     'chest', 'back', 'shoulders', 'biceps', 'triceps', 'quads', 'hamstrings', 'glutes', 'calves', 'abs', 'forearms', 'traps',
+  ];
+
+  const SPLIT_PRESETS = [
+    { label: 'Full Body Balance', muscles: ['quads', 'hamstrings', 'chest', 'back', 'shoulders', 'biceps', 'triceps', 'abs'] },
+    { label: 'Push (Chest/Delts/Tri)', muscles: ['chest', 'shoulders', 'triceps'] },
+    { label: 'Pull (Back/Traps/Bi)', muscles: ['back', 'traps', 'biceps', 'forearms'] },
+    { label: 'Legs & Core', muscles: ['quads', 'hamstrings', 'glutes', 'calves', 'abs'] },
+    { label: 'Upper Body Symmetry', muscles: ['chest', 'back', 'shoulders', 'biceps', 'triceps'] },
   ];
 
   const toggleMuscle = (m: string) => {
@@ -601,7 +645,7 @@ function SmartWorkoutGeneratorModal({
     const name = saveName.trim() || `Smart ${selectedMuscles.slice(0, 2).join('/')} Plan`;
     const planId = await db.workoutPlans.add({
       name,
-      description: `Generated for ${equipment.slice(0, 3).join(', ')} (${selectedMuscles.join(', ')})`,
+      description: `Balanced smart plan for ${equipment.slice(0, 3).join(', ')} (${selectedMuscles.join(', ')})`,
       category: 'Custom',
       difficulty: 'intermediate',
       daysPerWeek: 3,
@@ -614,7 +658,7 @@ function SmartWorkoutGeneratorModal({
     await db.workoutDays.add({
       planId,
       dayNumber: 1,
-      name: 'Generated Session',
+      name: 'Balanced Session',
       exercises: generatedList.map((ex, i) => ({
         exerciseId: 0,
         exerciseName: ex.name,
@@ -634,12 +678,26 @@ function SmartWorkoutGeneratorModal({
         transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()} style={{ maxHeight: '92dvh' }}>
         <div className="modal-handle" />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h2 className="font-display" style={{ fontSize: 20, fontWeight: 800 }}>✨ Smart Workout Generator</h2>
+          <h2 className="font-display" style={{ fontSize: 20, fontWeight: 800 }}>✨ Smart Balanced Generator</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
         </div>
-        <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 14 }}>
-          Picks non-repeating exercises strictly matching your {equipment.length} selected equipment items.
+        <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>
+          Balances compound & isolation movements across target muscles using GIF-backed exercises for your {equipment.length} selected equipment items.
         </p>
+
+        <div className="section-label" style={{ marginBottom: 6 }}>Balanced Split Presets</div>
+        <div className="chip-scroll" style={{ marginBottom: 12 }}>
+          {SPLIT_PRESETS.map(p => (
+            <button
+              key={p.label}
+              onClick={() => setSelectedMuscles(p.muscles)}
+              className="filter-chip"
+              style={{ fontSize: 10, padding: '5px 10px' }}
+            >
+              <Scale size={11} /> {p.label}
+            </button>
+          ))}
+        </div>
 
         <div className="section-label" style={{ marginBottom: 8 }}>Target Muscles</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
@@ -682,7 +740,7 @@ function SmartWorkoutGeneratorModal({
           </button>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '28vh', overflowY: 'auto', marginBottom: 14 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '26vh', overflowY: 'auto', marginBottom: 14 }}>
           {generatedList.map((item, idx) => (
             <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--bg-glass)', borderRadius: 10, border: '1px solid var(--border)' }}>
               <div>
@@ -751,6 +809,26 @@ function CustomPlanBuilder({ onClose, equipment }: { onClose: () => void; equipm
     setShowExercisePicker(false);
   };
 
+  const autoBalanceDay = () => {
+    const generated = generateSmartWorkout({
+      targetMuscles: ['quads', 'hamstrings', 'chest', 'back', 'shoulders', 'biceps', 'triceps', 'abs'],
+      exerciseCount: 6,
+      setsPerExercise: 3,
+      repsPerSet: 10,
+      allExercises,
+      userEquipment: equipment,
+      seed: Date.now(),
+    });
+    setDays(prev => {
+      const updated = [...prev];
+      updated[currentDayIdx] = {
+        ...updated[currentDayIdx],
+        exercises: generated.map(g => ({ name: g.name, sets: g.sets, reps: g.reps })),
+      };
+      return updated;
+    });
+  };
+
   const updateExerciseSetsReps = (dayIdx: number, exIdx: number, field: 'sets' | 'reps', val: number) => {
     setDays(prev => {
       const updated = [...prev];
@@ -777,7 +855,7 @@ function CustomPlanBuilder({ onClose, equipment }: { onClose: () => void; equipm
   const savePlan = async () => {
     if (!planName.trim()) return;
     const planId = await db.workoutPlans.add({
-      name: planName, description: 'Custom workout plan', category: 'Custom',
+      name: planName, description: 'Custom balanced workout plan', category: 'Custom',
       difficulty: 'intermediate', daysPerWeek: days.length, isCustom: true,
       isActive: false, createdAt: new Date(), updatedAt: new Date(),
     } as any);
@@ -846,9 +924,14 @@ function CustomPlanBuilder({ onClose, equipment }: { onClose: () => void; equipm
           ))}
         </div>
 
-        <button onClick={() => setShowExercisePicker(true)} className="btn-secondary" style={{ width: '100%', marginBottom: 16, minHeight: 48, borderRadius: 14 }}>
-          <Plus size={14} /> Add Exercise (Filtered to Your Equipment)
-        </button>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <button onClick={() => setShowExercisePicker(true)} className="btn-secondary" style={{ flex: 1, minHeight: 46, borderRadius: 14, fontSize: 12 }}>
+            <Plus size={14} /> Add Exercise
+          </button>
+          <button onClick={autoBalanceDay} className="btn-secondary" style={{ flex: 1, minHeight: 46, borderRadius: 14, fontSize: 12, borderColor: 'var(--accent-purple)' }}>
+            <Sparkles size={14} color="var(--accent-purple)" /> Auto-Fill Balanced Day
+          </button>
+        </div>
 
         <button onClick={savePlan} className="btn-primary" style={{ borderRadius: 14, minHeight: 52 }} disabled={!planName.trim() || days.every(d => d.exercises.length === 0)}>
           Save Plan

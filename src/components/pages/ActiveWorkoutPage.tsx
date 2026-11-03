@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Check, Plus, Minus, SkipForward, ChevronLeft, ChevronRight, Dumbbell,
   ArrowLeftRight, ExternalLink, StickyNote, Play, Pause, AlertTriangle,
-  BookOpen, Trophy, Trash2, Search, TrendingUp,
+  BookOpen, Trash2, Search, TrendingUp, Minimize2, Maximize2, Sun,
 } from 'lucide-react';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
 import { useUserStore } from '@/lib/store/userStore';
@@ -17,7 +17,14 @@ import { getProgressionSuggestion, estimate1RM, type ProgressionSuggestion } fro
 import { matchesUserEquipment } from '@/lib/utils/exerciseResolver';
 import { getWorkoutStartingWeight } from '@/lib/utils/workoutDefaults';
 import { getYoutubeSearchUrl, getVideoSearchOptions } from '@/lib/data/youtube-ids';
-import { getPrimaryExerciseImage, getExerciseImageFrames, hasAnimatedExerciseMedia } from '@/lib/utils/exerciseMedia';
+import {
+  getPrimaryExerciseImage,
+  getExerciseImageFrames,
+  getExerciseGifUrl,
+  hasAnimatedExerciseMedia,
+  hasGifExerciseMedia,
+} from '@/lib/utils/exerciseMedia';
+import { createKeepScreenAwakeController } from '@/lib/utils/wakeLock';
 import ExerciseMedia from '@/components/ui/ExerciseMedia';
 
 interface ActiveWorkoutPageProps { onComplete: () => void; }
@@ -40,7 +47,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     addExercise, removeExercise,
     tickTimer, restTimerActive, restTimeRemaining, restTimeDuration,
     startRestTimer, stopRestTimer, tickRestTimer, endWorkout, togglePause,
-    addPR, setSessionId,
+    addPR, setSessionId, completeWorkoutSession,
   } = useWorkoutStore();
   const {
     defaultRestTime,
@@ -61,7 +68,8 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
 
   const [showNumpad, setShowNumpad] = useState<{ field: 'weight' | 'reps'; exerciseIdx: number; setIdx: number } | null>(null);
   const [numpadValue, setNumpadValue] = useState('0');
-  const [imgErrors, setImgErrors] = useState<Set<number>>(new Set());
+  const [imgErrors, setImgErrors] = useState<Set<string>>(new Set());
+  const [activeMediaMode, setActiveMediaMode] = useState<'gif' | 'animated-images' | 'static-image' | 'none'>('gif');
   const [showSwap, setShowSwap] = useState(false);
   const [swapSuggestions, setSwapSuggestions] = useState<{ exercise: Exercise; score: number; matchTags: string[]; category: string }[]>([]);
   const [showAddExercise, setShowAddExercise] = useState(false);
@@ -71,12 +79,16 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
   const [showPlates, setShowPlates] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [restMinimized, setRestMinimized] = useState(false);
+  const [screenAwakeLocked, setScreenAwakeLocked] = useState(false);
+  const [isFinishing, setIsFinishing] = useState(false);
   const [exerciseInfo, setExerciseInfo] = useState<Exercise | null>(null);
   const [historicalBest1RM, setHistoricalBest1RM] = useState<number>(0);
   const [lastBestSet, setLastBestSet] = useState<{ weight: number; reps: number } | null>(null);
   const [overloadTip, setOverloadTip] = useState<ProgressionSuggestion | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const restTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isFinishingRef = useRef(false);
 
   const stepWeight = weightIncrement && weightIncrement > 0 ? weightIncrement : 2.5;
   const unitLabel = unitSystem === 'metric' ? 'kg' : 'lbs';
@@ -90,21 +102,32 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     if (restTimerActive) {
       restTimerRef.current = setInterval(() => tickRestTimer(), 1000);
       return () => { if (restTimerRef.current) clearInterval(restTimerRef.current); };
-    } else { if (restTimerRef.current) clearInterval(restTimerRef.current); }
+    } else {
+      setRestMinimized(false);
+      if (restTimerRef.current) clearInterval(restTimerRef.current);
+    }
   }, [restTimerActive, tickRestTimer]);
 
+  // Multi-layered Screen Wake Lock controller so the screen never turns off mid-workout
   useEffect(() => {
-    if (!keepScreenOn) return;
-    let wakeLock: any = null;
-    const req = async () => { try { if ('wakeLock' in navigator) wakeLock = await (navigator as any).wakeLock.request('screen'); } catch {} };
-    req();
-    return () => { if (wakeLock) wakeLock.release(); };
+    if (keepScreenOn === false) {
+      setScreenAwakeLocked(false);
+      return;
+    }
+    const controller = createKeepScreenAwakeController((locked) => {
+      setScreenAwakeLocked(locked);
+    });
+    controller.start();
+    return () => {
+      controller.stop();
+    };
   }, [keepScreenOn]);
 
   const currentExercise = exercises[currentExerciseIndex];
 
   // Load exercise info, historical PRs, and progressive overload suggestion when current exercise changes
   useEffect(() => {
+    let cancelled = false;
     const loadExerciseInfoAndHistory = async () => {
       if (!currentExercise) return;
       try {
@@ -112,6 +135,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
         if (!ex) {
           ex = await db.exercises.where('name').equalsIgnoreCase(currentExercise.exerciseName).first();
         }
+        if (cancelled) return;
         setExerciseInfo(ex || null);
 
         const exId = ex?.id || currentExercise.exerciseId;
@@ -120,6 +144,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
             db.sets.where('exerciseId').equals(exId).toArray(),
             db.personalRecords.where('exerciseId').equals(exId).toArray(),
           ]);
+          if (cancelled) return;
 
           let max1RM = 0;
           let bestSet: { weight: number; reps: number } | null = null;
@@ -165,11 +190,12 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
           setOverloadTip(null);
         }
       } catch {
-        setExerciseInfo(null);
+        if (!cancelled) setExerciseInfo(null);
       }
     };
     loadExerciseInfoAndHistory();
-  }, [currentExerciseIndex, exercises, currentExercise, unitSystem]);
+    return () => { cancelled = true; };
+  }, [currentExerciseIndex, currentExercise?.exerciseId, currentExercise?.exerciseName, currentExercise?.targetReps, unitSystem]);
 
   const currentSetIndex = currentExercise?.sets.findIndex(s => !s.isComplete) ?? -1;
   const progress = exercises.length > 0 ? (exercises.filter(e => e.isComplete).length / exercises.length) * 100 : 0;
@@ -238,7 +264,6 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     const weight = set.weight || 0;
     const reps = set.reps || set.targetReps || 0;
 
-    // Check if this set beats the historical 1RM AND any completed set in the current exercise
     const isWarmup = set.setType === SetType.Warmup;
     const currentSet1RM = !isWarmup && weight > 0 && reps > 0 ? estimate1RM(weight, reps) : 0;
     const sessionBest1RM = exercise.sets.reduce((max, s, idx) => {
@@ -260,6 +285,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     }
 
     if (autoStartRest && restTimerEnabled) {
+      setRestMinimized(false);
       startRestTimer(exercise.restTime || defaultRestTime);
     }
     const updated = [...exercise.sets];
@@ -270,39 +296,60 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
   }, [exercises, completeSet, startRestTimer, defaultRestTime, currentExerciseIndex, nextExercise, playFeedbackTone, triggerHaptic, autoStartRest, restTimerEnabled, autoAdvance, historicalBest1RM, addPR]);
 
   const handleFinish = async () => {
-    playFeedbackTone('finish');
-    triggerHaptic('success');
-    const completedSetEntries = exercises.flatMap((exercise, exOrder) =>
-      exercise.sets
-        .filter(set => set.isComplete)
-        .map((set, setIndex) => ({
-          exerciseId: exercise.exerciseId,
-          exerciseName: exercise.exerciseName,
-          orderIndex: exOrder,
-          setNumber: setIndex + 1,
-          setType: (set.setType || SetType.Normal) as SetType,
-          weight: set.weight || 0,
-          reps: set.reps || 0,
-          isWarmup: set.setType === SetType.Warmup,
-          isPR: Boolean(set.isPR),
-        }))
-    );
-    const now = new Date();
-    const startedAt = new Date(now.getTime() - elapsedTime * 1000);
-    const computedTotalReps = completedSetEntries.reduce((sum, set) => sum + set.reps, 0);
-    const computedTotalSets = completedSetEntries.length;
+    if (isFinishingRef.current) return;
+    isFinishingRef.current = true;
+    setIsFinishing(true);
 
-    const combinedNotes = Object.entries(notes)
-      .filter(([, text]) => text && text.trim().length > 0)
-      .map(([idx, text]) => `${exercises[Number(idx)]?.exerciseName || 'Exercise'}: ${text.trim()}`)
-      .join(' | ');
+    try {
+      playFeedbackTone('finish');
+      triggerHaptic('success');
 
-    const savedSessionId = sessionId
-      ? sessionId
-      : await db.workoutSessions.add({
-          planName,
-          dayName,
-          startedAt,
+      const completedSetEntries = exercises.flatMap((exercise, exOrder) =>
+        exercise.sets
+          .filter(set => set.isComplete)
+          .map((set, setIndex) => ({
+            exerciseId: exercise.exerciseId,
+            exerciseName: exercise.exerciseName,
+            orderIndex: exOrder,
+            setNumber: setIndex + 1,
+            setType: (set.setType || SetType.Normal) as SetType,
+            weight: set.weight || 0,
+            reps: set.reps || 0,
+            isWarmup: set.setType === SetType.Warmup,
+            isPR: Boolean(set.isPR),
+          }))
+      );
+      const now = new Date();
+      const startedAt = new Date(now.getTime() - elapsedTime * 1000);
+      const computedTotalReps = completedSetEntries.reduce((sum, set) => sum + set.reps, 0);
+      const computedTotalSets = completedSetEntries.length;
+
+      const combinedNotes = Object.entries(notes)
+        .filter(([, text]) => text && text.trim().length > 0)
+        .map(([idx, text]) => `${exercises[Number(idx)]?.exerciseName || 'Exercise'}: ${text.trim()}`)
+        .join(' | ');
+
+      const currentSessionId = useWorkoutStore.getState().sessionId || sessionId;
+
+      const savedSessionId = currentSessionId
+        ? currentSessionId
+        : await db.workoutSessions.add({
+            planName,
+            dayName,
+            startedAt,
+            completedAt: now,
+            duration: elapsedTime,
+            totalVolume,
+            totalSets: computedTotalSets,
+            totalReps: computedTotalReps,
+            notes: combinedNotes || undefined,
+            isComplete: true,
+          });
+
+      setSessionId(savedSessionId);
+
+      if (currentSessionId) {
+        await db.workoutSessions.update(savedSessionId, {
           completedAt: now,
           duration: elapsedTime,
           totalVolume,
@@ -311,73 +358,69 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
           notes: combinedNotes || undefined,
           isComplete: true,
         });
-
-    setSessionId(savedSessionId);
-
-    if (sessionId) {
-      await db.workoutSessions.update(savedSessionId, {
-        completedAt: now,
-        duration: elapsedTime,
-        totalVolume,
-        totalSets: computedTotalSets,
-        totalReps: computedTotalReps,
-        notes: combinedNotes || undefined,
-        isComplete: true,
-      });
-      await db.sets.where('sessionId').equals(savedSessionId).delete();
-    }
-
-    if (completedSetEntries.length > 0) {
-      await db.sets.bulkAdd(
-        completedSetEntries.map(set => ({
-          sessionExerciseId: 0,
-          sessionId: savedSessionId,
-          exerciseId: set.exerciseId,
-          setNumber: set.setNumber,
-          setType: set.setType,
-          weight: set.weight,
-          reps: set.reps,
-          completedAt: now,
-          isWarmup: set.isWarmup,
-          isPR: set.isPR,
-        }))
-      );
-
-      // Persist new Personal Records to db.personalRecords
-      const bestByExercise = new Map<number, { exerciseId: number; exerciseName: string; weight: number; reps: number; estimated1RM: number }>();
-      for (const s of completedSetEntries) {
-        if (s.isWarmup || s.weight <= 0 || s.reps <= 0 || !s.exerciseId) continue;
-        const est1RM = estimate1RM(s.weight, s.reps);
-        const existing = bestByExercise.get(s.exerciseId);
-        if (!existing || est1RM > existing.estimated1RM) {
-          bestByExercise.set(s.exerciseId, {
-            exerciseId: s.exerciseId,
-            exerciseName: s.exerciseName,
-            weight: s.weight,
-            reps: s.reps,
-            estimated1RM: est1RM,
-          });
-        }
+        await db.sets.where('sessionId').equals(savedSessionId).delete();
+        await db.sessionExercises.where('sessionId').equals(savedSessionId).delete();
+        await db.personalRecords.where('sessionId').equals(savedSessionId).delete();
       }
 
-      for (const [exId, candidate] of bestByExercise.entries()) {
-        const prevPRs = await db.personalRecords.where('exerciseId').equals(exId).toArray();
-        const prevMax = prevPRs.reduce((m, r) => Math.max(m, r.estimated1RM || 0), 0);
-        if (candidate.estimated1RM > prevMax) {
-          await db.personalRecords.add({
-            exerciseId: candidate.exerciseId,
-            exerciseName: candidate.exerciseName,
-            weight: candidate.weight,
-            reps: candidate.reps,
-            estimated1RM: candidate.estimated1RM,
-            date: now,
+      if (completedSetEntries.length > 0) {
+        await db.sets.bulkAdd(
+          completedSetEntries.map(set => ({
+            sessionExerciseId: 0,
             sessionId: savedSessionId,
-          });
-          addPR(candidate.exerciseName, candidate.weight, candidate.reps);
+            exerciseId: set.exerciseId,
+            setNumber: set.setNumber,
+            setType: set.setType,
+            weight: set.weight,
+            reps: set.reps,
+            completedAt: now,
+            isWarmup: set.isWarmup,
+            isPR: set.isPR,
+          }))
+        );
+
+        const bestByExercise = new Map<number, { exerciseId: number; exerciseName: string; weight: number; reps: number; estimated1RM: number }>();
+        for (const s of completedSetEntries) {
+          if (s.isWarmup || s.weight <= 0 || s.reps <= 0 || !s.exerciseId) continue;
+          const est1RM = estimate1RM(s.weight, s.reps);
+          const existing = bestByExercise.get(s.exerciseId);
+          if (!existing || est1RM > existing.estimated1RM) {
+            bestByExercise.set(s.exerciseId, {
+              exerciseId: s.exerciseId,
+              exerciseName: s.exerciseName,
+              weight: s.weight,
+              reps: s.reps,
+              estimated1RM: est1RM,
+            });
+          }
+        }
+
+        for (const [exId, candidate] of bestByExercise.entries()) {
+          const prevPRs = await db.personalRecords.where('exerciseId').equals(exId).toArray();
+          const prevMax = prevPRs.reduce((m, r) => Math.max(m, r.estimated1RM || 0), 0);
+          if (candidate.estimated1RM > prevMax) {
+            await db.personalRecords.add({
+              exerciseId: candidate.exerciseId,
+              exerciseName: candidate.exerciseName,
+              weight: candidate.weight,
+              reps: candidate.reps,
+              estimated1RM: candidate.estimated1RM,
+              date: now,
+              sessionId: savedSessionId,
+            });
+            addPR(candidate.exerciseName, candidate.weight, candidate.reps);
+          }
         }
       }
+
+      // Immediately mark workout as inactive & clear active snapshot so Back button never re-enters ActiveWorkoutPage
+      completeWorkoutSession(savedSessionId);
+      onComplete();
+    } catch (err) {
+      console.error('Failed to finish workout:', err);
+      isFinishingRef.current = false;
+      setIsFinishing(false);
     }
-    onComplete();
   };
 
   const handleCancel = () => {
@@ -419,7 +462,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
         exerciseId: newEx.id || 0,
         exerciseName: newEx.name,
         imageUrl: getPrimaryExerciseImage(newEx),
-        gifUrl: newEx.gifUrl,
+        gifUrl: getExerciseGifUrl(newEx),
         mediaFrames: getExerciseImageFrames(newEx),
         sets: currentExercise.sets.map(s => ({ ...s, weight: s.weight || startW, isComplete: false, isPR: false })),
         targetSets: currentExercise.targetSets,
@@ -439,7 +482,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
           await db.exerciseSwaps.update(existing.id, {
             newExerciseId: newEx.id || 0,
             newExerciseName: newEx.name,
-            newGifUrl: newEx.gifUrl,
+            newGifUrl: getExerciseGifUrl(newEx),
             swappedAt: new Date(),
           });
         } else {
@@ -449,7 +492,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
             originalExerciseName: currentExercise.exerciseName,
             newExerciseId: newEx.id || 0,
             newExerciseName: newEx.name,
-            newGifUrl: newEx.gifUrl,
+            newGifUrl: getExerciseGifUrl(newEx),
             swappedAt: new Date(),
           });
         }
@@ -477,6 +520,8 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
         e.primaryMuscles?.some(m => m.toLowerCase().includes(q))
       );
     }
+    // Sort GIF-backed exercises first
+    list = [...list].sort((a, b) => Number(hasGifExerciseMedia(b)) - Number(hasGifExerciseMedia(a)));
     return list.slice(0, 60);
   }, [allCatalog, userEquipment, addSearch]);
 
@@ -490,7 +535,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
       exerciseId: ex.id || 0,
       exerciseName: ex.name,
       imageUrl: getPrimaryExerciseImage(ex),
-      gifUrl: ex.gifUrl,
+      gifUrl: getExerciseGifUrl(ex),
       mediaFrames: getExerciseImageFrames(ex),
       sets: Array.from({ length: 3 }, (_, i) => ({
         setNumber: i + 1,
@@ -535,11 +580,28 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     </div>;
   }
 
-  const exerciseGif = currentExercise.gifUrl || currentExercise.imageUrl;
-  const exerciseMediaFrames = currentExercise.mediaFrames || [];
-  const hasVisualMedia = Boolean(exerciseGif) || exerciseMediaFrames.length > 0;
-  const showAnimatedBadge = Boolean(currentExercise.gifUrl) || exerciseMediaFrames.length > 1;
-  const hasImgError = imgErrors.has(currentExerciseIndex);
+  // Strictly separate primary GIF from backup static image frames so GIFs are always primary
+  // and multi-frame static images animate continuously when no GIF exists or GIF fails
+  const primaryGifUrl = getExerciseGifUrl({
+    gifUrl: currentExercise.gifUrl || exerciseInfo?.gifUrl,
+    imageUrls: [],
+    images: [],
+  });
+  const backupFrames = useMemo(() => {
+    const fromActive = currentExercise.mediaFrames || [];
+    if (fromActive.length > 0) return fromActive;
+    if (exerciseInfo) {
+      return getExerciseImageFrames(exerciseInfo);
+    }
+    if (currentExercise.imageUrl && !primaryGifUrl) {
+      return [currentExercise.imageUrl];
+    }
+    return [];
+  }, [currentExercise.mediaFrames, currentExercise.imageUrl, exerciseInfo, primaryGifUrl]);
+
+  const mediaErrorKey = `${currentExercise.exerciseId || 0}_${currentExercise.exerciseName}`;
+  const hasImgError = imgErrors.has(mediaErrorKey);
+  const hasVisualMedia = Boolean(primaryGifUrl) || backupFrames.length > 0 || (exerciseInfo?.images?.length || 0) > 0;
 
   return (
     <div style={{ minHeight: '100dvh', background: 'var(--bg-primary)' }}>
@@ -547,14 +609,38 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
       <div style={{ position: 'sticky', top: 0, background: 'var(--bg-sheet)', backdropFilter: 'blur(24px)', zIndex: 50, padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <button onClick={handleCancel} className="btn-cancel" style={{ minHeight: 40 }}><X size={16} /> Cancel</button>
-          <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: '-0.01em' }}>{dayName || planName}</div>
-          <button onClick={handleFinish} className="btn-primary" style={{ fontSize: 11, fontWeight: 800, borderRadius: 10, padding: '6px 12px', minHeight: 34, width: 'auto', color: '#fff', textShadow: 'none', boxShadow: 'none' }}>Finish</button>
+          <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: '-0.01em', textAlign: 'center', flex: 1, padding: '0 8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {dayName || planName}
+          </div>
+          <button
+            onClick={handleFinish}
+            disabled={isFinishing}
+            className="btn-primary"
+            style={{ fontSize: 11, fontWeight: 800, borderRadius: 10, padding: '6px 14px', minHeight: 36, width: 'auto', color: '#fff', textShadow: 'none', boxShadow: 'none', opacity: isFinishing ? 0.6 : 1 }}
+          >
+            {isFinishing ? 'Saving...' : 'Finish'}
+          </button>
         </div>
         <div style={{ height: 3, background: 'rgba(255,255,255,0.03)', borderRadius: 2 }}>
           <motion.div style={{ height: '100%', background: 'var(--gradient-fire)', borderRadius: 2 }} animate={{ width: `${progress}%` }} transition={{ duration: 0.4 }} />
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>Exercise {currentExerciseIndex + 1} of {exercises.length}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>Exercise {currentExerciseIndex + 1} of {exercises.length}</span>
+            {keepScreenOn !== false && (
+              <span
+                title={screenAwakeLocked ? 'Screen Wake Lock active' : 'Keep screen awake enabled'}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 999,
+                  background: 'rgba(16,232,154,0.1)', color: 'var(--accent-green)',
+                  border: '1px solid rgba(16,232,154,0.22)',
+                }}
+              >
+                <Sun size={9} /> Awake
+              </span>
+            )}
+          </div>
           {showTimer !== false && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <button
@@ -602,20 +688,29 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
         </button>
       </div>
 
-      <div style={{ padding: 16, paddingBottom: 'calc(16px + env(safe-area-inset-bottom) + 120px)' }}>
-        {/* GIF display — upscaled */}
+      <div style={{ padding: 16, paddingBottom: 'calc(16px + env(safe-area-inset-bottom) + 130px)' }}>
+        {/* Animated GIF / Backup Frame Display */}
         {hasVisualMedia && !hasImgError && (
           <div className="gif-upscale-container" style={{ width: '100%', aspectRatio: '1', borderRadius: 'var(--r-lg)', overflow: 'hidden', marginBottom: 14, background: '#0a0a14', position: 'relative', border: '1px solid var(--border)' }}>
             <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at center, rgba(139,92,246,0.04) 0%, transparent 70%)', zIndex: 0 }} />
             <ExerciseMedia
-              gifUrl={currentExercise.gifUrl || exerciseGif}
-              imageUrls={exerciseMediaFrames.length > 0 ? exerciseMediaFrames : (exerciseGif ? [exerciseGif] : [])}
+              gifUrl={primaryGifUrl}
+              imageUrls={backupFrames}
+              images={exerciseInfo?.images}
               alt={currentExercise.exerciseName}
+              loading="eager"
+              frameIntervalMs={700}
               style={{ width: '100%', height: '100%', objectFit: 'contain', imageRendering: 'auto', transform: 'scale(1.12)', transformOrigin: 'center', position: 'relative', zIndex: 1 }}
-              onExhausted={() => setImgErrors(prev => new Set(prev).add(currentExerciseIndex))}
+              onMediaModeChange={setActiveMediaMode}
+              onExhausted={() => setImgErrors(prev => new Set(prev).add(mediaErrorKey))}
             />
-            <div style={{ position: 'absolute', top: 10, left: 10, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', borderRadius: 8, padding: '4px 10px', fontSize: 10, fontWeight: 700, color: 'var(--accent-green)', display: 'flex', alignItems: 'center', gap: 4, zIndex: 2 }}>
-              <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent-green)', animation: 'pulse-dot 2s ease-in-out infinite' }} /> {showAnimatedBadge ? 'ANIMATED' : 'IMAGE'}
+            <div style={{ position: 'absolute', top: 10, left: 10, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)', borderRadius: 8, padding: '4px 10px', fontSize: 10, fontWeight: 700, color: 'var(--accent-green)', display: 'flex', alignItems: 'center', gap: 5, zIndex: 2 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-green)', animation: 'pulse-dot 2s ease-in-out infinite' }} />
+              {activeMediaMode === 'gif'
+                ? 'LIVE GIF'
+                : activeMediaMode === 'animated-images'
+                  ? 'ANIMATED FRAMES (BACKUP)'
+                  : 'IMAGE (BACKUP)'}
             </div>
           </div>
         )}
@@ -796,6 +891,42 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
         </div>
       </div>
 
+      {/* Minimized Floating Rest Timer Bar (allows watching animated GIFs while resting) */}
+      <AnimatePresence>
+        {restTimerActive && restMinimized && (
+          <motion.div
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 80, opacity: 0 }}
+            style={{
+              position: 'fixed', left: 16, right: 16, bottom: 'calc(16px + env(safe-area-inset-bottom))',
+              zIndex: 120, background: 'rgba(10, 12, 24, 0.96)', backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(16,232,154,0.35)', borderRadius: 16, padding: '10px 14px',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+              boxShadow: '0 12px 32px rgba(0,0,0,0.55)',
+            }}
+          >
+            <div
+              onClick={() => setRestMinimized(false)}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', flex: 1 }}
+            >
+              <div className="font-mono" style={{ fontSize: 20, fontWeight: 800, color: restTimeRemaining > 10 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                {restTimeRemaining}s
+              </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700 }}>Resting • Tap to expand</div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{currentExercise.exerciseName}</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button onClick={() => startRestTimer(restTimeRemaining + 15)} className="btn-secondary" style={{ padding: '6px 10px', fontSize: 11, minHeight: 34, borderRadius: 8 }}>+15s</button>
+              <button onClick={stopRestTimer} className="btn-primary" style={{ padding: '6px 12px', fontSize: 11, minHeight: 34, borderRadius: 8, width: 'auto' }}>Skip</button>
+              <button onClick={() => setRestMinimized(false)} className="btn-ghost" style={{ padding: 6, minHeight: 34 }} title="Expand timer"><Maximize2 size={14} /></button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Add Exercise Mid-Workout Modal */}
       <AnimatePresence>
         {showAddExercise && (
@@ -822,6 +953,9 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                       <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'capitalize' }}>{ex.name}</div>
                       <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{ex.equipment} • {ex.primaryMuscles.join(', ')}</div>
                     </div>
+                    {hasGifExerciseMedia(ex) && (
+                      <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-green)' }}>GIF</span>
+                    )}
                     <Plus size={16} color="var(--accent-green)" />
                   </button>
                 ))}
@@ -859,17 +993,17 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
         )}
       </AnimatePresence>
 
-      {/* Rest Timer */}
+      {/* Rest Timer Fullscreen Overlay */}
       <AnimatePresence>
-        {restTimerActive && (
+        {restTimerActive && !restMinimized && (
           <motion.div className="rest-timer-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <div style={{ textAlign: 'center' }}>
+            <div style={{ textAlign: 'center', width: '100%', maxWidth: 360, padding: '0 20px' }}>
               <div className="section-label" style={{ fontSize: 14, marginBottom: 4 }}>REST</div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 20 }}>{currentExercise.exerciseName}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 20, textTransform: 'capitalize' }}>{currentExercise.exerciseName}</div>
               <div className="progress-ring-container" style={{ width: 200, height: 200, margin: '0 auto' }}>
                 <svg width="200" height="200" viewBox="0 0 200 200">
                   <circle cx="100" cy="100" r="88" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="6" />
-                  <circle cx="100" cy="100" r="88" fill="none" stroke={restTimeRemaining > 10 ? 'var(--accent-green)' : restTimeRemaining > 5 ? 'var(--accent-yellow)' : 'var(--accent-red)'} strokeWidth="6" strokeLinecap="round" strokeDasharray={2 * Math.PI * 88} strokeDashoffset={2 * Math.PI * 88 * (1 - restTimeRemaining / restTimeDuration)} transform="rotate(-90 100 100)" style={{ transition: 'stroke-dashoffset 1s linear, stroke 0.5s' }} />
+                  <circle cx="100" cy="100" r="88" fill="none" stroke={restTimeRemaining > 10 ? 'var(--accent-green)' : restTimeRemaining > 5 ? 'var(--accent-yellow)' : 'var(--accent-red)'} strokeWidth="6" strokeLinecap="round" strokeDasharray={2 * Math.PI * 88} strokeDashoffset={2 * Math.PI * 88 * (1 - restTimeRemaining / Math.max(1, restTimeDuration))} transform="rotate(-90 100 100)" style={{ transition: 'stroke-dashoffset 1s linear, stroke 0.5s' }} />
                 </svg>
                 <div className="progress-ring-text"><div className="font-mono" style={{ fontSize: 52, fontWeight: 800 }}>{restTimeRemaining}</div><div style={{ fontSize: 12, color: 'var(--text-muted)' }}>sec</div></div>
               </div>
@@ -878,6 +1012,13 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                 <motion.button whileTap={{ scale: 0.95 }} className="btn-primary" onClick={stopRestTimer} style={{ padding: '14px 36px', width: 'auto', borderRadius: 14, minHeight: 48 }}><SkipForward size={18} /> Skip</motion.button>
                 <button className="btn-secondary" onClick={() => startRestTimer(restTimeRemaining + 15)} style={{ padding: '12px 20px', borderRadius: 14, minHeight: 48 }}>+15s</button>
               </div>
+              <button
+                onClick={() => setRestMinimized(true)}
+                className="btn-ghost"
+                style={{ marginTop: 16, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)' }}
+              >
+                <Minimize2 size={14} /> Minimize to View Exercise Demo
+              </button>
             </div>
           </motion.div>
         )}
@@ -972,7 +1113,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
               <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>Swap Exercise</h3>
               <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Swapping: {currentExercise?.exerciseName}</div>
               <div style={{ fontSize: 10, color: 'var(--accent-green)', marginBottom: 12 }}>
-                ✓ Filtered to your selected equipment ({userEquipment.length} items) & remembered for future sessions
+                ✓ Filtered to your selected equipment ({userEquipment.length} items) • GIFs prioritized
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '60vh', overflowY: 'auto' }}>
                 {['perfect', 'good', 'home', 'related'].map(cat => {
@@ -997,9 +1138,11 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                               {matchTags.slice(0, 3).map((tag, i) => (<span key={i} style={{ background: 'var(--bg-elevated)', padding: '1px 4px', borderRadius: 3 }}>{tag}</span>))}
                             </div>
                           </div>
-                          {hasAnimatedExerciseMedia(ex) && (
-                            <div style={{ fontSize: 9, color: 'var(--accent-green)', fontWeight: 700 }}>ANIM</div>
-                          )}
+                          {hasGifExerciseMedia(ex) ? (
+                            <div style={{ fontSize: 9, color: 'var(--accent-green)', fontWeight: 700 }}>GIF</div>
+                          ) : hasAnimatedExerciseMedia(ex) ? (
+                            <div style={{ fontSize: 9, color: 'var(--accent-cyan)', fontWeight: 700 }}>ANIM</div>
+                          ) : null}
                           <div style={{ width: 28, height: 28, borderRadius: 7, background: `rgba(16,232,154,${Math.min(1, score / 140)})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: 'white' }}>{score}</div>
                         </button>
                       ))}

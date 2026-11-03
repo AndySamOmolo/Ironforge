@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BarChart3, Calendar, Clock, Dumbbell, TrendingUp, Trophy, Target, Zap, History, ChevronDown, ChevronRight, Trash2, Flame, Star } from 'lucide-react';
+import { BarChart3, Calendar, Clock, Dumbbell, TrendingUp, Trophy, Target, Zap, History, ChevronDown, ChevronRight, Trash2, Flame, Star, Activity } from 'lucide-react';
 import { db } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
 import type { WorkoutSession, PersonalRecord } from '@/lib/types';
+import { estimate1RM } from '@/lib/utils/progressionEngine';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid, AreaChart, Area, LineChart, Line } from 'recharts';
 import MuscleHeatmap from '@/components/ui/MuscleHeatmap';
 
@@ -14,6 +15,14 @@ type TabId = 'overview' | 'strength' | 'records' | 'body' | 'history';
 interface SessionDetail {
   session: WorkoutSession;
   exercises: { name: string; sets: { weight: number; reps: number; setNumber: number; isPR?: boolean }[] }[];
+}
+
+function toLocalDateKey(dateInput: Date | string | number): string {
+  const d = new Date(dateInput);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 export default function ProgressPage() {
@@ -25,11 +34,12 @@ export default function ProgressPage() {
   const [expandedSession, setExpandedSession] = useState<number | null>(null);
   const [sessionDetail, setSessionDetail] = useState<SessionDetail | null>(null);
   const [historyFilter, setHistoryFilter] = useState<'all' | 'week' | 'month'>('all');
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
   const [historyPage, setHistoryPage] = useState(0);
-  const [calendarView, setCalendarView] = useState(false);
+  const [calendarView, setCalendarView] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [exerciseChartId, setExerciseChartId] = useState<number | null>(null);
-  const [exerciseChartData, setExerciseChartData] = useState<{ date: string; weight: number; volume: number }[]>([]);
+  const [exerciseChartData, setExerciseChartData] = useState<{ date: string; weight: number; est1RM: number; volume: number }[]>([]);
   const [loggedExercises, setLoggedExercises] = useState<{ id: number; name: string; count: number }[]>([]);
   const PAGE_SIZE = 15;
 
@@ -86,18 +96,19 @@ export default function ProgressPage() {
       const sessionsForEx = await db.workoutSessions.where('id').anyOf(sessionIds).toArray();
       const sessionDateMap = new Map(sessionsForEx.map(s => [s.id!, new Date(s.startedAt)]));
 
-      const byDate: Record<string, { maxWeight: number; totalVolume: number }> = {};
+      const byDate: Record<string, { maxWeight: number; max1RM: number; totalVolume: number }> = {};
       sets.forEach(s => {
         const d = sessionDateMap.get(s.sessionId);
         if (!d) return;
-        const key = d.toISOString().split('T')[0];
-        if (!byDate[key]) byDate[key] = { maxWeight: 0, totalVolume: 0 };
+        const key = toLocalDateKey(d);
+        if (!byDate[key]) byDate[key] = { maxWeight: 0, max1RM: 0, totalVolume: 0 };
         byDate[key].maxWeight = Math.max(byDate[key].maxWeight, s.weight);
+        byDate[key].max1RM = Math.max(byDate[key].max1RM, estimate1RM(s.weight, s.reps));
         byDate[key].totalVolume += s.weight * s.reps;
       });
 
       const data = Object.entries(byDate)
-        .map(([date, v]) => ({ date, weight: v.maxWeight, volume: v.totalVolume }))
+        .map(([date, v]) => ({ date, weight: v.maxWeight, est1RM: v.max1RM, volume: v.totalVolume }))
         .sort((a, b) => a.date.localeCompare(b.date));
 
       setExerciseChartData(data);
@@ -108,6 +119,7 @@ export default function ProgressPage() {
   const handleDeleteSession = async (id: number) => {
     await db.workoutSessions.delete(id);
     await db.sets.where('sessionId').equals(id).delete();
+    await db.personalRecords.where('sessionId').equals(id).delete();
     setDeleteConfirm(null);
     setExpandedSession(null);
     loadData();
@@ -115,6 +127,9 @@ export default function ProgressPage() {
 
   const filteredHistory = useMemo(() => {
     let filtered = sessions;
+    if (selectedCalendarDate) {
+      return sessions.filter(s => toLocalDateKey(s.startedAt) === selectedCalendarDate);
+    }
     if (historyFilter === 'week') {
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
       filtered = sessions.filter(s => new Date(s.startedAt) >= weekAgo);
@@ -123,7 +138,7 @@ export default function ProgressPage() {
       filtered = sessions.filter(s => new Date(s.startedAt) >= monthAgo);
     }
     return filtered;
-  }, [sessions, historyFilter]);
+  }, [sessions, historyFilter, selectedCalendarDate]);
 
   const paginatedHistory = useMemo(() => {
     return filteredHistory.slice(0, (historyPage + 1) * PAGE_SIZE);
@@ -132,7 +147,7 @@ export default function ProgressPage() {
   const calendarData = useMemo(() => {
     const map = new Map<string, number>();
     sessions.forEach(s => {
-      const key = new Date(s.startedAt).toISOString().split('T')[0];
+      const key = toLocalDateKey(s.startedAt);
       map.set(key, (map.get(key) || 0) + 1);
     });
     return map;
@@ -141,13 +156,13 @@ export default function ProgressPage() {
   const calendarWeeks = useMemo(() => {
     const weeks: { date: string; count: number; isToday: boolean }[][] = [];
     const now = new Date();
-    const today = now.toISOString().split('T')[0];
+    const today = toLocalDateKey(now);
     for (let w = 11; w >= 0; w--) {
       const week: { date: string; count: number; isToday: boolean }[] = [];
       for (let d = 0; d < 7; d++) {
         const date = new Date(now);
         date.setDate(date.getDate() - (w * 7 + (6 - d)));
-        const key = date.toISOString().split('T')[0];
+        const key = toLocalDateKey(date);
         week.push({ date: key, count: calendarData.get(key) || 0, isToday: key === today });
       }
       weeks.push(week);
@@ -165,39 +180,54 @@ export default function ProgressPage() {
     };
   }, [sessions]);
 
-  const { currentStreak, longestStreak } = useMemo(() => {
-    const dates = new Set(sessions.map(s => new Date(s.startedAt).toDateString()));
+  const { currentStreak, longestStreak, activeDays30d } = useMemo(() => {
+    const dates = new Set(sessions.map(s => toLocalDateKey(s.startedAt)));
     let current = 0;
     const d = new Date();
-    while (dates.has(d.toDateString())) { current++; d.setDate(d.getDate() - 1); }
-    if (current === 0) { d.setDate(d.getDate() - 1); while (dates.has(d.toDateString())) { current++; d.setDate(d.getDate() - 1); } }
+    if (!dates.has(toLocalDateKey(d))) {
+      d.setDate(d.getDate() - 1);
+    }
+    while (dates.has(toLocalDateKey(d))) {
+      current++;
+      d.setDate(d.getDate() - 1);
+    }
 
     let longest = 0, streak = 0;
-    const allDates = [...dates].map(ds => new Date(ds).getTime()).sort((a, b) => a - b);
+    const allDates = [...dates].map(ds => new Date(`${ds}T00:00:00`).getTime()).sort((a, b) => a - b);
     for (let i = 0; i < allDates.length; i++) {
       if (i === 0 || allDates[i] - allDates[i - 1] <= 86400000 * 1.5) { streak++; } else { streak = 1; }
       longest = Math.max(longest, streak);
     }
-    return { currentStreak: current, longestStreak: longest };
+
+    const thirtyAgo = Date.now() - 30 * 86400000;
+    const active30 = [...dates].filter(ds => new Date(`${ds}T12:00:00`).getTime() >= thirtyAgo).length;
+
+    return { currentStreak: current, longestStreak: longest, activeDays30d: active30 };
   }, [sessions]);
 
-  const thisWeekSessions = sessions.filter(s => {
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    return new Date(s.startedAt) >= weekAgo;
-  });
-
   const totalVolume = sessions.reduce((a, s) => a + (s.totalVolume || 0), 0);
-  const avgDuration = sessions.length > 0 ? Math.round(sessions.reduce((a, s) => a + s.duration, 0) / sessions.length / 60) : 0;
+  const totalDurationSec = sessions.reduce((a, s) => a + (s.duration || 0), 0);
+  const totalSets = sessions.reduce((a, s) => a + (s.totalSets || 0), 0);
+  const estTotalCalories = Math.round((totalDurationSec / 60) * 6.5 + totalSets * 11);
+  const avgDuration = sessions.length > 0 ? Math.round(totalDurationSec / sessions.length / 60) : 0;
 
   const getWeeklyData = () => {
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const now = new Date();
+    const dayOfWeek = (now.getDay() + 6) % 7;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - dayOfWeek);
+
     return days.map((day, i) => {
-      const d = new Date(now); d.setDate(d.getDate() - d.getDay() + i);
-      const dayStart = new Date(d); dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date(d); dayEnd.setHours(23, 59, 59, 999);
-      const daySessions = sessions.filter(s => { const sd = new Date(s.startedAt); return sd >= dayStart && sd <= dayEnd; });
-      return { day, volume: daySessions.reduce((a, s) => a + (s.totalVolume || 0), 0), sets: daySessions.reduce((a, s) => a + (s.totalSets || 0), 0) };
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const key = toLocalDateKey(d);
+      const daySessions = sessions.filter(s => toLocalDateKey(s.startedAt) === key);
+      return {
+        day,
+        volume: daySessions.reduce((a, s) => a + (s.totalVolume || 0), 0),
+        sets: daySessions.reduce((a, s) => a + (s.totalSets || 0), 0),
+      };
     });
   };
 
@@ -214,7 +244,7 @@ export default function ProgressPage() {
   };
 
   const fmtVol = (v: number) => v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toString();
-  const fmtDur = (s: number) => { const m = Math.floor(s / 60); return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`; };
+  const fmtDur = (s: number) => { const m = Math.max(1, Math.round(s / 60)); return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`; };
 
   const selectedExerciseName = loggedExercises.find(e => e.id === exerciseChartId)?.name || '';
 
@@ -227,8 +257,8 @@ export default function ProgressPage() {
             <BarChart3 size={18} color="var(--accent-green)" />
           </div>
           <div>
-            <h1 style={{ fontSize: 24, fontWeight: 800 }}>Progress</h1>
-            <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>Track your strength, records & muscle recovery</p>
+            <h1 style={{ fontSize: 24, fontWeight: 800 }}>Progress & Analytics</h1>
+            <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>Track your activity consistency, strength, records & 3D body map</p>
           </div>
         </div>
       </motion.div>
@@ -237,10 +267,10 @@ export default function ProgressPage() {
       <div className="chip-scroll" style={{ marginBottom: 16, paddingBottom: 4 }}>
         {([
           { id: 'overview' as const, label: 'Overview', icon: BarChart3 },
-          { id: 'history' as const, label: 'History', icon: History },
+          { id: 'body' as const, label: '3D Body Map', icon: Target },
+          { id: 'history' as const, label: 'Activity Log', icon: History },
           { id: 'strength' as const, label: 'Strength', icon: TrendingUp },
           { id: 'records' as const, label: 'Records', icon: Trophy },
-          { id: 'body' as const, label: 'Body Map', icon: Target },
         ]).map(t => (
           <button key={t.id}
             className={`filter-chip ${tab === t.id ? 'active' : ''}`}
@@ -257,9 +287,9 @@ export default function ProgressPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16 }}>
             {[
               { icon: Dumbbell, value: sessions.length, label: 'Total Workouts', color: 'var(--accent-purple)', bg: 'rgba(124,106,255,0.08)' },
-              { icon: Calendar, value: thisWeekSessions.length, label: 'This Week', color: 'var(--accent-green)', bg: 'rgba(0,229,160,0.08)' },
-              { icon: Clock, value: `${avgDuration}m`, label: 'Avg Duration', color: 'var(--accent-orange)', bg: 'rgba(255,140,66,0.08)' },
-              { icon: Flame, value: currentStreak, label: `Streak (Best: ${longestStreak})`, color: 'var(--accent-red)', bg: 'rgba(255,61,90,0.08)' },
+              { icon: Activity, value: `${activeDays30d}d`, label: 'Active Days (30D)', color: 'var(--accent-green)', bg: 'rgba(0,229,160,0.08)' },
+              { icon: Clock, value: `${avgDuration}m`, label: `Avg Time (${fmtDur(totalDurationSec)} total)`, color: 'var(--accent-orange)', bg: 'rgba(255,140,66,0.08)' },
+              { icon: Flame, value: `${currentStreak}d`, label: `Streak (Best: ${longestStreak}d)`, color: 'var(--accent-red)', bg: 'rgba(255,61,90,0.08)' },
             ].map((stat, i) => (
               <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}
                 className="stat-card" style={{ alignItems: 'center', textAlign: 'center' }}>
@@ -273,7 +303,7 @@ export default function ProgressPage() {
           </div>
 
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="card" style={{ marginBottom: 16, padding: 18 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Weekly Volume ({unitLabel})</h3>
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>This Week Volume (Mon–Sun, {unitLabel})</h3>
             <div style={{ height: 180 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={getWeeklyData()} barSize={24}>
@@ -289,7 +319,7 @@ export default function ProgressPage() {
           </motion.div>
 
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="card" style={{ marginBottom: 16, padding: 18 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Volume Trend (8 weeks)</h3>
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Volume Trend (8 Weeks)</h3>
             <div style={{ height: 150 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={getTrendData()}>
@@ -304,20 +334,24 @@ export default function ProgressPage() {
             </div>
           </motion.div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
-            <div className="stat-card" style={{ borderLeft: '3px solid var(--accent-red)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            <div className="stat-card" style={{ borderLeft: '3px solid var(--accent-red)', padding: 12 }}>
               <div className="stat-label">Total Volume</div>
-              <div className="stat-value" style={{ color: 'var(--accent-red)' }}>{fmtVol(totalVolume)} <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{unitLabel}</span></div>
+              <div className="stat-value" style={{ color: 'var(--accent-red)', fontSize: 18 }}>{fmtVol(totalVolume)} <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{unitLabel}</span></div>
             </div>
-            <div className="stat-card" style={{ borderLeft: '3px solid var(--accent-yellow)' }}>
-              <div className="stat-label">Personal Records</div>
-              <div className="stat-value" style={{ color: 'var(--accent-yellow)' }}>{prs.length}</div>
+            <div className="stat-card" style={{ borderLeft: '3px solid var(--accent-orange)', padding: 12 }}>
+              <div className="stat-label">Est. Burned</div>
+              <div className="stat-value" style={{ color: 'var(--accent-orange)', fontSize: 18 }}>{fmtVol(estTotalCalories)} <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>kcal</span></div>
+            </div>
+            <div className="stat-card" style={{ borderLeft: '3px solid var(--accent-yellow)', padding: 12 }}>
+              <div className="stat-label">PRs Set</div>
+              <div className="stat-value" style={{ color: 'var(--accent-yellow)', fontSize: 18 }}>{prs.length}</div>
             </div>
           </div>
         </motion.div>
       )}
 
-      {/* ════════ HISTORY ════════ */}
+      {/* ════════ HISTORY / ACTIVITY LOG ════════ */}
       {tab === 'history' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14 }}>
@@ -338,35 +372,54 @@ export default function ProgressPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8 }}>
             <div style={{ display: 'flex', gap: 4 }}>
               {(['all', 'month', 'week'] as const).map(f => (
-                <button key={f} className={historyFilter === f ? 'btn-primary btn-high-contrast' : 'btn-secondary'}
-                  onClick={() => { setHistoryFilter(f); setHistoryPage(0); }}
-                  style={{ minHeight: 32, padding: '5px 12px', fontSize: 11, borderRadius: 8 }}>
+                <button key={f} className={historyFilter === f && !selectedCalendarDate ? 'btn-primary btn-high-contrast' : 'btn-secondary'}
+                  onClick={() => { setHistoryFilter(f); setSelectedCalendarDate(null); setHistoryPage(0); }}
+                  style={{ minHeight: 32, padding: '5px 12px', fontSize: 11, borderRadius: 8, width: 'auto' }}>
                   {f === 'all' ? 'All' : f === 'month' ? '30D' : '7D'}
                 </button>
               ))}
+              {selectedCalendarDate && (
+                <button
+                  onClick={() => setSelectedCalendarDate(null)}
+                  className="btn-secondary"
+                  style={{ minHeight: 32, padding: '5px 10px', fontSize: 11, borderRadius: 8, color: 'var(--accent-yellow)' }}
+                >
+                  {selectedCalendarDate} ×
+                </button>
+              )}
             </div>
             <button className={calendarView ? 'btn-primary btn-high-contrast' : 'btn-secondary'}
               onClick={() => setCalendarView(!calendarView)}
-              style={{ minHeight: 32, padding: '5px 12px', fontSize: 11, borderRadius: 8 }}>
-              <Calendar size={12} /> {calendarView ? 'List' : 'Calendar'}
+              style={{ minHeight: 32, padding: '5px 12px', fontSize: 11, borderRadius: 8, width: 'auto' }}>
+              <Calendar size={12} /> {calendarView ? 'Hide Grid' : '12W Grid'}
             </button>
           </div>
 
           {calendarView && (
             <div className="card" style={{ padding: 14, marginBottom: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8 }}>Last 12 Weeks</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>Last 12 Weeks (Tap a day to filter)</span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{activeDays30d} active days in last 30d</span>
+              </div>
               <div style={{ display: 'flex', gap: 3, justifyContent: 'center' }}>
                 {calendarWeeks.map((week, wi) => (
                   <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    {week.map((day, di) => (
-                      <div key={di} title={`${day.date}: ${day.count} workout${day.count !== 1 ? 's' : ''}`}
-                        style={{
-                          width: 16, height: 16, borderRadius: 3,
-                          background: day.count === 0 ? 'var(--bg-glass)' : day.count === 1 ? 'var(--accent-green)' : 'var(--accent-red)',
-                          opacity: day.count === 0 ? 0.2 : 0.5 + Math.min(day.count * 0.25, 0.5),
-                          border: day.isToday ? '1.5px solid var(--accent-purple)' : 'none',
-                        }} />
-                    ))}
+                    {week.map((day, di) => {
+                      const isSel = selectedCalendarDate === day.date;
+                      return (
+                        <button
+                          key={di}
+                          onClick={() => setSelectedCalendarDate(isSel ? null : day.date)}
+                          title={`${day.date}: ${day.count} workout${day.count !== 1 ? 's' : ''}`}
+                          style={{
+                            width: 16, height: 16, borderRadius: 3.5, padding: 0, cursor: 'pointer',
+                            background: day.count === 0 ? 'var(--bg-glass)' : day.count === 1 ? 'var(--accent-green)' : 'var(--accent-red)',
+                            opacity: day.count === 0 ? 0.24 : 0.65 + Math.min(day.count * 0.2, 0.35),
+                            border: isSel ? '1.5px solid #ffffff' : day.isToday ? '1.5px solid var(--accent-purple)' : 'none',
+                          }}
+                        />
+                      );
+                    })}
                   </div>
                 ))}
               </div>
@@ -380,8 +433,10 @@ export default function ProgressPage() {
           {paginatedHistory.length === 0 ? (
             <div className="empty-state">
               <History size={48} color="var(--text-muted)" />
-              <h3 style={{ fontSize: 18, fontWeight: 700 }}>No workouts yet</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>Complete your first workout to see it here.</p>
+              <h3 style={{ fontSize: 18, fontWeight: 700 }}>No workouts found</h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
+                {selectedCalendarDate ? `No workouts logged on ${selectedCalendarDate}.` : 'Complete your first workout to see it here.'}
+              </p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -498,7 +553,7 @@ export default function ProgressPage() {
       {tab === 'strength' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           <div className="card" style={{ marginBottom: 16, padding: 16 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Exercise Strength Progression</h3>
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Exercise Strength & Estimated 1RM Progression</h3>
             <select onChange={(e) => { const id = parseInt(e.target.value); if (id) loadExerciseChart(id); }}
               value={exerciseChartId || ''}
               style={{ width: '100%', padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 13, marginBottom: 12, outline: 'none' }}>
@@ -512,15 +567,18 @@ export default function ProgressPage() {
 
             {exerciseChartData.length > 1 && (
               <>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8, textTransform: 'capitalize' }}>Max Weight ({unitLabel}) — {selectedExerciseName}</div>
-                <div style={{ height: 180 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8, textTransform: 'capitalize' }}>
+                  Max Weight & Est. 1RM ({unitLabel}) — {selectedExerciseName}
+                </div>
+                <div style={{ height: 190 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={exerciseChartData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
                       <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} />
                       <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={35} />
                       <Tooltip contentStyle={{ background: 'var(--bg-sheet)', border: '1px solid var(--border-bright)', borderRadius: 12, fontSize: 12 }} />
-                      <Line type="monotone" dataKey="weight" stroke="#FF3B5C" strokeWidth={2} dot={{ r: 4, fill: '#FF3B5C' }} />
+                      <Line type="monotone" dataKey="est1RM" name="Est. 1RM" stroke="#10E89A" strokeWidth={2} dot={{ r: 4, fill: '#10E89A' }} />
+                      <Line type="monotone" dataKey="weight" name="Top Weight" stroke="#FF3B5C" strokeWidth={2} dot={{ r: 4, fill: '#FF3B5C' }} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -602,7 +660,7 @@ export default function ProgressPage() {
         </motion.div>
       )}
 
-      {/* ════════ BODY MAP ════════ */}
+      {/* ════════ 3D ANATOMICAL BODY MAP ════════ */}
       {tab === 'body' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           <MuscleHeatmap sessions={sessions} />

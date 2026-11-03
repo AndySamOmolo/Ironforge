@@ -1,6 +1,6 @@
-import type { Exercise, WorkoutDayExercise, ActiveExercise } from '@/lib/types';
+import type { Exercise, WorkoutDayExercise, ActiveExercise, WorkoutDay } from '@/lib/types';
 import { getWorkoutStartingWeight } from './workoutDefaults';
-import { getPrimaryExerciseImage, getExerciseImageFrames } from './exerciseMedia';
+import { getPrimaryExerciseImage, getExerciseImageFrames, getExerciseGifUrl, hasGifExerciseMedia } from './exerciseMedia';
 
 export const ALL_EQUIPMENT = [
   'barbell',
@@ -263,10 +263,10 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     keywords: ['bench press', 'chest press', 'floor press', 'push-up', 'push up'],
     preferredNames: [
       'barbell bench press',
-      'Barbell Bench Press - Medium Grip',
       'barbell wide bench press',
-      'dumbbell bench press',
       'barbell guillotine bench press',
+      'Barbell Bench Press - Medium Grip',
+      'dumbbell bench press',
       'smith bench press',
       'lever chest press',
       'push-up',
@@ -279,6 +279,7 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     preferredNames: [
       'dumbbell bench press',
       'Dumbbell Bench Press',
+      'dumbbell neutral grip bench press',
       'dumbbell around pullover',
       'dumbbell fly',
       'barbell bench press',
@@ -289,11 +290,11 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
   },
   'incline dumbbell press': {
     muscles: ['chest', 'pectorals'],
-    keywords: ['incline dumbbell press', 'incline bench press', 'incline press', 'incline push-up', 'incline fly'],
+    keywords: ['incline bench press', 'incline dumbbell press', 'incline press', 'incline push-up', 'incline fly'],
     preferredNames: [
-      'Incline Dumbbell Press',
       'dumbbell incline bench press',
       'dumbbell incline hammer press',
+      'Incline Dumbbell Press',
       'barbell incline bench press',
       'incline push-up',
       'dumbbell incline fly',
@@ -301,6 +302,17 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
       'lever incline chest press',
     ],
     avoidKeywords: ['curl', 'row', 'shrug', 'sit-up'],
+  },
+  'incline push-up': {
+    muscles: ['chest', 'pectorals', 'triceps'],
+    keywords: ['incline push-up', 'incline push up', 'push-up'],
+    preferredNames: [
+      'incline push-up',
+      'incline close-grip push-up',
+      'push-up',
+      'wide hand push up',
+    ],
+    avoidKeywords: ['suspended', 'trx'],
   },
   'cable fly': {
     muscles: ['chest', 'pectorals'],
@@ -310,9 +322,9 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
       'cable incline fly',
       'cable low fly',
       'dumbbell fly',
-      'Dumbbell Flyes',
       'dumbbell incline fly',
       'dumbbell decline fly',
+      'Dumbbell Flyes',
       'lever seated fly',
       'push-up',
       'wide hand push up',
@@ -323,11 +335,11 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     muscles: ['chest', 'pectorals'],
     keywords: ['crossover', 'cross over', 'fly', 'flye', 'decline', 'pullover', 'push-up'],
     preferredNames: [
-      'Cable Crossover',
       'cable standing up straight crossovers',
       'cable upper chest crossovers',
+      'Cable Crossover',
       'dumbbell decline fly',
-      'Incline Dumbbell Flyes',
+      'dumbbell incline fly',
       'dumbbell pullover',
       'clock push-up',
       'decline push-up',
@@ -338,15 +350,15 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     muscles: ['shoulders', 'delts'],
     keywords: ['overhead press', 'shoulder press', 'military press', 'standing press', 'push press', 'pike push'],
     preferredNames: [
-      'barbell standing military press',
       'barbell seated overhead press',
+      'barbell standing close grip military press',
+      'dumbbell standing overhead press',
+      'dumbbell seated shoulder press',
       'Standing Military Press',
       'Seated Barbell Military Press',
       'Dumbbell Shoulder Press',
-      'dumbbell standing overhead press',
-      'Barbell Shoulder Press',
       'kettlebell seated press',
-      'pike push-up',
+      'pike-to-cobra push-up',
     ],
     avoidKeywords: ['chest', 'bench', 'calf', 'crunch', 'squat'],
   },
@@ -354,13 +366,13 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     muscles: ['shoulders', 'delts'],
     keywords: ['dumbbell shoulder press', 'shoulder press', 'seated press', 'arnold press', 'overhead press'],
     preferredNames: [
-      'Dumbbell Shoulder Press',
       'dumbbell seated shoulder press',
       'dumbbell standing overhead press',
       'dumbbell one arm shoulder press',
-      'Arnold Dumbbell Press',
+      'Dumbbell Shoulder Press',
+      'dumbbell arnold press',
       'barbell seated overhead press',
-      'pike push-up',
+      'pike-to-cobra push-up',
     ],
     avoidKeywords: ['chest', 'bench', 'shrug', 'curl'],
   },
@@ -368,25 +380,35 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     muscles: ['shoulders', 'delts'],
     keywords: ['arnold', 'shoulder press', 'dumbbell press', 'overhead press', 'deltoid'],
     preferredNames: [
-      'Arnold Dumbbell Press',
       'dumbbell arnold press',
+      'Arnold Dumbbell Press',
       'dumbbell seated shoulder press',
       'Dumbbell Shoulder Press',
-      'Alternating Deltoid Raise',
       'barbell upright row',
       'handstand push-up',
     ],
     avoidKeywords: ['chest', 'bench', 'leg', 'crunch'],
+  },
+  'pike push up': {
+    muscles: ['shoulders', 'delts', 'triceps'],
+    keywords: ['pike', 'handstand', 'shoulder', 'push-up'],
+    preferredNames: [
+      'pike-to-cobra push-up',
+      'exercise ball pike push up',
+      'decline push-up',
+      'incline push-up',
+    ],
+    avoidKeywords: ['crunch', 'leg'],
   },
   'lateral raise': {
     muscles: ['shoulders', 'delts'],
     keywords: ['lateral raise', 'side lateral', 'deltoid raise', 'raise'],
     preferredNames: [
       'dumbbell lateral raise',
-      'Side Lateral Raise',
       'dumbbell seated lateral raise',
-      'Alternating Deltoid Raise',
       'cable lateral raise',
+      'Side Lateral Raise',
+      'Alternating Deltoid Raise',
       'barbell upright row',
       'band lateral raise',
     ],
@@ -397,10 +419,10 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     keywords: ['front raise', 'anterior', 'deltoid raise', 'shoulder raise'],
     preferredNames: [
       'dumbbell front raise',
-      'Front Dumbbell Raise',
       'barbell front raise',
-      'Alternating Deltoid Raise',
       'cable front raise',
+      'Front Dumbbell Raise',
+      'Alternating Deltoid Raise',
       'Front Plate Raise',
       'band front raise',
     ],
@@ -410,13 +432,13 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     muscles: ['shoulders', 'delts', 'upper back'],
     keywords: ['face pull', 'rear delt', 'reverse fly', 'band pull apart', 'external rotation'],
     preferredNames: [
-      'Face Pull',
       'cable rear delt row (with rope)',
+      'cable kneeling rear delt row (with rope) (male)',
       'dumbbell rear delt row_shoulder',
       'dumbbell seated bent-over rear delt raise',
-      'Seated Bent-Over Rear Delt Raise',
       'barbell rear delt row',
-      'Band Pull Apart',
+      'band standing rear delt row',
+      'Face Pull',
       'inverted row',
     ],
     avoidKeywords: ['chest', 'leg', 'squat', 'crunch'],
@@ -427,10 +449,11 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     preferredNames: [
       'dumbbell rear fly',
       'dumbbell lying rear lateral raise',
-      'Seated Bent-Over Rear Delt Raise',
+      'dumbbell rotation reverse fly',
       'cable rear delt row (with rope)',
       'cable supine reverse fly',
       'barbell rear delt row',
+      'Seated Bent-Over Rear Delt Raise',
       'inverted row with straps',
     ],
     avoidKeywords: ['chest', 'pectoral', 'leg', 'crunch'],
@@ -441,9 +464,9 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     preferredNames: [
       'cable pushdown',
       'cable pushdown (with rope attachment)',
+      'cable triceps pushdown (v-bar)',
       'Triceps Pushdown',
       'dumbbell kickback',
-      'Tricep Dumbbell Kickback',
       'barbell close-grip bench press',
       'close-grip push-up',
       'bench dip on floor',
@@ -457,10 +480,10 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     preferredNames: [
       'dumbbell seated triceps extension',
       'dumbbell standing triceps extension',
-      'Standing Dumbbell Triceps Extension',
       'barbell seated overhead triceps extension',
       'cable overhead triceps extension (rope attachment)',
       'ez barbell seated triceps extension',
+      'Standing Dumbbell Triceps Extension',
       'bodyweight kneeling triceps extension',
     ],
     avoidKeywords: ['biceps', 'leg', 'back', 'hip'],
@@ -470,9 +493,9 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     keywords: ['skull', 'lying triceps', 'decline triceps', 'close-grip', 'triceps press'],
     preferredNames: [
       'barbell lying triceps extension skull crusher',
-      'EZ-Bar Skullcrusher',
-      'dumbbell lying triceps extension',
       'barbell decline close grip to skull press',
+      'dumbbell lying triceps extension',
+      'EZ-Bar Skullcrusher',
       'Lying Triceps Press',
       'Band Skull Crusher',
       'diamond push-up',
@@ -486,8 +509,8 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
       'triceps dip',
       'chest dip',
       'bench dip on floor',
-      'Bench Dips',
       'three bench dip',
+      'Bench Dips',
       'close-grip push-up',
       'dumbbell decline bench press',
     ],
@@ -498,10 +521,10 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     keywords: ['bent over row', 'barbell row', 'pendlay row', 'incline bench row', 'row'],
     preferredNames: [
       'barbell bent over row',
-      'Bent Over Barbell Row',
       'barbell reverse grip bent over row',
       'barbell incline row',
       'barbell pendlay row',
+      'Bent Over Barbell Row',
       'dumbbell bent over row',
       'inverted row',
     ],
@@ -512,24 +535,48 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     keywords: ['one-arm dumbbell row', 'dumbbell row', 'bent over row', 'row'],
     preferredNames: [
       'dumbbell bent over row',
-      'One-Arm Dumbbell Row',
-      'Bent Over Two-Dumbbell Row',
+      'dumbbell one arm bent-over row',
       'dumbbell incline row',
       'dumbbell palm rotational bent over row',
+      'One-Arm Dumbbell Row',
+      'Bent Over Two-Dumbbell Row',
       'barbell bent over row',
       'inverted row',
     ],
     avoidKeywords: ['side bend', 'sit-up', 'crunch', 'press', 'curl'],
+  },
+  'dumbbell pullover': {
+    muscles: ['lats', 'chest', 'pectorals', 'back'],
+    keywords: ['pullover', 'dumbbell pullover', 'straight arm'],
+    preferredNames: [
+      'dumbbell pullover',
+      'dumbbell around pullover',
+      'barbell pullover',
+      'cable straight arm pulldown',
+      'pull-up',
+    ],
+    avoidKeywords: ['crunch', 'leg'],
+  },
+  'inverted row': {
+    muscles: ['upper back', 'middle back', 'lats', 'back'],
+    keywords: ['inverted row', 'bodyweight row', 'row'],
+    preferredNames: [
+      'inverted row',
+      'inverted row bent knees',
+      'inverted row on bench',
+      'inverted row v. 2',
+      'pull-up',
+    ],
+    avoidKeywords: ['crunch', 'press'],
   },
   'seated cable row': {
     muscles: ['upper back', 'middle back', 'lats', 'back'],
     keywords: ['seated row', 'cable row', 'bent over row', 'row', 'inverted row'],
     preferredNames: [
       'cable seated row',
-      'Seated Cable Rows',
       'cable low seated row',
+      'Seated Cable Rows',
       'dumbbell bent over row',
-      'Bent Over Two-Dumbbell Row',
       'barbell bent over row',
       'lever seated row',
       'inverted row',
@@ -541,9 +588,10 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     keywords: ['pulldown', 'pull-up', 'pull up', 'chin-up', 'pullover'],
     preferredNames: [
       'cable pulldown',
-      'Wide-Grip Lat Pulldown',
+      'cable pulldown (pro lat bar)',
       'cable wide grip lat pulldown behind neck',
       'lever front pulldown',
+      'Wide-Grip Lat Pulldown',
       'pull-up',
       'dumbbell pullover',
       'barbell pullover',
@@ -556,10 +604,10 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     keywords: ['straight arm pulldown', 'pullover', 'pulldown', 'lat'],
     preferredNames: [
       'cable straight arm pulldown',
-      'Straight-Arm Pulldown',
       'dumbbell pullover',
-      'Bent-Arm Dumbbell Pullover',
       'barbell pullover',
+      'Straight-Arm Pulldown',
+      'Bent-Arm Dumbbell Pullover',
       'Bent-Arm Barbell Pullover',
       'pull-up',
     ],
@@ -570,9 +618,9 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     keywords: ['pull-up', 'pull up', 'chin-up', 'wide grip pull'],
     preferredNames: [
       'pull-up',
-      'Pullups',
       'wide grip pull-up',
       'archer pull up',
+      'Pullups',
       'chin-up',
       'inverted row',
       'dumbbell pullover',
@@ -584,9 +632,9 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     keywords: ['chin-up', 'chin up', 'pull-up', 'underhand'],
     preferredNames: [
       'chin-up',
-      'Chin-Up',
       'narrow grip pull-up',
       'mixed grip chin-up',
+      'Chin-Up',
       'pull-up',
       'inverted row',
     ],
@@ -597,10 +645,10 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     keywords: ['barbell curl', 'biceps curl', 'curl'],
     preferredNames: [
       'barbell curl',
-      'Barbell Curl',
       'barbell wide-grip standing biceps curl',
       'ez barbell curl',
       'dumbbell biceps curl',
+      'Barbell Curl',
       'Dumbbell Bicep Curl',
       'chin-up',
     ],
@@ -611,8 +659,8 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     keywords: ['hammer curl', 'neutral grip', 'cross body hammer', 'biceps curl'],
     preferredNames: [
       'dumbbell hammer curl',
-      'Hammer Curls',
       'dumbbell cross body hammer curl',
+      'Hammer Curls',
       'Alternate Hammer Curl',
       'Cross Body Hammer Curl',
       'barbell reverse curl',
@@ -625,9 +673,9 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     keywords: ['incline biceps curl', 'incline dumbbell curl', 'incline curl', 'biceps curl'],
     preferredNames: [
       'dumbbell incline biceps curl',
+      'dumbbell incline hammer curls',
       'Incline Dumbbell Curl',
       'Alternate Incline Dumbbell Curl',
-      'dumbbellIncline Hammer Curls',
       'dumbbell standing biceps curl',
       'barbell drag curl',
       'chin-up',
@@ -638,11 +686,11 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     muscles: ['biceps'],
     keywords: ['preacher curl', 'concentration curl', 'spider curl', 'biceps curl'],
     preferredNames: [
-      'Preacher Curl',
       'barbell preacher curl',
       'dumbbell preacher curl',
-      'One Arm Dumbbell Preacher Curl',
       'ez barbell spider curl',
+      'Preacher Curl',
+      'One Arm Dumbbell Preacher Curl',
       'dumbbell concentration curl',
       'barbell close-grip standing curl',
     ],
@@ -653,9 +701,9 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     keywords: ['concentration curl', 'biceps curl', 'waiter curl', 'preacher curl'],
     preferredNames: [
       'dumbbell concentration curl',
-      'Concentration Curls',
       'dumbbell standing concentration curl',
       'dumbbell alternate biceps curl',
+      'Concentration Curls',
       'barbell curl',
       'chin-up',
     ],
@@ -665,27 +713,40 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     muscles: ['quads', 'quadriceps', 'glutes'],
     keywords: ['barbell squat', 'full squat', 'high bar squat', 'back squat', 'goblet squat', 'squat'],
     preferredNames: [
-      'Barbell Squat',
       'barbell full squat',
-      'Barbell Full Squat',
       'barbell high bar squat',
       'barbell low bar squat',
+      'Barbell Squat',
+      'Barbell Full Squat',
       'dumbbell squat',
       'dumbbell goblet squat',
-      'Bodyweight Squat',
+      'jump squat',
     ],
     avoidKeywords: ['stretch', 'bosu', 'sit-up', 'snatch'],
+  },
+  'goblet squat': {
+    muscles: ['quads', 'quadriceps', 'glutes'],
+    keywords: ['goblet squat', 'dumbbell squat', 'kettlebell goblet squat', 'squat'],
+    preferredNames: [
+      'dumbbell goblet squat',
+      'kettlebell goblet squat',
+      'dumbbell squat',
+      'Goblet Squat',
+      'barbell full squat',
+      'jump squat',
+    ],
+    avoidKeywords: ['stretch', 'bosu', 'sit-up'],
   },
   'front squat': {
     muscles: ['quads', 'quadriceps', 'glutes'],
     keywords: ['front squat', 'zercher squat', 'goblet squat', 'hack squat', 'squat'],
     preferredNames: [
       'barbell front squat',
-      'Front Barbell Squat',
-      'Front Squat (Clean Grip)',
+      'barbell clean-grip front squat',
       'barbell zercher squat',
       'dumbbell goblet squat',
-      'Goblet Squat',
+      'Front Barbell Squat',
+      'Front Squat (Clean Grip)',
       'sissy squat',
     ],
     avoidKeywords: ['bosu', 'stretch', 'clean and press'],
@@ -694,10 +755,11 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     muscles: ['quads', 'quadriceps', 'glutes'],
     keywords: ['hack squat', 'split squat', 'step-up', 'squat'],
     preferredNames: [
-      'Hack Squat',
+      'sled hack squat',
       'barbell hack squat',
+      'smith hack squat',
+      'Hack Squat',
       'Barbell Hack Squat',
-      ' sled hack squat',
       'dumbbell bulgarian split squat',
       'dumbbell step-up',
       'sissy squat',
@@ -708,10 +770,11 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     muscles: ['quads', 'quadriceps', 'glutes'],
     keywords: ['leg press', 'sled 45', 'split squat', 'step-up', 'squat'],
     preferredNames: [
-      'Leg Press',
       'sled 45° leg press',
+      'sled 45° leg press (side pov)',
       'lever seated leg press',
       'smith leg press',
+      'Leg Press',
       'dumbbell bulgarian split squat',
       'barbell split squat',
       'dumbbell squat',
@@ -723,13 +786,13 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     muscles: ['quads', 'quadriceps'],
     keywords: ['leg extension', 'sissy squat', 'step-up', 'split squat', 'lunge'],
     preferredNames: [
-      'Leg Extensions',
       'lever leg extension',
       'lever one leg extension',
+      'Leg Extensions',
       'sissy squat',
       'dumbbell step-up',
       'barbell step-up',
-      'dumbbell lunges',
+      'dumbbell lunge',
     ],
     avoidKeywords: ['stretch', 'triceps', 'kick', 'push-up'],
   },
@@ -737,15 +800,14 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     muscles: ['hamstrings'],
     keywords: ['leg curl', 'hamstring curl', 'glute-ham', 'romanian deadlift', 'stiff leg'],
     preferredNames: [
-      'Seated Leg Curl',
-      'Lying Leg Curls',
       'lever lying leg curl',
       'lever seated leg curl',
       'dumbbell lying femoral',
+      'Seated Leg Curl',
+      'Lying Leg Curls',
       'Lying Dumbbell Leg Curl',
       'barbell good morning',
       'glute-ham raise',
-      'natural glute ham raise',
     ],
     avoidKeywords: ['finger', 'wrist', 'biceps', 'stretch'],
   },
@@ -753,10 +815,11 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     muscles: ['hamstrings'],
     keywords: ['leg curl', 'hamstring', 'glute-ham', 'stiff-legged', 'good morning'],
     preferredNames: [
-      'Lying Leg Curls',
       'lever lying leg curl',
-      'Seated Leg Curl',
+      'lever seated leg curl',
       'dumbbell lying femoral',
+      'Lying Leg Curls',
+      'Seated Leg Curl',
       'dumbbell stiff leg deadlift',
       'barbell good morning',
       'glute-ham raise',
@@ -768,11 +831,11 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     keywords: ['deadlift', 'sumo deadlift', 'rack pull', 'hip thrust', 'glute bridge'],
     preferredNames: [
       'barbell deadlift',
-      'Barbell Deadlift',
       'barbell sumo deadlift',
-      'Sumo Deadlift',
       'dumbbell deadlift',
       'kettlebell sumo deadlift',
+      'Barbell Deadlift',
+      'Sumo Deadlift',
       'single leg glute bridge',
     ],
     avoidKeywords: ['push-up', 'kick', 'stretch', 'upright row'],
@@ -781,14 +844,51 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     muscles: ['hamstrings', 'glutes'],
     keywords: ['romanian deadlift', 'stiff leg deadlift', 'stiff-legged', 'good morning', 'hip thrust'],
     preferredNames: [
-      'Romanian Deadlift',
       'barbell romanian deadlift',
       'dumbbell romanian deadlift',
-      'Stiff-Legged Dumbbell Deadlift',
       'barbell stiff leg deadlift',
+      'dumbbell stiff leg deadlift',
+      'Romanian Deadlift',
+      'Stiff-Legged Dumbbell Deadlift',
       'single leg deadlift',
     ],
     avoidKeywords: ['stretch', 'push-up'],
+  },
+  'dumbbell stiff leg deadlift': {
+    muscles: ['hamstrings', 'glutes'],
+    keywords: ['stiff leg deadlift', 'romanian deadlift', 'straight leg deadlift'],
+    preferredNames: [
+      'dumbbell stiff leg deadlift',
+      'dumbbell straight leg deadlift',
+      'dumbbell romanian deadlift',
+      'barbell romanian deadlift',
+      'single leg deadlift',
+    ],
+    avoidKeywords: ['stretch', 'push-up'],
+  },
+  'barbell glute bridge': {
+    muscles: ['glutes', 'hamstrings'],
+    keywords: ['glute bridge', 'hip thrust', 'pelvic tilt'],
+    preferredNames: [
+      'barbell glute bridge',
+      'barbell glute bridge two legs on bench (male)',
+      'glute bridge two legs on bench (male)',
+      'low glute bridge on floor',
+      'single leg glute bridge',
+    ],
+    avoidKeywords: ['stretch'],
+  },
+  'glute bridge': {
+    muscles: ['glutes', 'hamstrings'],
+    keywords: ['glute bridge', 'hip thrust', 'bridge'],
+    preferredNames: [
+      'low glute bridge on floor',
+      'glute bridge two legs on bench (male)',
+      'glute bridge march',
+      'single leg glute bridge',
+      'barbell glute bridge',
+    ],
+    avoidKeywords: ['stretch', 'neck'],
   },
   'walking lunge': {
     muscles: ['quads', 'quadriceps', 'glutes'],
@@ -797,8 +897,9 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
       'walking lunge',
       'dumbbell walking lunge',
       'barbell walking lunge',
-      'Dumbbell Lunges',
+      'dumbbell lunge',
       'barbell lunge',
+      'Dumbbell Lunges',
       'bodyweight rear lunge',
     ],
     avoidKeywords: ['stretch'],
@@ -810,9 +911,21 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
       'bodyweight forward lunge',
       'walking lunge',
       'dumbbell lunge',
-      'Dumbbell Lunges',
       'barbell lunge',
       'dumbbell rear lunge',
+      'Dumbbell Lunges',
+    ],
+    avoidKeywords: ['stretch'],
+  },
+  'dumbbell step-up': {
+    muscles: ['quads', 'quadriceps', 'glutes'],
+    keywords: ['step-up', 'step up', 'split squat', 'lunge'],
+    preferredNames: [
+      'dumbbell step-up',
+      'dumbbell step-up split squat',
+      'dumbbell step-up lunge',
+      'barbell step-up',
+      'walking lunge',
     ],
     avoidKeywords: ['stretch'],
   },
@@ -820,13 +933,13 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     muscles: ['calves'],
     keywords: ['calf raise', 'standing calf', 'rocking leg calf', 'donkey calf'],
     preferredNames: [
-      'standing calf raises',
-      'Standing Calf Raises',
       'barbell standing calf raise',
       'dumbbell standing calf raise',
-      'Standing Dumbbell Calf Raise',
       'lever standing calf raise',
       'one leg floor calf raise',
+      'standing calf raises',
+      'Standing Calf Raises',
+      'Standing Dumbbell Calf Raise',
     ],
     avoidKeywords: ['stretch'],
   },
@@ -834,12 +947,12 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     muscles: ['calves'],
     keywords: ['seated calf raise', 'calf raise', 'seated one leg calf'],
     preferredNames: [
-      'Seated Calf Raise',
       'barbell seated calf raise',
-      'Barbell Seated Calf Raise',
       'dumbbell seated one leg calf raise',
       'lever seated calf raise',
-      'standing calf raises',
+      'Seated Calf Raise',
+      'Barbell Seated Calf Raise',
+      'barbell standing calf raise',
     ],
     avoidKeywords: ['stretch'],
   },
@@ -848,10 +961,22 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     keywords: ['shrug', 'scaption', 'upright row'],
     preferredNames: [
       'barbell shrug',
-      'Barbell Shrug',
       'dumbbell shrug',
-      'Dumbbell Shrug',
       'barbell behind the back shrug',
+      'cable shrug',
+      'Barbell Shrug',
+      'Dumbbell Shrug',
+      'incline scapula push up',
+    ],
+    avoidKeywords: ['stretch', 'crunch'],
+  },
+  'dumbbell shrug': {
+    muscles: ['traps'],
+    keywords: ['dumbbell shrug', 'shrug', 'scaption'],
+    preferredNames: [
+      'dumbbell shrug',
+      'dumbbell decline shrug',
+      'barbell shrug',
       'cable shrug',
       'incline scapula push up',
     ],
@@ -862,8 +987,9 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     keywords: ['hyperextension', 'back extension', 'good morning', 'superman', 'pelvic tilt'],
     preferredNames: [
       'hyperextension (on bench)',
-      'Hyperextensions (Back Extensions)',
+      'hyperextension',
       'barbell good morning',
+      'Hyperextensions (Back Extensions)',
       'Good Morning',
       'Superman',
       'dumbbell stiff leg deadlift',
@@ -875,10 +1001,10 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     keywords: ['push-up', 'push up', 'incline push-up', 'wide hand push up'],
     preferredNames: [
       'push-up',
-      'Pushups',
       'incline push-up',
       'wide hand push up',
       'decline push-up',
+      'Pushups',
     ],
     avoidKeywords: ['suspended', 'trx', 'inside leg kick'],
   },
@@ -888,8 +1014,8 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     preferredNames: [
       'diamond push-up',
       'close-grip push-up',
-      'Close-Grip Push-Up',
       'incline close-grip push-up',
+      'Close-Grip Push-Up',
     ],
     avoidKeywords: ['suspended', 'trx'],
   },
@@ -897,10 +1023,10 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     muscles: ['quads', 'quadriceps', 'glutes'],
     keywords: ['bodyweight squat', 'jump squat', 'sissy squat', 'pistol squat'],
     preferredNames: [
-      'Bodyweight Squat',
       'jump squat',
       'sissy squat',
       'single-leg squat (pistol) male',
+      'Bodyweight Squat',
     ],
     avoidKeywords: ['barbell', 'dumbbell', 'cable', 'smith', 'stretch'],
   },
@@ -908,8 +1034,10 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     muscles: ['abs', 'abdominals'],
     keywords: ['plank', 'front plank', 'side plank', 'bridge'],
     preferredNames: [
-      'Plank',
       'front plank with twist',
+      'power point plank',
+      'bodyweight incline side plank',
+      'Plank',
       'side plank',
       'reverse plank',
     ],
@@ -919,11 +1047,11 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     muscles: ['abs', 'abdominals'],
     keywords: ['crunch', 'sit-up', 'curl-up'],
     preferredNames: [
-      'Crunches',
       'crunch floor',
       'reverse crunch',
       'oblique crunches floor',
       'tuck crunch',
+      'Crunches',
     ],
     avoidKeywords: ['cable', 'weighted', 'machine'],
   },
@@ -931,10 +1059,10 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     muscles: ['abs', 'abdominals'],
     keywords: ['bicycle', 'air bike', 'alternate heel touchers', 'oblique crunch', 'russian twist'],
     preferredNames: [
-      'Air Bike',
       'alternate heel touchers',
       'oblique crunches floor',
       'russian twist',
+      'Air Bike',
       'Cross-Body Crunch',
     ],
     avoidKeywords: ['weighted', 'barbell', 'cable'],
@@ -944,9 +1072,9 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     keywords: ['hanging leg raise', 'hanging knee raise', 'lying leg raise', 'leg pull-in'],
     preferredNames: [
       'hanging leg raise',
-      'Hanging Leg Raise',
       'hanging straight leg raise',
       'flat bench lying leg raise',
+      'Hanging Leg Raise',
       'Flat Bench Lying Leg Raise',
     ],
     avoidKeywords: ['assisted', 'throw down'],
@@ -956,8 +1084,8 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     keywords: ['mountain climber', 'Cross-Body Mountain', 'high knee'],
     preferredNames: [
       'mountain climber',
-      'Mountain Climbers',
       'cross body mountain climber',
+      'Mountain Climbers',
     ],
   },
   'burpee': {
@@ -979,12 +1107,15 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
   'superman': {
     muscles: ['lower back', 'spine'],
     keywords: ['superman', 'hyperextension', 'bird dog'],
-    preferredNames: ['Superman', 'pelvic tilt into bridge', 'hyperextension (on bench)'],
+    preferredNames: ['hyperextension (on bench)', 'pelvic tilt into bridge', 'Superman'],
   },
   'hip stretch': {
     muscles: ['glutes', 'quads', 'hamstrings', 'adductors'],
     keywords: ['hip', 'groin', 'glute stretch', 'lunge stretch', 'piriformis'],
     preferredNames: [
+      'seated glute stretch',
+      'seated piriformis stretch',
+      'rocking frog stretch',
       'Groin and Back Stretch',
       'Kneeling Hip Flexor',
       'Seated Glute',
@@ -1009,6 +1140,8 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     muscles: ['shoulders', 'delts'],
     keywords: ['shoulder stretch', 'arm crossover', 'posterior shoulder'],
     preferredNames: [
+      'rear deltoid stretch',
+      'chest and front of shoulder stretch',
       'Shoulder Stretch',
       'Kneeling Forearm Stretch',
       'Seated Front Deltoid',
@@ -1020,6 +1153,7 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     muscles: ['quads', 'quadriceps'],
     keywords: ['quad stretch', 'quadriceps stretch', 'kneeling quad'],
     preferredNames: [
+      'lying (side) quads stretch',
       'All Fours Quad Stretch',
       'On Your Side Quad Stretch',
       'Standing Pelvic Tilt',
@@ -1030,10 +1164,11 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     muscles: ['calves'],
     keywords: ['calf stretch', 'gastrocnemius', 'achilles', 'calves stretch'],
     preferredNames: [
+      'seated calf stretch (male)',
+      'calf stretch with hands against wall',
       'Standing Gastrocnemius Calf Stretch',
       'Seated Calf Stretch',
       'Calf Stretch Hands Against Wall',
-      'standing calves',
     ],
     isStretch: true,
   },
@@ -1068,13 +1203,14 @@ export interface ResolveWorkoutOptions {
   dumbbellWeight: number;
   savedSwaps?: Record<string, { newExerciseId: number; newExerciseName: string; newGifUrl?: string }>;
   recentExerciseIds?: Set<number>;
-  varietySeed?: number; // Used to rotate variations across days/workouts/shuffles
+  varietySeed?: number;
   varietyLevel?: 'low' | 'medium' | 'high';
 }
 
 /**
  * Resolves a single planned exercise into the best matching Exercise from the catalog
- * that strictly satisfies `userEquipment` and has not already been used in the current workout.
+ * that strictly satisfies `userEquipment`, prioritizes GIF-backed exercises first (using static
+ * image exercises as a backup only if no GIF match exists), and avoids duplicates.
  */
 export function findBestExerciseMatch(
   plannedName: string,
@@ -1102,18 +1238,20 @@ export function findBestExerciseMatch(
   });
 
   if (equipmentValid.length === 0) {
-    // Fallback if all exercises for this equipment were exhausted: allow any unused equipment-valid exercise
     const fallbackPool = allExercises.filter(
       (ex) => matchesUserEquipment(ex, userEquipment) && (!ex.id || !usedIds.has(ex.id))
     );
-    return fallbackPool[0] || allExercises[0];
+    const gifFallback = fallbackPool.find((ex) => hasGifExerciseMedia(ex));
+    return gifFallback || fallbackPool[0] || allExercises[0];
   }
 
-  // 2. If varietyLevel is 'low', check if exact name or preferredName is available first
+  // 2. If varietyLevel is 'low', check if exact name with a GIF is available first
   if (varietyLevel === 'low' && slotVarietySeed === 0) {
-    const exact = equipmentValid.find((e) => e.name.toLowerCase() === cleanTarget);
-    if (exact && (!exact.id || !recentExerciseIds.has(exact.id))) {
-      return exact;
+    const exactGif = equipmentValid.find(
+      (e) => e.name.toLowerCase() === cleanTarget && hasGifExerciseMedia(e)
+    );
+    if (exactGif && (!exactGif.id || !recentExerciseIds.has(exactGif.id))) {
+      return exactGif;
     }
   }
 
@@ -1124,7 +1262,6 @@ export function findBestExerciseMatch(
 
   const inferredMuscles: string[] = profile?.muscles ? [...profile.muscles] : [];
   if (inferredMuscles.length === 0) {
-    // Infer muscle from any exercise in DB matching the planned name
     const refEx = allExercises.find((e) => e.name.toLowerCase() === cleanTarget) ||
       allExercises.find((e) => e.name.toLowerCase().includes(cleanTarget));
     if (refEx?.primaryMuscles) {
@@ -1132,18 +1269,16 @@ export function findBestExerciseMatch(
     }
   }
 
-  const scored: { ex: Exercise; score: number }[] = [];
+  const scored: { ex: Exercise; score: number; hasGif: boolean }[] = [];
 
   for (const ex of equipmentValid) {
     const exName = ex.name.toLowerCase();
     let score = 0;
 
-    // Avoid-keyword filter
     if (profile?.avoidKeywords?.some((bad) => exName.includes(bad))) {
       continue;
     }
 
-    // Target muscle compatibility
     const muscleMatch = inferredMuscles.length === 0 || sharesTargetMuscle(ex.primaryMuscles || [], inferredMuscles);
     const secondaryMatch = inferredMuscles.length > 0 && sharesTargetMuscle(ex.secondaryMuscles || [], inferredMuscles);
 
@@ -1154,22 +1289,19 @@ export function findBestExerciseMatch(
     if (muscleMatch) score += 60;
     else if (secondaryMatch) score += 25;
 
-    // Exact match bonus
     if (exName === cleanTarget) {
-      score += 85;
+      score += 80;
     }
 
-    // Preferred curated variation bonus
     if (profile?.preferredNames) {
       const prefIdx = profile.preferredNames.findIndex((p) => p.toLowerCase() === exName);
       if (prefIdx !== -1) {
-        score += Math.max(40, 80 - prefIdx * 6);
+        score += Math.max(40, 84 - prefIdx * 6);
       } else if (profile.preferredNames.some((p) => exName.includes(p.toLowerCase()))) {
         score += 35;
       }
     }
 
-    // Movement keyword bonus
     if (profile?.keywords) {
       for (const kw of profile.keywords) {
         if (exName.includes(kw.toLowerCase())) {
@@ -1179,68 +1311,66 @@ export function findBestExerciseMatch(
       }
     }
 
-    // Token overlap bonus
     if (targetTokens.length > 0) {
       const matchedTokens = targetTokens.filter((t) => exName.includes(t)).length;
       score += matchedTokens * 22;
     }
 
-    // Media availability bonus (prefer exercises with GIFs or image frames)
-    if (ex.gifUrl && ex.gifUrl.trim().length > 0) {
-      score += 12;
-    } else if (ex.imageUrls && ex.imageUrls.length > 0) {
-      score += 6;
+    // Prioritize GIFs as primary media, with static images as backup
+    const hasGif = hasGifExerciseMedia(ex);
+    if (hasGif) {
+      score += 65;
+    } else if ((ex.imageUrls && ex.imageUrls.length > 0) || (ex.images && ex.images.length > 0)) {
+      score += 8;
     }
 
-    // Instructions availability bonus
     if (ex.instructions && ex.instructions.length > 0) {
       score += 5;
     }
 
-    // Anti-repetition penalty if recently performed in prior sessions
     if (ex.id && recentExerciseIds.has(ex.id)) {
       score -= varietyLevel === 'high' ? 45 : varietyLevel === 'medium' ? 28 : 12;
     }
 
-    scored.push({ ex, score });
+    scored.push({ ex, score, hasGif });
   }
 
-  // If no candidate passed strict muscle+keyword filter, relax to any equipment-valid exercise sharing the muscle group
   if (scored.length === 0) {
     for (const ex of equipmentValid) {
       if (inferredMuscles.length === 0 || sharesTargetMuscle(ex.primaryMuscles || [], inferredMuscles)) {
-        let score = 50;
-        if (ex.gifUrl) score += 10;
+        const hasGif = hasGifExerciseMedia(ex);
+        let score = 50 + (hasGif ? 65 : 0);
         if (ex.id && recentExerciseIds.has(ex.id)) score -= 25;
-        scored.push({ ex, score });
+        scored.push({ ex, score, hasGif });
       }
     }
   }
 
   if (scored.length === 0) {
-    return equipmentValid[slotVarietySeed % equipmentValid.length];
+    const gifPool = equipmentValid.filter((ex) => hasGifExerciseMedia(ex));
+    const pool = gifPool.length > 0 ? gifPool : equipmentValid;
+    return pool[Math.abs(slotVarietySeed) % pool.length];
   }
 
   scored.sort((a, b) => b.score - a.score);
 
-  // Build top candidate pool for variety rotation so exercises don't repeat monotonically
   const bestScore = scored[0].score;
   const scoreWindow = varietyLevel === 'high' ? 45 : varietyLevel === 'medium' ? 30 : 12;
   const maxPoolSize = varietyLevel === 'high' ? 10 : varietyLevel === 'medium' ? 6 : 2;
 
-  const topPool = scored
-    .filter((item) => item.score >= bestScore - scoreWindow)
-    .slice(0, maxPoolSize);
+  const candidatesInWindow = scored.filter((item) => item.score >= bestScore - scoreWindow);
+  const gifCandidates = candidatesInWindow.filter((item) => item.hasGif);
+  const effectivePool = (gifCandidates.length > 0 ? gifCandidates : candidatesInWindow).slice(0, maxPoolSize);
 
-  const chosenIndex = Math.abs(slotVarietySeed) % topPool.length;
-  return topPool[chosenIndex].ex;
+  const chosenIndex = Math.abs(slotVarietySeed) % effectivePool.length;
+  return effectivePool[chosenIndex].ex;
 }
 
 /**
  * Resolves all exercises for a workout day sequentially, ensuring:
  * 1. 100% compliance with `userEquipment` (even for saved swaps)
  * 2. Zero duplicate exercises within the same workout day
- * 3. Variety across days/sessions via `varietySeed` and `recentExerciseIds`
+ * 3. Primary GIF URLs populated alongside backup image frames (`mediaFrames`)
  */
 export function resolveWorkoutDayExercises({
   dayExercises,
@@ -1263,7 +1393,6 @@ export function resolveWorkoutDayExercises({
 
     let chosenEx: Exercise | undefined;
 
-    // Only honor a saved swap if its equipment is STILL selected by the user and not already used today
     if (savedSwap && varietySeed === 0) {
       const candidateSwap = allExercises.find((e) => e.id === savedSwap.newExerciseId) ||
         allExercises.find((e) => e.name.toLowerCase() === savedSwap.newExerciseName.toLowerCase());
@@ -1303,19 +1432,23 @@ export function resolveWorkoutDayExercises({
       dumbbellWeight,
     });
 
+    const parsedReps = typeof ex.reps === 'number'
+      ? ex.reps
+      : Number.parseInt(String(ex.reps), 10) || 10;
+
     activeExercises.push({
       exerciseId: chosenEx?.id || 0,
       exerciseName: chosenEx?.name || ex.exerciseName,
       imageUrl: chosenEx ? getPrimaryExerciseImage(chosenEx) : undefined,
-      gifUrl: chosenEx?.gifUrl || undefined,
+      gifUrl: chosenEx ? getExerciseGifUrl(chosenEx) : undefined,
       mediaFrames: chosenEx ? getExerciseImageFrames(chosenEx) : [],
       sets: Array.from({ length: ex.sets }, (_, i) => ({
         setNumber: i + 1,
         setType: ex.setType as any,
         weight: startingWeight,
-        reps: typeof ex.reps === 'number' ? ex.reps : 0,
+        reps: parsedReps,
         targetWeight: ex.weight || startingWeight,
-        targetReps: typeof ex.reps === 'number' ? ex.reps : 0,
+        targetReps: parsedReps,
         isComplete: false,
       })),
       targetSets: ex.sets,
@@ -1329,7 +1462,8 @@ export function resolveWorkoutDayExercises({
 }
 
 /**
- * Generates a fresh, non-repeating workout for a list of target muscle groups using only the user's selected equipment.
+ * Generates a balanced, non-repeating workout across the requested target muscle groups,
+ * alternating antagonistic muscle groups and prioritizing compound & GIF-backed exercises.
  */
 export function generateSmartWorkout({
   targetMuscles,
@@ -1358,10 +1492,22 @@ export function generateSmartWorkout({
   const usedStems = new Set<string>();
   const results: { name: string; sets: number; reps: number; equipment: string; primaryMuscle: string }[] = [];
 
-  const muscles = targetMuscles.length > 0 ? targetMuscles : ['chest', 'back', 'shoulders', 'quads', 'hamstrings', 'biceps', 'triceps'];
+  // Order muscles so large/compound groups come first and antagonistic pairs alternate
+  const PRIORITY_ORDER = [
+    'quads', 'quadriceps', 'hamstrings', 'glutes', 'chest', 'back', 'lats', 'upper back',
+    'shoulders', 'traps', 'biceps', 'triceps', 'calves', 'abs', 'abdominals', 'forearms',
+  ];
+
+  const baseMuscles = targetMuscles.length > 0
+    ? [...targetMuscles].sort((a, b) => {
+        const ia = PRIORITY_ORDER.indexOf(a.toLowerCase());
+        const ib = PRIORITY_ORDER.indexOf(b.toLowerCase());
+        return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+      })
+    : ['quads', 'chest', 'back', 'hamstrings', 'shoulders', 'biceps', 'triceps', 'abs'];
 
   for (let i = 0; i < exerciseCount; i++) {
-    const targetMuscle = muscles[i % muscles.length];
+    const targetMuscle = baseMuscles[i % baseMuscles.length];
     const candidates = validPool.filter((ex) => {
       if (ex.id && usedIds.has(ex.id)) return false;
       if (usedStems.has(getMovementStem(ex.name))) return false;
@@ -1370,14 +1516,17 @@ export function generateSmartWorkout({
 
     if (candidates.length === 0) continue;
 
-    // Sort candidates: prefer exercises not in recentExerciseIds and with animated media
-    const scored = candidates.map((ex, idx) => {
+    // Prefer GIF-backed exercises first; only use image-only backups if no GIF candidate exists
+    const gifCandidates = candidates.filter((ex) => hasGifExerciseMedia(ex));
+    const poolToScore = gifCandidates.length > 0 ? gifCandidates : candidates;
+
+    const scored = poolToScore.map((ex, idx) => {
       let score = 50;
-      if (ex.gifUrl) score += 15;
+      if (hasGifExerciseMedia(ex)) score += 60;
+      if (ex.mechanic === 'compound' && i < Math.ceil(exerciseCount * 0.6)) score += 18;
       if (ex.instructions && ex.instructions.length > 0) score += 8;
       if (ex.id && recentExerciseIds.has(ex.id)) score -= 35;
-      // Add deterministic pseudo-random spread from seed so every generation is fresh
-      const hash = ((seed + i * 31 + idx * 17) % 29);
+      const hash = Math.abs((seed + i * 31 + idx * 17) % 29);
       score += hash;
       return { ex, score };
     });
@@ -1397,4 +1546,91 @@ export function generateSmartWorkout({
   }
 
   return results;
+}
+
+export interface PlanMuscleBalanceSummary {
+  categories: {
+    id: 'push' | 'pull' | 'legs' | 'arms' | 'core';
+    label: string;
+    sets: number;
+    percentage: number;
+    color: string;
+  }[];
+  totalSets: number;
+  balanceScore: number; // 0-100
+}
+
+/**
+ * Computes the body-part volume distribution across all days of a workout plan.
+ */
+export function analyzePlanMuscleBalance(
+  days: WorkoutDay[],
+  allExercises: Exercise[]
+): PlanMuscleBalanceSummary {
+  const bucketSets: Record<'push' | 'pull' | 'legs' | 'arms' | 'core', number> = {
+    push: 0,
+    pull: 0,
+    legs: 0,
+    arms: 0,
+    core: 0,
+  };
+
+  const classifyExercise = (name: string): 'push' | 'pull' | 'legs' | 'arms' | 'core' => {
+    const clean = name.trim().toLowerCase();
+    const profile = MOVEMENT_PROFILES[clean];
+    const muscles = profile?.muscles ||
+      allExercises.find((e) => e.name.toLowerCase() === clean)?.primaryMuscles ||
+      [];
+    const joined = `${clean} ${muscles.join(' ')}`.toLowerCase();
+
+    if (/squat|lunge|leg press|leg extension|leg curl|hamstring|deadlift|romanian|glute|hip thrust|calf|quad|step-up|hip stretch/.test(joined)) {
+      return 'legs';
+    }
+    if (/plank|crunch|leg raise|mountain climber|ab |abs|abdominals|oblique|sit-up/.test(joined)) {
+      return 'core';
+    }
+    if (/curl|tricep|skull crusher|pushdown|preacher|kickback|bicep|forearm/.test(joined)) {
+      return 'arms';
+    }
+    if (/row|pull up|pull-up|chin up|chin-up|pulldown|face pull|reverse fly|shrug|back extension|superman|lat|rhomboid|trap/.test(joined)) {
+      return 'pull';
+    }
+    return 'push';
+  };
+
+  for (const day of days) {
+    for (const ex of day.exercises || []) {
+      const cat = classifyExercise(ex.exerciseName);
+      bucketSets[cat] += Math.max(1, ex.sets || 3);
+    }
+  }
+
+  const totalSets = Object.values(bucketSets).reduce((a, b) => a + b, 0) || 1;
+  const meta: { id: 'push' | 'pull' | 'legs' | 'arms' | 'core'; label: string; color: string }[] = [
+    { id: 'push', label: 'Chest & Delts', color: '#FF3D5A' },
+    { id: 'pull', label: 'Back & Traps', color: '#10E89A' },
+    { id: 'legs', label: 'Legs & Glutes', color: '#F59E0B' },
+    { id: 'arms', label: 'Biceps & Triceps', color: '#8B5CF6' },
+    { id: 'core', label: 'Abs & Core', color: '#38BDF8' },
+  ];
+
+  const categories = meta.map((m) => ({
+    ...m,
+    sets: bucketSets[m.id],
+    percentage: Math.round((bucketSets[m.id] / totalSets) * 100),
+  }));
+
+  // Evaluate push/pull/legs balance ratio
+  const activeBuckets = Object.values(bucketSets).filter((v) => v > 0).length;
+  const pushPullRatio =
+    bucketSets.push > 0 && bucketSets.pull > 0
+      ? Math.min(bucketSets.push, bucketSets.pull) / Math.max(bucketSets.push, bucketSets.pull)
+      : 0.7;
+  const legsRatio = bucketSets.legs > 0 ? Math.min(1, (bucketSets.legs / totalSets) / 0.22) : 0.6;
+  const balanceScore = Math.min(
+    100,
+    Math.round(50 + pushPullRatio * 25 + legsRatio * 15 + Math.min(activeBuckets, 5) * 2)
+  );
+
+  return { categories, totalSets, balanceScore };
 }

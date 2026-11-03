@@ -12,7 +12,13 @@ import { ALL_EQUIPMENT, matchesUserEquipment, normalizeEquipmentName, sharesTarg
 import { getWorkoutStartingWeight } from '@/lib/utils/workoutDefaults';
 import { getYoutubeSearchUrl, getVideoSearchOptions } from '@/lib/data/youtube-ids';
 import ExerciseMedia from '@/components/ui/ExerciseMedia';
-import { hasAnimatedExerciseMedia, getExerciseImageFrames, getPrimaryExerciseImage } from '@/lib/utils/exerciseMedia';
+import {
+  hasAnimatedExerciseMedia,
+  hasGifExerciseMedia,
+  getExerciseGifUrl,
+  getExerciseImageFrames,
+  getPrimaryExerciseImage,
+} from '@/lib/utils/exerciseMedia';
 
 const BODY_PARTS = ['all', 'chest', 'back', 'shoulders', 'biceps', 'triceps', 'quads', 'hamstrings', 'glutes', 'calves', 'abs', 'forearms', 'traps', 'cardio'];
 const EQUIPMENT_TYPES = ['all', ...ALL_EQUIPMENT];
@@ -68,7 +74,13 @@ export default function ExercisesPage() {
     if (equipmentFilter !== 'all') {
       filtered = filtered.filter(e => normalizeEquipmentName(e.equipment) === equipmentFilter);
     }
-    return filtered;
+
+    // Prioritize exercises with GIFs as primary media, keeping static image exercises as backups
+    return [...filtered].sort((a, b) => {
+      const gifDiff = Number(hasGifExerciseMedia(b)) - Number(hasGifExerciseMedia(a));
+      if (gifDiff !== 0) return gifDiff;
+      return a.name.localeCompare(b.name);
+    });
   }, [exercises, searchQuery, bodyPartFilter, equipmentFilter, onlyMyEquipment, userEquipment]);
 
   const handleImgError = useCallback((id: number | undefined) => {
@@ -87,7 +99,7 @@ export default function ExercisesPage() {
         exerciseId: ex.id || 0,
         exerciseName: ex.name,
         imageUrl: getPrimaryExerciseImage(ex),
-        gifUrl: ex.gifUrl,
+        gifUrl: getExerciseGifUrl(ex),
         mediaFrames: getExerciseImageFrames(ex),
         sets: Array.from({ length: 4 }, (_, i) => ({
           setNumber: i + 1,
@@ -220,7 +232,8 @@ export default function ExercisesPage() {
           {filteredExercises.slice(0, visibleCount).map((exercise, idx) => {
             const hasError = exercise.id !== undefined && imgErrors.has(exercise.id);
             const muscleColor = MUSCLE_COLORS[exercise.primaryMuscles?.[0]?.toLowerCase()] || '#888';
-            const hasMedia = Boolean(exercise.gifUrl) || getExerciseImageFrames(exercise).length > 0;
+            const hasMedia = hasGifExerciseMedia(exercise) || getExerciseImageFrames(exercise).length > 0;
+            const isGif = hasGifExerciseMedia(exercise);
             const isAnimated = hasAnimatedExerciseMedia(exercise);
             return (
               <motion.div key={exercise.id} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
@@ -243,8 +256,8 @@ export default function ExercisesPage() {
                     </div>
                   )}
                   {isAnimated && !hasError && (
-                    <div style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)', borderRadius: 6, padding: '3px 8px', fontSize: 9, fontWeight: 700, color: 'var(--accent-green)', letterSpacing: 0.5, zIndex: 2, display: 'flex', alignItems: 'center', gap: 3 }}>
-                      <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--accent-green)', display: 'inline-block' }} /> LIVE
+                    <div style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)', borderRadius: 6, padding: '3px 8px', fontSize: 9, fontWeight: 700, color: isGif ? 'var(--accent-green)' : 'var(--accent-cyan)', letterSpacing: 0.5, zIndex: 2, display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <span style={{ width: 4, height: 4, borderRadius: '50%', background: isGif ? 'var(--accent-green)' : 'var(--accent-cyan)', display: 'inline-block' }} /> {isGif ? 'GIF' : 'FRAMES'}
                     </div>
                   )}
                   <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '60%', background: 'linear-gradient(transparent, rgba(7,7,16,0.85))', pointerEvents: 'none', zIndex: 1 }} />
@@ -304,7 +317,8 @@ function ExerciseDetailModal({
 }) {
   const videoOptions = getVideoSearchOptions(exercise.name);
   const ytSearchUrl = getYoutubeSearchUrl(exercise.name);
-  const hasMedia = Boolean(exercise.gifUrl) || getExerciseImageFrames(exercise).length > 0;
+  const hasMedia = hasGifExerciseMedia(exercise) || getExerciseImageFrames(exercise).length > 0;
+  const isGif = hasGifExerciseMedia(exercise);
   const isAnimated = hasAnimatedExerciseMedia(exercise);
 
   return (
@@ -321,9 +335,11 @@ function ExerciseDetailModal({
               images={exercise.images}
               alt={exercise.name}
               loading="eager"
+              frameIntervalMs={700}
             />
             <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', borderRadius: 8, padding: '4px 10px', fontSize: 10, fontWeight: 700, color: 'var(--accent-green)', display: 'flex', alignItems: 'center', gap: 4, zIndex: 2 }}>
-              <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent-green)', animation: 'pulse-dot 2s ease-in-out infinite' }} /> {isAnimated ? 'Animation' : 'Image'}
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent-green)', animation: 'pulse-dot 2s ease-in-out infinite' }} />
+              {isGif ? 'Animated GIF' : isAnimated ? 'Animated Frames (Backup)' : 'Image (Backup)'}
             </div>
           </div>
         ) : (

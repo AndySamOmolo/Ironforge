@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Trophy, Clock, Dumbbell, TrendingUp, Star, Zap, ArrowRight, Share2, Check } from 'lucide-react';
+import { Trophy, Clock, Dumbbell, TrendingUp, Star, Zap, ArrowRight, Share2, Check, ArrowLeft } from 'lucide-react';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
 import { useUserStore } from '@/lib/store/userStore';
 import { db } from '@/lib/db/schema';
@@ -20,6 +20,8 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
   const [copied, setCopied] = useState(false);
   const [rating, setRating] = useState<number>(5);
   const [sessionNote, setSessionNote] = useState<string>('');
+  const [isSaving, setIsSaving] = useState(false);
+  const isSavingRef = useRef(false);
 
   const unitLabel = unitSystem === 'metric' ? 'kg' : 'lbs';
 
@@ -49,6 +51,7 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
     }
 
     let frame = 0;
+    let rafId = 0;
     const animate = () => {
       if (frame > 200) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -76,9 +79,10 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
         ctx.restore();
       }
       frame++;
-      requestAnimationFrame(animate);
+      rafId = requestAnimationFrame(animate);
     };
     animate();
+    return () => cancelAnimationFrame(rafId);
   }, []);
 
   useEffect(() => {
@@ -157,20 +161,30 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
     }
   }, [dayName, planName, elapsedTime, totalVolume, totalSets, totalReps, completedExercises, newPRs, rating, sessionNote, unitLabel]);
 
-  const handleFinish = async () => {
+  const handleFinish = useCallback(async () => {
+    if (isSavingRef.current) return;
+    isSavingRef.current = true;
+    setIsSaving(true);
+
     if (sessionId) {
       try {
         const existing = await db.workoutSessions.get(sessionId);
-        const mergedNotes = [existing?.notes, sessionNote.trim()].filter(Boolean).join(' — ');
-        await db.workoutSessions.update(sessionId, {
-          rating,
-          notes: mergedNotes || undefined,
-        });
+        if (existing) {
+          const baseNotes = existing.notes || '';
+          const extraNote = sessionNote.trim();
+          const mergedNotes = extraNote && !baseNotes.includes(extraNote)
+            ? [baseNotes, extraNote].filter(Boolean).join(' — ')
+            : baseNotes || undefined;
+          await db.workoutSessions.update(sessionId, {
+            rating,
+            notes: mergedNotes,
+          });
+        }
       } catch {}
     }
     endWorkout();
     onFinish();
-  };
+  }, [sessionId, rating, sessionNote, endWorkout, onFinish]);
 
   return (
     <div style={{
@@ -179,6 +193,20 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
       justifyContent: 'center', padding: '24px 20px', position: 'relative', overflow: 'hidden',
     }}>
       <canvas ref={canvasRef} style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 10 }} />
+
+      {/* Top Back / Done bar */}
+      <div style={{ width: '100%', maxWidth: 400, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, position: 'relative', zIndex: 12 }}>
+        <button
+          onClick={handleFinish}
+          className="btn-ghost"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', fontSize: 12, color: 'var(--text-secondary)' }}
+        >
+          <ArrowLeft size={14} /> Home
+        </button>
+        <span className="badge" style={{ background: 'rgba(16,232,154,0.1)', color: 'var(--accent-green)', border: '1px solid rgba(16,232,154,0.25)', fontSize: 10 }}>
+          ✓ Workout Saved
+        </span>
+      </div>
 
       <div style={{
         position: 'absolute', top: '20%', left: '50%', transform: 'translateX(-50%)',
@@ -341,9 +369,10 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
           whileTap={{ scale: 0.97 }}
           className="btn-primary animate-glow"
           onClick={handleFinish}
-          style={{ fontSize: 16, padding: '16px 24px', borderRadius: 16, flex: 1 }}
+          disabled={isSaving}
+          style={{ fontSize: 16, padding: '16px 24px', borderRadius: 16, flex: 1, opacity: isSaving ? 0.7 : 1 }}
         >
-          Save & Continue <ArrowRight size={18} />
+          {isSaving ? 'Continuing...' : 'Done & Continue'} <ArrowRight size={18} />
         </motion.button>
       </div>
     </div>

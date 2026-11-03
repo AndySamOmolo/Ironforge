@@ -85,6 +85,7 @@ interface WorkoutState {
 
   startWorkout: (planName: string, dayName: string, exercises: ActiveExercise[]) => void;
   restoreWorkoutIfAny: () => void;
+  completeWorkoutSession: (id: number) => void;
   endWorkout: () => void;
   setSessionId: (id: number) => void;
   completeSet: (exerciseIndex: number, setIndex: number, weight: number, reps: number, isPR?: boolean) => void;
@@ -166,6 +167,19 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
     }
   },
 
+  // Marks the active workout as finished and clears the persisted snapshot immediately
+  // so navigating back from WorkoutCompletePage never re-opens ActiveWorkoutPage or double-saves.
+  completeWorkoutSession: (id) => {
+    saveSnapshot({ isActive: false });
+    set({
+      isActive: false,
+      isPaused: false,
+      restTimerActive: false,
+      restTimeRemaining: 0,
+      sessionId: id,
+    });
+  },
+
   endWorkout: () => {
     saveSnapshot({ isActive: false });
     set({
@@ -175,7 +189,12 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
       exercises: [],
       currentExerciseIndex: 0,
       elapsedTime: 0,
+      totalVolume: 0,
+      totalSets: 0,
+      totalReps: 0,
+      newPRs: [],
       restTimerActive: false,
+      restTimeRemaining: 0,
     });
   },
 
@@ -220,7 +239,7 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
     const exercise = { ...exercises[exerciseIndex] };
     const sets = [...exercise.sets];
     if (setIndex === 0) {
-      exercise.sets = sets.map(s => (s.isComplete ? s : { ...s, weight }));
+      exercise.sets = sets.map((s, idx) => (s.isComplete && idx !== 0 ? s : { ...s, weight }));
     } else {
       sets[setIndex] = { ...sets[setIndex], weight };
       exercise.sets = sets;
@@ -236,7 +255,7 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
     const exercise = { ...exercises[exerciseIndex] };
     const sets = [...exercise.sets];
     if (setIndex === 0) {
-      exercise.sets = sets.map(s => (s.isComplete ? s : { ...s, reps }));
+      exercise.sets = sets.map((s, idx) => (s.isComplete && idx !== 0 ? s : { ...s, reps }));
     } else {
       sets[setIndex] = { ...sets[setIndex], reps };
       exercise.sets = sets;

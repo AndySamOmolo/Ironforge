@@ -21,26 +21,26 @@ interface ExerciseDBEntry {
   imageUrls?: string[];
 }
 
-export const EXERCISE_CATALOG_VERSION = 5;
+export const EXERCISE_CATALOG_VERSION = 6;
 
 function mapRawExercise(raw: ExerciseDBEntry, fallbackIndex: number): Omit<Exercise, 'id'> {
   const exerciseId = raw.exerciseId || `ex_${fallbackIndex}`;
   const gifUrl = raw.gifUrl && raw.gifUrl.trim().length > 0
-    ? raw.gifUrl
+    ? raw.gifUrl.trim()
     : undefined;
 
   const rawEquip = (raw.equipments || [])[0] || 'body weight';
 
   return {
     externalId: exerciseId,
-    name: raw.name || 'Unknown',
+    name: (raw.name || 'Unknown').replace(/в°/g, '°'),
     force: raw.force ?? null,
     level: raw.level || 'intermediate',
     mechanic: raw.mechanic ?? null,
     equipment: normalizeEquipmentName(rawEquip),
     primaryMuscles: raw.targetMuscles || [],
     secondaryMuscles: raw.secondaryMuscles || [],
-    instructions: (raw.instructions || []).map((s: string) => s.replace(/^Step:\d+\s*/i, '')),
+    instructions: (raw.instructions || []).map((s: string) => s.replace(/^Step:\d+\s*/i, '').replace(/в°/g, '°')),
     category: (raw.bodyParts || [])[0] || 'strength',
     images: raw.images || [],
     imageUrls: raw.imageUrls || [],
@@ -65,7 +65,7 @@ export async function seedDatabase(
   await seedExercises(onProgress);
 
   // Seed workout programs
-  onProgress?.('Creating workout programs...', 85);
+  onProgress?.('Creating balanced workout programs...', 85);
   await ensureWorkoutPrograms();
 
   // Seed user profile
@@ -98,7 +98,6 @@ async function seedExercises(
   onProgress?.(`Processing ${allExercises.length} exercises...`, 15);
 
   onProgress?.(`Saving ${allExercises.length} exercises...`, 70);
-  // Bulk add in chunks
   const chunkSize = 200;
   for (let i = 0; i < allExercises.length; i += chunkSize) {
     const chunk = allExercises.slice(i, i + chunkSize);
@@ -106,8 +105,6 @@ async function seedExercises(
     const pct = 70 + Math.round((i / allExercises.length) * 15);
     onProgress?.(`Saving exercises (${Math.min(i + chunkSize, allExercises.length)}/${allExercises.length})...`, pct);
   }
-
-  console.log(`Seeded ${allExercises.length} exercises with local GIFs`);
 }
 
 export async function migrateExerciseCatalog(
@@ -135,9 +132,12 @@ export async function migrateExerciseCatalog(
   for (let i = 0; i < upserts.length; i += chunkSize) {
     const chunk = upserts.slice(i, i + chunkSize);
     await db.exercises.bulkPut(chunk);
-    const pct = 55 + Math.round((i / upserts.length) * 40);
+    const pct = 55 + Math.round((i / upserts.length) * 30);
     onProgress?.(`Updating exercises (${Math.min(i + chunkSize, upserts.length)}/${upserts.length})...`, pct);
   }
+
+  onProgress?.('Syncing balanced workout programs...', 90);
+  await ensureWorkoutPrograms(true);
 
   const profile = await db.userProfile.toCollection().first();
   if (profile?.id) {
@@ -151,172 +151,367 @@ export async function migrateExerciseCatalog(
     });
   }
 
-  onProgress?.('Exercise catalog updated!', 100);
+  onProgress?.('Exercise catalog & balanced plans updated!', 100);
 }
 
-export async function ensureWorkoutPrograms(): Promise<void> {
+export async function ensureWorkoutPrograms(forceUpdateBuiltIn = false): Promise<void> {
   const programs: { plan: Omit<WorkoutPlan, 'id'>; days: Omit<WorkoutDay, 'id' | 'planId'>[] }[] = [
     {
-      plan: { name: 'Push / Pull / Legs', description: 'Classic 6-day hypertrophy split for intermediate lifters.', category: 'Hypertrophy', difficulty: 'intermediate', daysPerWeek: 6, isCustom: false, isActive: false, createdAt: new Date(), updatedAt: new Date() },
+      plan: {
+        name: 'Push / Pull / Legs',
+        description: 'Balanced 6-day hypertrophy split hitting chest, shoulders, triceps, back, traps, biceps, quads, hamstrings, glutes, calves, and core.',
+        category: 'Hypertrophy',
+        difficulty: 'intermediate',
+        daysPerWeek: 6,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
       days: [
-        { dayNumber: 1, name: 'Push A', exercises: buildDay(['barbell bench press', 'overhead press', 'incline dumbbell press', 'cable fly', 'tricep pushdown', 'overhead tricep extension'], [4, 4, 3, 3, 3, 3], [8, 8, 10, 12, 12, 12]) },
-        { dayNumber: 2, name: 'Pull A', exercises: buildDay(['barbell row', 'pull up', 'seated cable row', 'face pull', 'barbell curl', 'hammer curl'], [4, 4, 3, 3, 3, 3], [8, 8, 10, 15, 10, 10]) },
-        { dayNumber: 3, name: 'Legs A', exercises: buildDay(['barbell squat', 'leg press', 'walking lunge', 'leg curl', 'calf raise'], [4, 4, 3, 3, 4], [8, 10, 10, 12, 15]) },
-        { dayNumber: 4, name: 'Push B', exercises: buildDay(['dumbbell bench press', 'arnold press', 'cable crossover', 'dips', 'skull crusher', 'lateral raise'], [4, 4, 3, 3, 3, 3], [10, 10, 12, 10, 12, 15]) },
-        { dayNumber: 5, name: 'Pull B', exercises: buildDay(['deadlift', 'lat pulldown', 'dumbbell row', 'reverse fly', 'incline curl', 'preacher curl'], [4, 4, 3, 3, 3, 3], [6, 10, 10, 12, 10, 12]) },
-        { dayNumber: 6, name: 'Legs B', exercises: buildDay(['front squat', 'romanian deadlift', 'hack squat', 'leg extension', 'seated calf raise'], [4, 4, 3, 3, 4], [8, 10, 10, 12, 15]) },
+        { dayNumber: 1, name: 'Push A (Chest, Delts & Triceps)', exercises: buildDay(['barbell bench press', 'incline dumbbell press', 'overhead press', 'lateral raise', 'tricep pushdown', 'overhead tricep extension'], [4, 4, 3, 3, 3, 3], [8, 10, 8, 15, 12, 12]) },
+        { dayNumber: 2, name: 'Pull A (Back, Rear Delts & Biceps)', exercises: buildDay(['barbell row', 'pull up', 'seated cable row', 'face pull', 'barbell shrug', 'barbell curl', 'hammer curl'], [4, 4, 3, 3, 3, 3, 3], [8, 8, 10, 15, 12, 10, 12]) },
+        { dayNumber: 3, name: 'Legs A (Quads, Hamstrings, Calves & Core)', exercises: buildDay(['barbell squat', 'romanian deadlift', 'leg press', 'leg curl', 'calf raise', 'hanging leg raise'], [4, 4, 3, 3, 4, 3], [8, 10, 10, 12, 15, 12]) },
+        { dayNumber: 4, name: 'Push B (Hypertrophy Push & Lateral Delts)', exercises: buildDay(['dumbbell bench press', 'arnold press', 'cable fly', 'dips', 'lateral raise', 'skull crusher'], [4, 4, 3, 3, 4, 3], [10, 10, 12, 10, 15, 12]) },
+        { dayNumber: 5, name: 'Pull B (Posterior Pull, Lats & Biceps)', exercises: buildDay(['deadlift', 'lat pulldown', 'dumbbell row', 'reverse fly', 'incline curl', 'preacher curl'], [4, 4, 3, 3, 3, 3], [6, 10, 10, 15, 10, 12]) },
+        { dayNumber: 6, name: 'Legs B (Glutes, Quads, Hamstrings & Core)', exercises: buildDay(['front squat', 'barbell glute bridge', 'walking lunge', 'leg extension', 'leg curl', 'seated calf raise', 'plank'], [4, 4, 3, 3, 3, 4, 3], [8, 10, 10, 12, 12, 15, 45]) },
       ],
     },
     {
-      plan: { name: 'Upper / Lower Split', description: '4-day strength-focused split alternating upper and lower body.', category: 'Strength', difficulty: 'intermediate', daysPerWeek: 4, isCustom: false, isActive: false, createdAt: new Date(), updatedAt: new Date() },
+      plan: {
+        name: 'Upper / Lower Split',
+        description: 'Balanced 4-day split pairing horizontal and vertical push/pull on upper days with quad, hamstring, glute, calf, and core work on lower days.',
+        category: 'Strength',
+        difficulty: 'intermediate',
+        daysPerWeek: 4,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
       days: [
-        { dayNumber: 1, name: 'Upper A', exercises: buildDay(['barbell bench press', 'barbell row', 'overhead press', 'pull up', 'tricep pushdown', 'barbell curl'], [4, 4, 3, 3, 3, 3], [6, 6, 8, 8, 10, 10]) },
-        { dayNumber: 2, name: 'Lower A', exercises: buildDay(['barbell squat', 'romanian deadlift', 'leg press', 'leg curl', 'calf raise'], [4, 4, 3, 3, 4], [6, 8, 10, 10, 15]) },
-        { dayNumber: 3, name: 'Upper B', exercises: buildDay(['incline dumbbell press', 'seated cable row', 'dumbbell shoulder press', 'lat pulldown', 'dips', 'hammer curl'], [4, 4, 3, 3, 3, 3], [8, 8, 10, 10, 10, 10]) },
-        { dayNumber: 4, name: 'Lower B', exercises: buildDay(['deadlift', 'front squat', 'hack squat', 'seated calf raise'], [4, 3, 3, 4], [5, 8, 10, 15]) },
+        { dayNumber: 1, name: 'Upper A (Strength Push & Pull)', exercises: buildDay(['barbell bench press', 'barbell row', 'overhead press', 'pull up', 'lateral raise', 'tricep pushdown', 'barbell curl'], [4, 4, 3, 3, 3, 3, 3], [6, 6, 8, 8, 12, 10, 10]) },
+        { dayNumber: 2, name: 'Lower A (Squat, Hinge, Calves & Core)', exercises: buildDay(['barbell squat', 'romanian deadlift', 'leg press', 'leg curl', 'calf raise', 'plank'], [4, 4, 3, 3, 4, 3], [6, 8, 10, 10, 15, 45]) },
+        { dayNumber: 3, name: 'Upper B (Hypertrophy Push & Pull)', exercises: buildDay(['incline dumbbell press', 'seated cable row', 'dumbbell shoulder press', 'lat pulldown', 'face pull', 'dips', 'hammer curl'], [4, 4, 3, 3, 3, 3, 3], [8, 10, 10, 10, 15, 10, 12]) },
+        { dayNumber: 4, name: 'Lower B (Deadlift, Quads, Glutes & Core)', exercises: buildDay(['deadlift', 'front squat', 'walking lunge', 'leg extension', 'leg curl', 'seated calf raise', 'hanging leg raise'], [4, 3, 3, 3, 3, 4, 3], [5, 8, 10, 12, 12, 15, 12]) },
       ],
     },
     {
-      plan: { name: 'Dumbbell Only Split', description: '4-day home or gym hypertrophy program using only dumbbells and bodyweight.', category: 'Hypertrophy', difficulty: 'beginner', daysPerWeek: 4, isCustom: false, isActive: false, createdAt: new Date(), updatedAt: new Date() },
+      plan: {
+        name: 'Dumbbell Only Split',
+        description: '4-day home or gym hypertrophy program using only dumbbells and bodyweight with balanced push, pull, leg, and core coverage.',
+        category: 'Hypertrophy',
+        difficulty: 'beginner',
+        daysPerWeek: 4,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
       days: [
-        { dayNumber: 1, name: 'DB Push', exercises: buildDay(['dumbbell bench press', 'incline dumbbell press', 'dumbbell shoulder press', 'lateral raise', 'overhead tricep extension', 'push up'], [4, 4, 3, 3, 3, 3], [10, 10, 10, 15, 12, 15]) },
-        { dayNumber: 2, name: 'DB Pull', exercises: buildDay(['dumbbell row', 'pull up', 'reverse fly', 'incline curl', 'hammer curl', 'concentration curl'], [4, 3, 3, 3, 3, 3], [10, 8, 15, 12, 12, 12]) },
-        { dayNumber: 3, name: 'DB Legs & Core', exercises: buildDay(['walking lunge', 'romanian deadlift', 'lunge', 'calf raise', 'plank', 'crunch'], [4, 4, 3, 4, 3, 3], [12, 10, 12, 15, 45, 20]) },
-        { dayNumber: 4, name: 'DB Full Upper', exercises: buildDay(['incline dumbbell press', 'dumbbell row', 'arnold press', 'front raise', 'hammer curl', 'diamond push up'], [4, 4, 3, 3, 3, 3], [10, 10, 10, 12, 12, 12]) },
+        { dayNumber: 1, name: 'DB Push (Chest, Shoulders & Triceps)', exercises: buildDay(['dumbbell bench press', 'incline dumbbell press', 'dumbbell shoulder press', 'lateral raise', 'overhead tricep extension', 'diamond push up'], [4, 4, 3, 3, 3, 3], [10, 10, 10, 15, 12, 12]) },
+        { dayNumber: 2, name: 'DB Pull (Back, Rear Delts, Traps & Biceps)', exercises: buildDay(['dumbbell row', 'dumbbell pullover', 'reverse fly', 'dumbbell shrug', 'incline curl', 'hammer curl'], [4, 3, 3, 3, 3, 3], [10, 10, 15, 12, 12, 12]) },
+        { dayNumber: 3, name: 'DB Legs & Core (Quads, Glutes, Hamstrings & Abs)', exercises: buildDay(['goblet squat', 'romanian deadlift', 'walking lunge', 'dumbbell step-up', 'calf raise', 'plank', 'bicycle crunch'], [4, 4, 3, 3, 4, 3, 3], [12, 10, 12, 10, 15, 45, 20]) },
+        { dayNumber: 4, name: 'DB Total Body Symmetry', exercises: buildDay(['incline dumbbell press', 'dumbbell row', 'arnold press', 'goblet squat', 'dumbbell stiff leg deadlift', 'concentration curl', 'overhead tricep extension'], [3, 3, 3, 3, 3, 3, 3], [10, 10, 10, 12, 10, 12, 12]) },
       ],
     },
     {
-      plan: { name: 'StrongLifts 5×5', description: 'Classic beginner strength program. 3 compound lifts, 3 days.', category: 'Powerlifting', difficulty: 'beginner', daysPerWeek: 3, isCustom: false, isActive: false, createdAt: new Date(), updatedAt: new Date() },
+      plan: {
+        name: 'StrongLifts 5×5',
+        description: 'Classic 3-day compound strength program with balanced upper, lower, and core support work.',
+        category: 'Powerlifting',
+        difficulty: 'beginner',
+        daysPerWeek: 3,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
       days: [
-        { dayNumber: 1, name: 'Workout A', exercises: buildDay(['barbell squat', 'barbell bench press', 'barbell row'], [5, 5, 5], [5, 5, 5]) },
-        { dayNumber: 2, name: 'Workout B', exercises: buildDay(['barbell squat', 'overhead press', 'deadlift'], [5, 5, 1], [5, 5, 5]) },
+        { dayNumber: 1, name: 'Workout A (Squat, Bench, Row & Core)', exercises: buildDay(['barbell squat', 'barbell bench press', 'barbell row', 'dips', 'plank'], [5, 5, 5, 3, 3], [5, 5, 5, 10, 45]) },
+        { dayNumber: 2, name: 'Workout B (Squat, Press, Deadlift & Pull)', exercises: buildDay(['barbell squat', 'overhead press', 'deadlift', 'chin up', 'hanging leg raise'], [5, 5, 1, 3, 3], [5, 5, 5, 8, 12]) },
+        { dayNumber: 3, name: 'Workout C (Full Compound Balance)', exercises: buildDay(['barbell squat', 'barbell bench press', 'barbell row', 'face pull', 'calf raise'], [5, 5, 5, 3, 4], [5, 5, 5, 15, 15]) },
       ],
     },
     {
-      plan: { name: 'Bro Split (5-Day)', description: 'Classic bodybuilder split. One muscle group per day for maximum volume.', category: 'Hypertrophy', difficulty: 'intermediate', daysPerWeek: 5, isCustom: false, isActive: false, createdAt: new Date(), updatedAt: new Date() },
+      plan: {
+        name: 'Bro Split (5-Day)',
+        description: 'Classic 5-day body-part split hitting every muscle head with dedicated volume plus calves and core.',
+        category: 'Hypertrophy',
+        difficulty: 'intermediate',
+        daysPerWeek: 5,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
       days: [
-        { dayNumber: 1, name: 'Chest', exercises: buildDay(['barbell bench press', 'incline dumbbell press', 'cable fly', 'cable crossover', 'dips', 'push up'], [4, 4, 3, 3, 3, 2], [8, 10, 12, 15, 10, 20]) },
-        { dayNumber: 2, name: 'Back', exercises: buildDay(['deadlift', 'barbell row', 'lat pulldown', 'seated cable row', 'straight arm pulldown'], [4, 4, 3, 3, 3], [5, 8, 10, 10, 12]) },
-        { dayNumber: 3, name: 'Shoulders', exercises: buildDay(['overhead press', 'arnold press', 'lateral raise', 'face pull', 'front raise', 'barbell shrug'], [4, 4, 4, 3, 3, 4], [8, 10, 12, 15, 12, 10]) },
-        { dayNumber: 4, name: 'Arms', exercises: buildDay(['barbell curl', 'tricep pushdown', 'hammer curl', 'skull crusher', 'preacher curl', 'dips'], [4, 4, 3, 3, 3, 3], [8, 10, 10, 10, 12, 10]) },
-        { dayNumber: 5, name: 'Legs', exercises: buildDay(['barbell squat', 'leg press', 'romanian deadlift', 'leg extension', 'leg curl', 'calf raise'], [4, 4, 3, 3, 3, 4], [8, 10, 10, 12, 12, 15]) },
+        { dayNumber: 1, name: 'Chest & Core', exercises: buildDay(['barbell bench press', 'incline dumbbell press', 'dumbbell bench press', 'cable fly', 'dips', 'cable crossover', 'hanging leg raise'], [4, 4, 3, 3, 3, 3, 3], [8, 10, 10, 12, 10, 15, 12]) },
+        { dayNumber: 2, name: 'Back & Traps', exercises: buildDay(['deadlift', 'barbell row', 'pull up', 'lat pulldown', 'seated cable row', 'straight arm pulldown', 'barbell shrug'], [4, 4, 3, 3, 3, 3, 4], [5, 8, 8, 10, 10, 12, 12]) },
+        { dayNumber: 3, name: 'Shoulders & Abs', exercises: buildDay(['overhead press', 'arnold press', 'lateral raise', 'front raise', 'face pull', 'reverse fly', 'plank'], [4, 4, 4, 3, 3, 3, 3], [8, 10, 15, 12, 15, 15, 45]) },
+        { dayNumber: 4, name: 'Biceps, Triceps & Forearms', exercises: buildDay(['barbell curl', 'skull crusher', 'incline curl', 'tricep pushdown', 'preacher curl', 'overhead tricep extension', 'hammer curl'], [4, 4, 3, 3, 3, 3, 3], [8, 10, 10, 12, 12, 12, 12]) },
+        { dayNumber: 5, name: 'Quads, Hamstrings, Glutes & Calves', exercises: buildDay(['barbell squat', 'romanian deadlift', 'leg press', 'walking lunge', 'leg extension', 'leg curl', 'calf raise'], [4, 4, 3, 3, 3, 3, 4], [8, 10, 10, 12, 12, 12, 15]) },
       ],
     },
     {
-      plan: { name: 'Starting Strength', description: 'Mark Rippetoe\'s novice barbell program. Simple and effective.', category: 'Powerlifting', difficulty: 'beginner', daysPerWeek: 3, isCustom: false, isActive: false, createdAt: new Date(), updatedAt: new Date() },
+      plan: {
+        name: 'Starting Strength',
+        description: 'Mark Rippetoe\'s novice barbell program across 3 balanced full-body sessions.',
+        category: 'Powerlifting',
+        difficulty: 'beginner',
+        daysPerWeek: 3,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
       days: [
-        { dayNumber: 1, name: 'Day A', exercises: buildDay(['barbell squat', 'overhead press', 'deadlift'], [3, 3, 1], [5, 5, 5]) },
-        { dayNumber: 2, name: 'Day B', exercises: buildDay(['barbell squat', 'barbell bench press', 'barbell row'], [3, 3, 3], [5, 5, 5]) },
+        { dayNumber: 1, name: 'Day A (Squat, Bench, Deadlift & Chin-Up)', exercises: buildDay(['barbell squat', 'barbell bench press', 'deadlift', 'chin up', 'plank'], [3, 3, 1, 3, 3], [5, 5, 5, 8, 45]) },
+        { dayNumber: 2, name: 'Day B (Squat, Overhead Press, Row & Dips)', exercises: buildDay(['barbell squat', 'overhead press', 'barbell row', 'dips', 'back extension'], [3, 3, 3, 3, 3], [5, 5, 5, 10, 12]) },
+        { dayNumber: 3, name: 'Day C (Squat, Bench, RDL & Pull-Up)', exercises: buildDay(['barbell squat', 'barbell bench press', 'romanian deadlift', 'pull up', 'calf raise'], [3, 3, 3, 3, 4], [5, 5, 8, 8, 15]) },
       ],
     },
     {
-      plan: { name: 'PHUL (Power/Hypertrophy)', description: 'Power Hypertrophy Upper Lower — combines strength and size.', category: 'Hypertrophy', difficulty: 'intermediate', daysPerWeek: 4, isCustom: false, isActive: false, createdAt: new Date(), updatedAt: new Date() },
+      plan: {
+        name: 'PHUL (Power/Hypertrophy)',
+        description: 'Power Hypertrophy Upper Lower — combines heavy compound strength and balanced anatomical hypertrophy.',
+        category: 'Hypertrophy',
+        difficulty: 'intermediate',
+        daysPerWeek: 4,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
       days: [
-        { dayNumber: 1, name: 'Upper Power', exercises: buildDay(['barbell bench press', 'barbell row', 'overhead press', 'pull up', 'barbell curl', 'tricep pushdown'], [4, 4, 3, 3, 3, 3], [5, 5, 6, 6, 8, 8]) },
-        { dayNumber: 2, name: 'Lower Power', exercises: buildDay(['barbell squat', 'deadlift', 'leg press', 'leg curl', 'calf raise'], [4, 4, 3, 3, 4], [5, 5, 8, 8, 10]) },
-        { dayNumber: 3, name: 'Upper Hypertrophy', exercises: buildDay(['incline dumbbell press', 'seated cable row', 'dumbbell shoulder press', 'lat pulldown', 'cable fly', 'hammer curl', 'skull crusher'], [4, 4, 3, 3, 3, 3, 3], [10, 10, 10, 10, 12, 12, 12]) },
-        { dayNumber: 4, name: 'Lower Hypertrophy', exercises: buildDay(['front squat', 'romanian deadlift', 'hack squat', 'leg extension', 'leg curl', 'seated calf raise'], [4, 3, 3, 3, 3, 4], [10, 10, 12, 12, 12, 15]) },
+        { dayNumber: 1, name: 'Upper Power', exercises: buildDay(['barbell bench press', 'barbell row', 'overhead press', 'lat pulldown', 'face pull', 'barbell curl', 'skull crusher'], [4, 4, 3, 3, 3, 3, 3], [5, 5, 6, 8, 12, 8, 8]) },
+        { dayNumber: 2, name: 'Lower Power', exercises: buildDay(['barbell squat', 'deadlift', 'leg press', 'leg curl', 'calf raise', 'plank'], [4, 4, 3, 3, 4, 3], [5, 5, 8, 8, 12, 45]) },
+        { dayNumber: 3, name: 'Upper Hypertrophy', exercises: buildDay(['incline dumbbell press', 'seated cable row', 'dumbbell shoulder press', 'pull up', 'cable fly', 'lateral raise', 'incline curl', 'tricep pushdown'], [4, 4, 3, 3, 3, 3, 3, 3], [10, 10, 10, 10, 12, 15, 12, 12]) },
+        { dayNumber: 4, name: 'Lower Hypertrophy', exercises: buildDay(['front squat', 'romanian deadlift', 'walking lunge', 'leg extension', 'leg curl', 'seated calf raise', 'hanging leg raise'], [4, 4, 3, 3, 3, 4, 3], [10, 10, 12, 12, 12, 15, 12]) },
       ],
     },
     {
-      plan: { name: 'Bodyweight Home', description: 'No equipment needed. Do it anywhere, anytime.', category: 'Bodyweight', difficulty: 'beginner', daysPerWeek: 3, isCustom: false, isActive: false, createdAt: new Date(), updatedAt: new Date() },
+      plan: {
+        name: 'Bodyweight Home',
+        description: 'Zero-equipment calisthenics split hitting push, pull, legs, glutes, and core in complete balance.',
+        category: 'Bodyweight',
+        difficulty: 'beginner',
+        daysPerWeek: 3,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
       days: [
-        { dayNumber: 1, name: 'Push', exercises: buildDay(['push up', 'diamond push up', 'dips', 'mountain climber', 'plank'], [4, 3, 3, 3, 3], [15, 12, 10, 20, 30]) },
-        { dayNumber: 2, name: 'Pull', exercises: buildDay(['pull up', 'chin up', 'bodyweight squat', 'superman', 'hanging leg raise'], [4, 3, 3, 3, 3], [8, 8, 20, 12, 10]) },
-        { dayNumber: 3, name: 'Legs & Core', exercises: buildDay(['bodyweight squat', 'lunge', 'calf raise', 'crunch', 'bicycle crunch'], [4, 3, 4, 3, 3], [20, 12, 20, 20, 20]) },
+        { dayNumber: 1, name: 'Push & Core (Chest, Shoulders, Triceps & Abs)', exercises: buildDay(['push up', 'incline push-up', 'diamond push up', 'pike push up', 'dips', 'plank'], [4, 3, 3, 3, 3, 3], [15, 15, 12, 10, 12, 45]) },
+        { dayNumber: 2, name: 'Pull & Posterior Chain (Back, Biceps & Erectors)', exercises: buildDay(['pull up', 'chin up', 'inverted row', 'superman', 'back extension', 'hanging leg raise'], [4, 3, 4, 3, 3, 3], [8, 8, 12, 15, 15, 12]) },
+        { dayNumber: 3, name: 'Legs, Glutes & Core', exercises: buildDay(['bodyweight squat', 'lunge', 'glute bridge', 'calf raise', 'crunch', 'bicycle crunch'], [4, 3, 4, 4, 3, 3], [20, 12, 15, 20, 20, 20]) },
       ],
     },
     {
-      plan: { name: 'Arms Specialization', description: 'Dedicated arm program for bigger biceps and triceps.', category: 'Hypertrophy', difficulty: 'intermediate', daysPerWeek: 4, isCustom: false, isActive: false, createdAt: new Date(), updatedAt: new Date() },
+      plan: {
+        name: 'Arms Specialization',
+        description: '4-day full-body foundation with specialized volume for biceps, triceps, forearms, and delts.',
+        category: 'Hypertrophy',
+        difficulty: 'intermediate',
+        daysPerWeek: 4,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
       days: [
-        { dayNumber: 1, name: 'Chest & Triceps', exercises: buildDay(['barbell bench press', 'incline dumbbell press', 'cable fly', 'tricep pushdown', 'skull crusher', 'dips'], [4, 4, 3, 4, 3, 3], [8, 10, 12, 10, 10, 10]) },
-        { dayNumber: 2, name: 'Back & Biceps', exercises: buildDay(['barbell row', 'lat pulldown', 'seated cable row', 'barbell curl', 'hammer curl', 'preacher curl'], [4, 4, 3, 4, 3, 3], [8, 10, 10, 8, 10, 10]) },
-        { dayNumber: 3, name: 'Legs & Shoulders', exercises: buildDay(['barbell squat', 'leg press', 'leg curl', 'overhead press', 'lateral raise', 'calf raise'], [4, 3, 3, 3, 3, 4], [8, 10, 12, 8, 12, 15]) },
-        { dayNumber: 4, name: 'Arms Blast', exercises: buildDay(['barbell curl', 'tricep pushdown', 'incline curl', 'skull crusher', 'concentration curl', 'dips'], [4, 4, 3, 3, 3, 3], [8, 10, 10, 10, 12, 8]) },
+        { dayNumber: 1, name: 'Chest, Shoulders & Triceps', exercises: buildDay(['barbell bench press', 'incline dumbbell press', 'overhead press', 'lateral raise', 'tricep pushdown', 'skull crusher', 'dips'], [4, 3, 3, 3, 4, 3, 3], [8, 10, 8, 15, 10, 10, 10]) },
+        { dayNumber: 2, name: 'Back, Rear Delts & Biceps', exercises: buildDay(['barbell row', 'lat pulldown', 'seated cable row', 'face pull', 'barbell curl', 'hammer curl', 'preacher curl'], [4, 4, 3, 3, 4, 3, 3], [8, 10, 10, 15, 8, 10, 12]) },
+        { dayNumber: 3, name: 'Legs, Glutes, Calves & Core', exercises: buildDay(['barbell squat', 'romanian deadlift', 'leg press', 'leg extension', 'leg curl', 'calf raise', 'plank'], [4, 4, 3, 3, 3, 4, 3], [8, 10, 10, 12, 12, 15, 45]) },
+        { dayNumber: 4, name: 'Arms & Delts Hypertrophy Blast', exercises: buildDay(['barbell curl', 'tricep pushdown', 'incline curl', 'overhead tricep extension', 'concentration curl', 'skull crusher', 'lateral raise'], [4, 4, 3, 3, 3, 3, 3], [8, 10, 10, 12, 12, 10, 15]) },
       ],
     },
     {
-      plan: { name: 'Powerlifting Peaking', description: 'Competition prep: SBD with heavy singles and accessories.', category: 'Powerlifting', difficulty: 'expert', daysPerWeek: 4, isCustom: false, isActive: false, createdAt: new Date(), updatedAt: new Date() },
+      plan: {
+        name: 'Powerlifting Peaking',
+        description: 'Competition prep: Squat, Bench, and Deadlift peaking with balanced antagonist and core accessories.',
+        category: 'Powerlifting',
+        difficulty: 'expert',
+        daysPerWeek: 4,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
       days: [
-        { dayNumber: 1, name: 'Heavy Squat', exercises: buildDay(['barbell squat', 'front squat', 'leg press', 'leg extension', 'plank'], [5, 3, 3, 3, 3], [3, 5, 8, 10, 30]) },
-        { dayNumber: 2, name: 'Heavy Bench', exercises: buildDay(['barbell bench press', 'incline dumbbell press', 'dips', 'skull crusher', 'face pull'], [5, 3, 3, 3, 3], [3, 8, 8, 10, 15]) },
-        { dayNumber: 3, name: 'Heavy Deadlift', exercises: buildDay(['deadlift', 'romanian deadlift', 'barbell row', 'barbell shrug', 'back extension'], [5, 3, 3, 3, 3], [3, 6, 8, 8, 12]) },
-        { dayNumber: 4, name: 'Accessory', exercises: buildDay(['overhead press', 'pull up', 'lateral raise', 'barbell curl', 'tricep pushdown'], [4, 4, 3, 3, 3], [6, 8, 12, 10, 12]) },
+        { dayNumber: 1, name: 'Heavy Squat & Lower Accessories', exercises: buildDay(['barbell squat', 'front squat', 'leg press', 'leg extension', 'calf raise', 'plank'], [5, 3, 3, 3, 4, 3], [3, 5, 8, 10, 15, 45]) },
+        { dayNumber: 2, name: 'Heavy Bench & Upper Push/Rear Delts', exercises: buildDay(['barbell bench press', 'incline dumbbell press', 'dips', 'skull crusher', 'lateral raise', 'face pull'], [5, 3, 3, 3, 3, 3], [3, 8, 8, 10, 12, 15]) },
+        { dayNumber: 3, name: 'Heavy Deadlift & Posterior Chain', exercises: buildDay(['deadlift', 'romanian deadlift', 'barbell row', 'leg curl', 'barbell shrug', 'back extension'], [5, 3, 3, 3, 3, 3], [3, 6, 8, 10, 10, 12]) },
+        { dayNumber: 4, name: 'Overhead Press, Lats & Arms', exercises: buildDay(['overhead press', 'pull up', 'seated cable row', 'reverse fly', 'barbell curl', 'tricep pushdown'], [4, 4, 3, 3, 3, 3], [6, 8, 10, 15, 10, 12]) },
       ],
     },
     {
-      plan: { name: 'Full Body 3x', description: 'Efficient 3-day program hitting all major muscle groups each session.', category: 'Strength', difficulty: 'beginner', daysPerWeek: 3, isCustom: false, isActive: false, createdAt: new Date(), updatedAt: new Date() },
+      plan: {
+        name: 'Full Body 3x',
+        description: 'Balanced 3-day total-body program working quads, hamstrings/glutes, chest, back, shoulders, arms, and core every session.',
+        category: 'Strength',
+        difficulty: 'beginner',
+        daysPerWeek: 3,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
       days: [
-        { dayNumber: 1, name: 'Full Body A', exercises: buildDay(['barbell squat', 'barbell bench press', 'barbell row', 'overhead press', 'barbell curl', 'plank'], [4, 4, 4, 3, 3, 3], [8, 8, 8, 8, 10, 30]) },
-        { dayNumber: 2, name: 'Full Body B', exercises: buildDay(['deadlift', 'incline dumbbell press', 'pull up', 'dumbbell shoulder press', 'skull crusher', 'hanging leg raise'], [4, 4, 4, 3, 3, 3], [6, 10, 8, 10, 10, 12]) },
-        { dayNumber: 3, name: 'Full Body C', exercises: buildDay(['front squat', 'dumbbell bench press', 'seated cable row', 'arnold press', 'hammer curl', 'crunch'], [4, 4, 4, 3, 3, 3], [8, 10, 10, 10, 10, 20]) },
+        { dayNumber: 1, name: 'Full Body A', exercises: buildDay(['barbell squat', 'romanian deadlift', 'barbell bench press', 'barbell row', 'overhead press', 'barbell curl', 'tricep pushdown', 'plank'], [4, 3, 4, 4, 3, 3, 3, 3], [8, 10, 8, 8, 8, 10, 12, 45]) },
+        { dayNumber: 2, name: 'Full Body B', exercises: buildDay(['deadlift', 'leg press', 'incline dumbbell press', 'pull up', 'dumbbell shoulder press', 'lateral raise', 'skull crusher', 'hanging leg raise'], [4, 3, 4, 4, 3, 3, 3, 3], [6, 10, 10, 8, 10, 15, 10, 12]) },
+        { dayNumber: 3, name: 'Full Body C', exercises: buildDay(['front squat', 'leg curl', 'dumbbell bench press', 'seated cable row', 'arnold press', 'face pull', 'hammer curl', 'calf raise'], [4, 3, 4, 4, 3, 3, 3, 4], [8, 12, 10, 10, 10, 15, 10, 15]) },
       ],
     },
     {
-      plan: { name: 'HIIT Conditioning', description: 'High-intensity interval training for conditioning and fat loss.', category: 'Cardio', difficulty: 'intermediate', daysPerWeek: 3, isCustom: false, isActive: false, createdAt: new Date(), updatedAt: new Date() },
+      plan: {
+        name: 'HIIT Conditioning',
+        description: '3-day high-intensity interval conditioning balancing upper body, lower body, and core athletic work.',
+        category: 'Cardio',
+        difficulty: 'intermediate',
+        daysPerWeek: 3,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
       days: [
-        { dayNumber: 1, name: 'HIIT A', exercises: buildDay(['burpee', 'mountain climber', 'jumping jack', 'high knees', 'push up'], [4, 4, 4, 4, 3], [12, 20, 30, 30, 15]) },
-        { dayNumber: 2, name: 'HIIT B', exercises: buildDay(['bodyweight squat', 'push up', 'plank', 'jumping jack', 'crunch'], [4, 4, 3, 4, 3], [20, 15, 30, 30, 20]) },
+        { dayNumber: 1, name: 'HIIT A (Upper & Core Metabolic)', exercises: buildDay(['burpee', 'push up', 'mountain climber', 'diamond push up', 'plank', 'bicycle crunch'], [4, 4, 4, 3, 3, 3], [12, 15, 25, 12, 45, 20]) },
+        { dayNumber: 2, name: 'HIIT B (Lower Body & Plyo)', exercises: buildDay(['bodyweight squat', 'walking lunge', 'jumping jack', 'high knees', 'glute bridge', 'calf raise'], [4, 4, 4, 4, 3, 4], [20, 16, 30, 30, 15, 20]) },
+        { dayNumber: 3, name: 'HIIT C (Total Body Conditioning)', exercises: buildDay(['burpee', 'inverted row', 'push up', 'bodyweight squat', 'mountain climber', 'hanging leg raise'], [4, 4, 3, 4, 4, 3], [12, 12, 15, 20, 25, 12]) },
       ],
     },
     {
-      plan: { name: 'Mobility & Recovery', description: 'Daily mobility work for recovery and injury prevention.', category: 'Mobility', difficulty: 'beginner', daysPerWeek: 7, isCustom: false, isActive: false, createdAt: new Date(), updatedAt: new Date() },
+      plan: {
+        name: 'Mobility & Recovery',
+        description: 'Structured full-body mobility, joint decompression, and core activation for active recovery.',
+        category: 'Mobility',
+        difficulty: 'beginner',
+        daysPerWeek: 3,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
       days: [
-        { dayNumber: 1, name: 'Full Body Stretch', exercises: buildDay(['hip stretch', 'hamstring stretch', 'shoulder stretch', 'quad stretch', 'calf stretch'], [2, 2, 2, 2, 2], [30, 30, 30, 30, 30]) },
+        { dayNumber: 1, name: 'Full Body Stretch & Flow', exercises: buildDay(['hip stretch', 'hamstring stretch', 'quad stretch', 'shoulder stretch', 'calf stretch'], [2, 2, 2, 2, 2], [30, 30, 30, 30, 30]) },
+        { dayNumber: 2, name: 'Lower Body & Hip Decompression', exercises: buildDay(['hip stretch', 'hamstring stretch', 'quad stretch', 'calf stretch', 'glute bridge'], [3, 3, 2, 2, 3], [30, 30, 30, 30, 15]) },
+        { dayNumber: 3, name: 'Upper Body, Thoracic & Core Activation', exercises: buildDay(['shoulder stretch', 'face pull', 'superman', 'plank', 'hip stretch'], [3, 3, 3, 2, 2], [30, 15, 12, 30, 30]) },
       ],
     },
     {
-      plan: { name: 'GZCLP', description: 'Tiered linear progression with heavy, moderate, and accessory work.', category: 'Strength', difficulty: 'beginner', daysPerWeek: 4, isCustom: false, isActive: false, createdAt: new Date(), updatedAt: new Date() },
+      plan: {
+        name: 'GZCLP',
+        description: 'Tiered linear progression (T1 heavy, T2 volume, T3 accessories) balanced across all body parts.',
+        category: 'Strength',
+        difficulty: 'beginner',
+        daysPerWeek: 4,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
       days: [
-        { dayNumber: 1, name: 'A1', exercises: buildDay(['barbell squat', 'barbell bench press', 'lat pulldown', 'barbell row'], [3, 3, 3, 3], [5, 5, 10, 12]) },
-        { dayNumber: 2, name: 'B1', exercises: buildDay(['deadlift', 'overhead press', 'seated cable row', 'leg curl'], [3, 3, 3, 3], [3, 5, 10, 12]) },
-        { dayNumber: 3, name: 'A2', exercises: buildDay(['barbell squat', 'barbell bench press', 'pull up', 'leg press'], [3, 3, 3, 3], [5, 5, 8, 10]) },
-        { dayNumber: 4, name: 'B2', exercises: buildDay(['deadlift', 'overhead press', 'barbell row', 'hamstring curl'], [3, 3, 3, 3], [3, 5, 8, 12]) },
+        { dayNumber: 1, name: 'A1 (Squat T1, Bench T2 & Pull/Arm T3)', exercises: buildDay(['barbell squat', 'barbell bench press', 'lat pulldown', 'leg curl', 'lateral raise', 'barbell curl'], [5, 3, 3, 3, 3, 3], [3, 10, 12, 12, 15, 12]) },
+        { dayNumber: 2, name: 'B1 (OHP T1, Deadlift T2 & Row/Tricep T3)', exercises: buildDay(['overhead press', 'deadlift', 'dumbbell row', 'leg extension', 'face pull', 'tricep pushdown'], [5, 3, 3, 3, 3, 3], [3, 10, 12, 12, 15, 12]) },
+        { dayNumber: 3, name: 'A2 (Bench T1, Squat T2 & Pull/Core T3)', exercises: buildDay(['barbell bench press', 'front squat', 'pull up', 'romanian deadlift', 'cable fly', 'hanging leg raise'], [5, 3, 3, 3, 3, 3], [3, 10, 10, 10, 12, 12]) },
+        { dayNumber: 4, name: 'B2 (Deadlift T1, OHP T2 & Legs/Arms T3)', exercises: buildDay(['deadlift', 'dumbbell shoulder press', 'seated cable row', 'leg press', 'calf raise', 'hammer curl'], [5, 3, 3, 3, 4, 3], [3, 10, 12, 12, 15, 12]) },
       ],
     },
     {
-      plan: { name: 'nSuns 5/3/1', description: 'High-volume 5/3/1-inspired progression for squat, bench, deadlift, and press.', category: 'Powerlifting', difficulty: 'intermediate', daysPerWeek: 5, isCustom: false, isActive: false, createdAt: new Date(), updatedAt: new Date() },
+      plan: {
+        name: 'nSuns 5/3/1',
+        description: 'High-volume 5/3/1 progression for squat, bench, deadlift, and press with balanced antagonist work.',
+        category: 'Powerlifting',
+        difficulty: 'intermediate',
+        daysPerWeek: 5,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
       days: [
-        { dayNumber: 1, name: 'Bench Focus', exercises: buildDay(['barbell bench press', 'incline dumbbell press', 'barbell row', 'tricep pushdown', 'face pull'], [9, 5, 4, 4, 3], [5, 8, 8, 12, 15]) },
-        { dayNumber: 2, name: 'Squat Focus', exercises: buildDay(['barbell squat', 'front squat', 'romanian deadlift', 'leg press', 'calf raise'], [9, 5, 4, 3, 4], [5, 6, 8, 10, 15]) },
-        { dayNumber: 3, name: 'Press Focus', exercises: buildDay(['overhead press', 'barbell bench press', 'lat pulldown', 'lateral raise', 'barbell curl'], [9, 5, 4, 4, 3], [5, 6, 10, 12, 10]) },
-        { dayNumber: 4, name: 'Deadlift Focus', exercises: buildDay(['deadlift', 'barbell squat', 'barbell row', 'leg curl', 'plank'], [9, 5, 4, 4, 3], [3, 5, 8, 12, 45]) },
-        { dayNumber: 5, name: 'Volume Accessories', exercises: buildDay(['incline dumbbell press', 'seated cable row', 'dips', 'hammer curl', 'tricep pushdown'], [4, 4, 3, 3, 3], [10, 10, 10, 12, 12]) },
+        { dayNumber: 1, name: 'Bench & Upper Back Volume', exercises: buildDay(['barbell bench press', 'overhead press', 'incline dumbbell press', 'barbell row', 'lat pulldown', 'tricep pushdown', 'barbell curl'], [8, 5, 4, 4, 4, 3, 3], [5, 8, 10, 10, 10, 12, 12]) },
+        { dayNumber: 2, name: 'Squat & Posterior Chain', exercises: buildDay(['barbell squat', 'romanian deadlift', 'leg press', 'leg curl', 'calf raise', 'hanging leg raise'], [8, 5, 3, 3, 4, 3], [5, 8, 10, 12, 15, 12]) },
+        { dayNumber: 3, name: 'Overhead Press & Chest/Delts', exercises: buildDay(['overhead press', 'incline dumbbell press', 'dumbbell shoulder press', 'lateral raise', 'face pull', 'dips'], [8, 5, 3, 4, 3, 3], [5, 8, 10, 15, 15, 10]) },
+        { dayNumber: 4, name: 'Deadlift & Back/Quads', exercises: buildDay(['deadlift', 'front squat', 'barbell row', 'pull up', 'back extension', 'plank'], [8, 5, 4, 3, 3, 3], [3, 6, 8, 8, 12, 45]) },
+        { dayNumber: 5, name: 'Heavy Bench & Arms Hypertrophy', exercises: buildDay(['barbell bench press', 'dumbbell bench press', 'seated cable row', 'skull crusher', 'preacher curl', 'hammer curl'], [8, 4, 4, 3, 3, 3], [5, 10, 10, 10, 12, 12]) },
       ],
     },
     {
-      plan: { name: 'Texas Method', description: 'Classic intermediate progression split into volume, recovery, and intensity days.', category: 'Strength', difficulty: 'intermediate', daysPerWeek: 3, isCustom: false, isActive: false, createdAt: new Date(), updatedAt: new Date() },
+      plan: {
+        name: 'Texas Method',
+        description: 'Classic intermediate progression split into Volume, Recovery, and Intensity days with full-body coverage.',
+        category: 'Strength',
+        difficulty: 'intermediate',
+        daysPerWeek: 3,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
       days: [
-        { dayNumber: 1, name: 'Volume Day', exercises: buildDay(['barbell squat', 'barbell bench press', 'barbell row', 'back extension'], [5, 5, 5, 3], [5, 5, 5, 12]) },
-        { dayNumber: 2, name: 'Recovery Day', exercises: buildDay(['front squat', 'overhead press', 'pull up', 'reverse fly'], [3, 3, 3, 3], [5, 5, 8, 12]) },
-        { dayNumber: 3, name: 'Intensity Day', exercises: buildDay(['barbell squat', 'barbell bench press', 'deadlift', 'barbell row'], [1, 1, 1, 3], [5, 5, 5, 5]) },
+        { dayNumber: 1, name: 'Volume Day', exercises: buildDay(['barbell squat', 'barbell bench press', 'barbell row', 'romanian deadlift', 'dips', 'plank'], [5, 5, 5, 3, 3, 3], [5, 5, 5, 8, 10, 45]) },
+        { dayNumber: 2, name: 'Recovery Day', exercises: buildDay(['front squat', 'overhead press', 'pull up', 'face pull', 'back extension', 'barbell curl'], [3, 3, 3, 3, 3, 3], [5, 5, 8, 15, 12, 10]) },
+        { dayNumber: 3, name: 'Intensity Day', exercises: buildDay(['barbell squat', 'barbell bench press', 'deadlift', 'lateral raise', 'tricep pushdown', 'calf raise'], [1, 1, 1, 3, 3, 4], [5, 5, 5, 12, 12, 15]) },
       ],
     },
     {
-      plan: { name: 'Fierce 5', description: 'Beginner-friendly full body plan with progressive overload and balanced accessories.', category: 'Strength', difficulty: 'beginner', daysPerWeek: 3, isCustom: false, isActive: false, createdAt: new Date(), updatedAt: new Date() },
+      plan: {
+        name: 'Fierce 5',
+        description: 'Beginner-friendly full body plan with progressive overload and balanced push, pull, and leg accessories.',
+        category: 'Strength',
+        difficulty: 'beginner',
+        daysPerWeek: 3,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
       days: [
-        { dayNumber: 1, name: 'Workout A', exercises: buildDay(['barbell squat', 'barbell bench press', 'barbell row', 'face pull', 'barbell curl'], [3, 3, 3, 3, 2], [5, 5, 8, 15, 10]) },
-        { dayNumber: 2, name: 'Workout B', exercises: buildDay(['deadlift', 'overhead press', 'lat pulldown', 'leg curl', 'tricep pushdown'], [3, 3, 3, 3, 2], [5, 5, 10, 12, 12]) },
-        { dayNumber: 3, name: 'Workout C', exercises: buildDay(['front squat', 'incline dumbbell press', 'seated cable row', 'lateral raise', 'hammer curl'], [3, 3, 3, 3, 2], [6, 8, 10, 12, 12]) },
+        { dayNumber: 1, name: 'Workout A', exercises: buildDay(['barbell squat', 'barbell bench press', 'barbell row', 'face pull', 'calf raise', 'tricep pushdown'], [3, 3, 3, 3, 3, 2], [5, 5, 8, 15, 15, 12]) },
+        { dayNumber: 2, name: 'Workout B', exercises: buildDay(['front squat', 'overhead press', 'romanian deadlift', 'lat pulldown', 'plank', 'barbell curl'], [3, 3, 3, 3, 3, 2], [5, 5, 8, 10, 45, 10]) },
+        { dayNumber: 3, name: 'Workout C', exercises: buildDay(['barbell squat', 'incline dumbbell press', 'seated cable row', 'leg curl', 'lateral raise', 'hammer curl'], [3, 3, 3, 3, 3, 2], [5, 8, 10, 12, 12, 12]) },
       ],
     },
     {
-      plan: { name: 'Candito 6 Week Strength', description: 'Six-week periodized strength block focused on squat, bench, and deadlift PRs.', category: 'Powerlifting', difficulty: 'intermediate', daysPerWeek: 4, isCustom: false, isActive: false, createdAt: new Date(), updatedAt: new Date() },
+      plan: {
+        name: 'Candito 6 Week Strength',
+        description: 'Six-week periodized strength block focused on squat, bench, and deadlift PRs with balanced hypertrophy support.',
+        category: 'Powerlifting',
+        difficulty: 'intermediate',
+        daysPerWeek: 4,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
       days: [
-        { dayNumber: 1, name: 'Lower Strength', exercises: buildDay(['barbell squat', 'deadlift', 'leg press', 'leg curl', 'calf raise'], [5, 3, 3, 3, 4], [5, 4, 10, 12, 15]) },
-        { dayNumber: 2, name: 'Upper Strength', exercises: buildDay(['barbell bench press', 'overhead press', 'barbell row', 'pull up', 'tricep pushdown'], [5, 4, 4, 3, 3], [5, 6, 6, 8, 12]) },
-        { dayNumber: 3, name: 'Lower Volume', exercises: buildDay(['front squat', 'romanian deadlift', 'walking lunge', 'leg extension', 'plank'], [4, 4, 3, 3, 3], [8, 8, 10, 12, 45]) },
-        { dayNumber: 4, name: 'Upper Volume', exercises: buildDay(['incline dumbbell press', 'seated cable row', 'lat pulldown', 'barbell curl', 'skull crusher'], [4, 4, 3, 3, 3], [8, 8, 10, 10, 10]) },
+        { dayNumber: 1, name: 'Lower Strength', exercises: buildDay(['barbell squat', 'deadlift', 'leg press', 'leg curl', 'calf raise', 'plank'], [5, 3, 3, 3, 4, 3], [5, 4, 10, 12, 15, 45]) },
+        { dayNumber: 2, name: 'Upper Strength', exercises: buildDay(['barbell bench press', 'barbell row', 'overhead press', 'pull up', 'face pull', 'tricep pushdown', 'barbell curl'], [5, 4, 4, 3, 3, 3, 3], [5, 6, 6, 8, 15, 12, 10]) },
+        { dayNumber: 3, name: 'Lower Volume', exercises: buildDay(['front squat', 'romanian deadlift', 'walking lunge', 'leg extension', 'seated calf raise', 'hanging leg raise'], [4, 4, 3, 3, 4, 3], [8, 8, 10, 12, 15, 12]) },
+        { dayNumber: 4, name: 'Upper Volume', exercises: buildDay(['incline dumbbell press', 'seated cable row', 'dumbbell shoulder press', 'lat pulldown', 'lateral raise', 'hammer curl', 'skull crusher'], [4, 4, 3, 3, 3, 3, 3], [8, 10, 10, 10, 15, 10, 10]) },
       ],
     },
     {
-      plan: { name: 'PHAT', description: 'Power Hypertrophy Adaptive Training with separate power and hypertrophy days.', category: 'Hypertrophy', difficulty: 'expert', daysPerWeek: 5, isCustom: false, isActive: false, createdAt: new Date(), updatedAt: new Date() },
+      plan: {
+        name: 'PHAT',
+        description: 'Power Hypertrophy Adaptive Training with separate power and hypertrophy days covering every muscle group.',
+        category: 'Hypertrophy',
+        difficulty: 'expert',
+        daysPerWeek: 5,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
       days: [
-        { dayNumber: 1, name: 'Upper Power', exercises: buildDay(['barbell bench press', 'barbell row', 'overhead press', 'pull up', 'barbell curl', 'tricep pushdown'], [4, 4, 3, 3, 3, 3], [5, 5, 6, 6, 8, 8]) },
-        { dayNumber: 2, name: 'Lower Power', exercises: buildDay(['barbell squat', 'deadlift', 'front squat', 'leg curl', 'calf raise'], [4, 3, 3, 3, 4], [5, 4, 6, 10, 12]) },
-        { dayNumber: 3, name: 'Back and Shoulders Hypertrophy', exercises: buildDay(['lat pulldown', 'seated cable row', 'dumbbell row', 'lateral raise', 'face pull'], [4, 4, 3, 4, 3], [10, 10, 12, 15, 15]) },
-        { dayNumber: 4, name: 'Lower Hypertrophy', exercises: buildDay(['leg press', 'romanian deadlift', 'walking lunge', 'leg extension', 'seated calf raise'], [4, 4, 3, 3, 4], [12, 10, 12, 15, 15]) },
-        { dayNumber: 5, name: 'Chest and Arms Hypertrophy', exercises: buildDay(['incline dumbbell press', 'cable fly', 'dips', 'barbell curl', 'skull crusher', 'hammer curl'], [4, 3, 3, 3, 3, 3], [10, 12, 10, 10, 10, 12]) },
+        { dayNumber: 1, name: 'Upper Power', exercises: buildDay(['barbell bench press', 'barbell row', 'overhead press', 'pull up', 'dips', 'barbell curl', 'skull crusher'], [4, 4, 3, 3, 3, 3, 3], [5, 5, 6, 6, 8, 8, 8]) },
+        { dayNumber: 2, name: 'Lower Power', exercises: buildDay(['barbell squat', 'deadlift', 'front squat', 'leg curl', 'calf raise', 'plank'], [4, 3, 3, 3, 4, 3], [5, 4, 6, 10, 12, 45]) },
+        { dayNumber: 3, name: 'Back & Shoulders Hypertrophy', exercises: buildDay(['lat pulldown', 'seated cable row', 'dumbbell row', 'dumbbell shoulder press', 'lateral raise', 'face pull', 'barbell shrug'], [4, 4, 3, 4, 4, 3, 3], [10, 10, 12, 10, 15, 15, 12]) },
+        { dayNumber: 4, name: 'Lower Body Hypertrophy', exercises: buildDay(['leg press', 'romanian deadlift', 'walking lunge', 'leg extension', 'leg curl', 'seated calf raise', 'hanging leg raise'], [4, 4, 3, 3, 3, 4, 3], [12, 10, 12, 15, 12, 15, 12]) },
+        { dayNumber: 5, name: 'Chest & Arms Hypertrophy', exercises: buildDay(['incline dumbbell press', 'dumbbell bench press', 'cable fly', 'barbell curl', 'tricep pushdown', 'incline curl', 'overhead tricep extension'], [4, 3, 3, 4, 4, 3, 3], [10, 10, 12, 10, 12, 12, 12]) },
       ],
     },
   ];
@@ -324,6 +519,17 @@ export async function ensureWorkoutPrograms(): Promise<void> {
   for (const { plan, days } of programs) {
     const existing = await db.workoutPlans.where('name').equals(plan.name).first();
     if (existing?.id) {
+      if (forceUpdateBuiltIn && !existing.isCustom) {
+        await db.workoutPlans.update(existing.id, {
+          description: plan.description,
+          daysPerWeek: plan.daysPerWeek,
+          updatedAt: new Date(),
+        });
+        await db.workoutDays.where('planId').equals(existing.id).delete();
+        for (const day of days) {
+          await db.workoutDays.add({ ...day, planId: existing.id } as WorkoutDay);
+        }
+      }
       continue;
     }
 

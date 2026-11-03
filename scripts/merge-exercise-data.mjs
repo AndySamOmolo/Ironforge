@@ -12,9 +12,174 @@ const PUBLIC_GIF_DIR = path.join(ROOT, 'public/exercises');
 const PUBLIC_IMAGE_DIR = path.join(ROOT, 'public/exercise-images');
 const OUTPUT_JSON = path.join(ROOT, 'src/lib/data/merged-exercises.json');
 
+const SYNONYMS = {
+  pushups: 'push up',
+  pushup: 'push up',
+  pullups: 'pull up',
+  pullup: 'pull up',
+  chinups: 'chin up',
+  chinup: 'chin up',
+  skullcrusher: 'skull crusher',
+  skullcrushers: 'skull crusher',
+  pulldowns: 'pulldown',
+  pushdowns: 'pushdown',
+  flyes: 'fly',
+  flies: 'fly',
+  curls: 'curl',
+  extensions: 'extension',
+  raises: 'raise',
+  lunges: 'lunge',
+  squats: 'squat',
+  rows: 'row',
+  shrugs: 'shrug',
+  dips: 'dip',
+  crunches: 'crunch',
+  situps: 'sit up',
+  situp: 'sit up',
+  hyperextensions: 'hyperextension',
+  kickbacks: 'kickback',
+  crossovers: 'crossover',
+  presses: 'press',
+  deadlifts: 'deadlift',
+};
+
+const CURATED_EQUIVALENTS = {
+  'incline dumbbell press': 'dumbbell incline bench press',
+  'incline dumbbell flyes': 'dumbbell incline fly',
+  'barbell bench press - medium grip': 'barbell bench press',
+  'barbell squat': 'barbell full squat',
+  'front barbell squat': 'barbell front squat',
+  'front squat (clean grip)': 'barbell clean-grip front squat',
+  'hack squat': 'sled hack squat',
+  'leg press': 'sled 45° leg press',
+  'leg extensions': 'lever leg extension',
+  'seated leg curl': 'lever seated leg curl',
+  'lying leg curls': 'lever lying leg curl',
+  'romanian deadlift': 'barbell romanian deadlift',
+  'stiff-legged dumbbell deadlift': 'dumbbell stiff leg deadlift',
+  'standing calf raises': 'barbell standing calf raise',
+  'standing dumbbell calf raise': 'dumbbell standing calf raise',
+  'seated calf raise': 'barbell seated calf raise',
+  'face pull': 'cable rear delt row (with rope)',
+  'seated bent-over rear delt raise': 'dumbbell seated bent-over rear delt raise',
+  'standing military press': 'barbell standing military press',
+  'seated barbell military press': 'barbell seated overhead press',
+  'barbell shoulder press': 'barbell seated overhead press',
+  'dumbbell shoulder press': 'dumbbell seated shoulder press',
+  'arnold dumbbell press': 'dumbbell arnold press',
+  'side lateral raise': 'dumbbell lateral raise',
+  'front dumbbell raise': 'dumbbell front raise',
+  'triceps pushdown': 'cable pushdown',
+  'triceps pushdown - rope attachment': 'cable pushdown (with rope attachment)',
+  'tricep dumbbell kickback': 'dumbbell kickback',
+  'standing dumbbell triceps extension': 'dumbbell standing triceps extension',
+  'ez-bar skullcrusher': 'barbell lying triceps extension skull crusher',
+  'lying triceps press': 'barbell lying triceps extension',
+  'bench dips': 'bench dip on floor',
+  'bent over barbell row': 'barbell bent over row',
+  'one-arm dumbbell row': 'dumbbell bent over row',
+  'bent over two-dumbbell row': 'dumbbell bent over row',
+  'seated cable rows': 'cable seated row',
+  'wide-grip lat pulldown': 'cable pulldown',
+  'straight-arm pulldown': 'cable straight arm pulldown',
+  pullups: 'pull-up',
+  pushups: 'push-up',
+  'dumbbell bicep curl': 'dumbbell biceps curl',
+  'hammer curls': 'dumbbell hammer curl',
+  'alternate hammer curl': 'dumbbell alternate biceps curl',
+  'incline dumbbell curl': 'dumbbell incline biceps curl',
+  'alternate incline dumbbell curl': 'dumbbell alternate seated hammer curl',
+  'preacher curl': 'barbell preacher curl',
+  'one arm dumbbell preacher curl': 'dumbbell preacher curl',
+  'concentration curls': 'dumbbell concentration curl',
+  'goblet squat': 'dumbbell goblet squat',
+  'bodyweight squat': 'jump squat',
+  plank: 'front plank with twist',
+  crunches: 'crunch floor',
+  'air bike': 'band bicycle crunch',
+  'mountain climbers': 'mountain climber',
+  'hyperextensions (back extensions)': 'hyperextension (on bench)',
+  superman: 'hyperextension',
+  'shoulder stretch': 'rear deltoid stretch',
+  'groin and back stretch': 'seated glute stretch',
+  'seated glute': 'seated glute stretch',
+};
+
+function canonicalTokenKey(name = '') {
+  const s = String(name)
+    .toLowerCase()
+    .replace(/в°/g, '°')
+    .replace(/\((?:male|female|v\.\s*\d+|version\s*\d+|back pov|side pov)\)/g, '')
+    .replace(/e-z curl bar|ez-bar|ez bar/g, 'ez barbell');
+  const words = s.split(/[^a-z0-9]+/).filter(Boolean);
+  const stop = new Set(['with', 'on', 'the', 'of', 'and', 'to', 'in', 'a', 'an', 'for', 'from', 'by', 'two', 'arm', 'arms', 'legs']);
+  const expanded = [];
+  for (const w of words) {
+    const rep = SYNONYMS[w] || w;
+    for (const part of rep.split(' ')) {
+      if (part && !stop.has(part)) expanded.push(part);
+    }
+  }
+  return Array.from(new Set(expanded)).sort().join(' ');
+}
+
+function crossLinkGifsAndBackupImages(list) {
+  for (const ex of list) {
+    if (typeof ex.name === 'string') {
+      ex.name = ex.name.replace(/в°/g, '°').trim();
+    }
+    if (Array.isArray(ex.instructions)) {
+      ex.instructions = ex.instructions.map((s) => String(s).replace(/в°/g, '°'));
+    }
+  }
+
+  const gifByLowerName = new Map();
+  const gifByTok = new Map();
+
+  for (const ex of list) {
+    if (ex.gifUrl && String(ex.gifUrl).trim()) {
+      gifByLowerName.set(ex.name.toLowerCase(), ex);
+      const tok = canonicalTokenKey(ex.name);
+      if (tok) {
+        if (!gifByTok.has(tok)) gifByTok.set(tok, []);
+        gifByTok.get(tok).push(ex);
+      }
+    }
+  }
+
+  for (const ex of list) {
+    if (!ex.gifUrl || !String(ex.gifUrl).trim()) {
+      const lname = ex.name.toLowerCase();
+      let matchGifEx = null;
+      if (CURATED_EQUIVALENTS[lname]) {
+        matchGifEx = gifByLowerName.get(CURATED_EQUIVALENTS[lname]) || null;
+      }
+      if (!matchGifEx) {
+        const tok = canonicalTokenKey(ex.name);
+        const candidates = gifByTok.get(tok) || [];
+        if (candidates.length > 0) {
+          const eqs = new Set(ex.equipments || []);
+          const sameEq = candidates.find((c) => (c.equipments || []).some((e) => eqs.has(e)));
+          matchGifEx = sameEq || candidates[0];
+        }
+      }
+      if (matchGifEx && matchGifEx.gifUrl) {
+        ex.gifUrl = matchGifEx.gifUrl;
+        if ((!matchGifEx.images || matchGifEx.images.length === 0) && Array.isArray(ex.images) && ex.images.length > 0) {
+          matchGifEx.images = [...ex.images];
+          matchGifEx.imageUrls = [...(ex.imageUrls || [])];
+        }
+      }
+    }
+  }
+
+  return list;
+}
+
 function normalizeName(value = '') {
   return String(value)
     .toLowerCase()
+    .replace(/в°/g, '°')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 }
@@ -106,13 +271,13 @@ function normalizeEquipmentList(rawEquipment, exerciseName = '') {
 
   const aliasMap = {
     'body only': 'body weight',
-    'none': 'body weight',
-    'bands': 'band',
+    none: 'body weight',
+    bands: 'band',
     'resistance band': 'band',
-    'kettlebells': 'kettlebell',
+    kettlebells: 'kettlebell',
     'e-z curl bar': 'ez barbell',
     'exercise ball': 'stability ball',
-    'roller': 'foam roll',
+    roller: 'foam roll',
     'wheel roller': 'foam roll',
     'sled machine': 'machine',
     'stepmill machine': 'machine',
@@ -236,7 +401,14 @@ function loadFreeDbMap() {
 
 function main() {
   if (!fs.existsSync(CURRENT_JSON)) {
-    console.log('Source CURRENT_JSON not found, keeping existing merged-exercises.json');
+    if (fs.existsSync(OUTPUT_JSON)) {
+      const existing = JSON.parse(fs.readFileSync(OUTPUT_JSON, 'utf8'));
+      const enriched = crossLinkGifsAndBackupImages(existing);
+      fs.writeFileSync(OUTPUT_JSON, `${JSON.stringify(enriched, null, 2)}\n`, 'utf8');
+      console.log('Enriched existing merged-exercises.json with primary GIFs and backup images');
+    } else {
+      console.log('Source CURRENT_JSON not found, keeping existing merged-exercises.json');
+    }
     return;
   }
 
@@ -257,9 +429,6 @@ function main() {
   const currentNames = new Set(current.map((ex) => normalizeName(ex.name)));
   const merged = [];
 
-  let replacedHqGifCount = 0;
-  let enrichedFromFreeCount = 0;
-
   for (const ex of current) {
     const key = normalizeName(ex.name);
     const free = freeByName.get(key);
@@ -274,9 +443,7 @@ function main() {
 
     if (csv?.id) {
       const sourceHqGif = path.join(HQ_GIF_DIR, `${csv.id}.gif`);
-      if (copyIfExists(sourceHqGif, targetGif)) {
-        replacedHqGifCount += 1;
-      }
+      copyIfExists(sourceHqGif, targetGif);
     }
 
     const equipmentFromCurrent = Array.isArray(ex.equipments) && ex.equipments.length > 0
@@ -287,7 +454,7 @@ function main() {
 
     const enriched = {
       exerciseId: String(ex.exerciseId),
-      name: ex.name,
+      name: String(ex.name || '').replace(/в°/g, '°'),
       gifUrl: localGifUrl(ex.exerciseId) || prevItem?.gifUrl || `/exercises/${ex.exerciseId}.gif`,
       targetMuscles: Array.isArray(ex.targetMuscles) && ex.targetMuscles.length > 0
         ? ex.targetMuscles
@@ -303,21 +470,14 @@ function main() {
       force: free?.force ?? null,
       level: free?.level ?? 'intermediate',
       mechanic: free?.mechanic ?? null,
-      images: fallbackImages,
-      imageUrls: fallbackImageUrls,
+      images: fallbackImages.length > 0 ? fallbackImages : (prevItem?.images || []),
+      imageUrls: fallbackImageUrls.length > 0 ? fallbackImageUrls : (prevItem?.imageUrls || []),
     };
-
-    if (free) {
-      enrichedFromFreeCount += 1;
-    }
 
     merged.push(enriched);
   }
 
   const usedIds = new Set(merged.map((item) => item.exerciseId));
-  let addedFromFreeCount = 0;
-  let addedFromCsvOnlyCount = 0;
-  let copiedGifForAddedCount = 0;
 
   for (const [key, free] of freeByName.entries()) {
     if (currentNames.has(key)) {
@@ -346,16 +506,13 @@ function main() {
       const sourceHqGif = path.join(HQ_GIF_DIR, `${csv.id}.gif`);
       const targetGif = path.join(PUBLIC_GIF_DIR, `${candidateId}.gif`);
       hasGif = copyIfExists(sourceHqGif, targetGif);
-      if (hasGif) {
-        copiedGifForAddedCount += 1;
-      }
     }
 
     const prevItem = existingMergedMap.get(candidateId);
 
     merged.push({
       exerciseId: candidateId,
-      name: free.name || key,
+      name: String(free.name || key).replace(/в°/g, '°'),
       gifUrl: hasGif ? `/exercises/${candidateId}.gif` : (prevItem?.gifUrl || ''),
       targetMuscles: Array.isArray(free.primaryMuscles) ? free.primaryMuscles : [],
       bodyParts: free.category ? [free.category] : (csv?.bodyPart ? [csv.bodyPart] : ['strength']),
@@ -368,8 +525,6 @@ function main() {
       images: freeImages,
       imageUrls: freeImageUrls,
     });
-
-    addedFromFreeCount += 1;
   }
 
   for (const [key, csv] of csvByName.entries()) {
@@ -392,15 +547,11 @@ function main() {
     const sourceHqGif = path.join(HQ_GIF_DIR, `${csv.id}.gif`);
     const targetGif = path.join(PUBLIC_GIF_DIR, `${candidateId}.gif`);
     const hasGif = copyIfExists(sourceHqGif, targetGif);
-    if (hasGif) {
-      copiedGifForAddedCount += 1;
-    }
-
     const prevItem = existingMergedMap.get(candidateId);
 
     merged.push({
       exerciseId: candidateId,
-      name: csv.name || key,
+      name: String(csv.name || key).replace(/в°/g, '°'),
       gifUrl: hasGif ? `/exercises/${candidateId}.gif` : (prevItem?.gifUrl || `/exercises/${candidateId}.gif`),
       targetMuscles: csv.target ? [csv.target] : [],
       bodyParts: csv.bodyPart ? [csv.bodyPart] : ['strength'],
@@ -413,21 +564,12 @@ function main() {
       images: [],
       imageUrls: [],
     });
-
-    addedFromCsvOnlyCount += 1;
   }
 
+  const finalMerged = crossLinkGifsAndBackupImages(merged);
   ensureDir(path.dirname(OUTPUT_JSON));
-  fs.writeFileSync(OUTPUT_JSON, `${JSON.stringify(merged, null, 2)}\n`, 'utf8');
-
-  console.log('Merged dataset written:', OUTPUT_JSON);
-  console.log('Current exercises:', current.length);
-  console.log('Merged exercises:', merged.length);
-  console.log('HQ GIFs replaced on current exercises:', replacedHqGifCount);
-  console.log('Current exercises enriched from free DB:', enrichedFromFreeCount);
-  console.log('New exercises added from free DB:', addedFromFreeCount);
-  console.log('New exercises added from CSV only:', addedFromCsvOnlyCount);
-  console.log('GIFs copied for newly added exercises:', copiedGifForAddedCount);
+  fs.writeFileSync(OUTPUT_JSON, `${JSON.stringify(finalMerged, null, 2)}\n`, 'utf8');
+  console.log('Merged dataset written:', OUTPUT_JSON, 'count:', finalMerged.length);
 }
 
 main();

@@ -1,8 +1,11 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
-import { Trophy, Dumbbell, Calendar, Target, ChevronRight, Zap, Star, BarChart3, Shuffle } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Trophy, Dumbbell, Calendar, Target, ChevronRight, ChevronDown, Zap,
+  Star, BarChart3, Shuffle, Flame, Clock, Check, Activity,
+} from 'lucide-react';
 import { db } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
@@ -31,17 +34,24 @@ const FITNESS_QUOTES = [
   { text: "Winners never quit, and quitters never win.", author: "Vince Lombardi" },
   { text: "Motivation gets you started. Habit keeps you going.", author: "Jim Ryun" },
   { text: "Hard work beats talent when talent doesn't work hard.", author: "Tim Notke" },
-  { text: "Wake up with determination. Go to bed with satisfaction.", author: "Unknown" },
-  { text: "It never gets easier. You just get stronger.", author: "Unknown" },
-  { text: "Sweat is just fat crying.", author: "Unknown" },
-  { text: "If it doesn't challenge you, it doesn't change you.", author: "Fred DeVito" },
-  { text: "Push yourself because no one else is going to do it for you.", author: "Unknown" },
-  { text: "You don't have to be extreme, just consistent.", author: "Unknown" },
-  { text: "The body achieves what the mind believes.", author: "Napoleon Hill" },
-  { text: "Once you see results, it becomes an addiction.", author: "Unknown" },
-  { text: "The real workout starts when you want to stop.", author: "Ronnie Coleman" },
-  { text: "Fall in love with taking care of yourself.", author: "Unknown" },
 ];
+
+function toLocalDateKey(dateInput: Date | string | number): string {
+  const d = new Date(dateInput);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+type DayActivitySummary = {
+  dateKey: string;
+  count: number;
+  volume: number;
+  sets: number;
+  durationSec: number;
+  sessions: WorkoutSession[];
+};
 
 export default function HomePage() {
   const {
@@ -61,12 +71,29 @@ export default function HomePage() {
   const [recentSessions, setRecentSessions] = useState<WorkoutSession[]>([]);
   const [activePlan, setActivePlan] = useState<WorkoutPlan | null>(null);
   const [activePlanDays, setActivePlanDays] = useState<WorkoutDay[]>([]);
-  const [stats, setStats] = useState({ totalWorkouts: 0, weekWorkouts: 0, streak: 0, totalVolume: 0, prsThisMonth: 0 });
+  const [stats, setStats] = useState({
+    totalWorkouts: 0,
+    weekWorkouts: 0,
+    streak: 0,
+    bestStreak: 0,
+    totalVolume: 0,
+    prsThisMonth: 0,
+    activeDays30d: 0,
+    weekDurationSec: 0,
+    weekSets: 0,
+    weekVolume: 0,
+  });
   const [exerciseCount, setExerciseCount] = useState(0);
-  const [heatmapData, setHeatmapData] = useState<Map<string, number>>(new Map());
+  const [activityByDate, setActivityByDate] = useState<Map<string, DayActivitySummary>>(new Map());
+  const [selectedDateKey, setSelectedDateKey] = useState<string>(() => toLocalDateKey(new Date()));
+  const [heatmapMetric, setHeatmapMetric] = useState<'workouts' | 'volume' | 'duration'>('workouts');
+  const [expandedSessionId, setExpandedSessionId] = useState<number | null>(null);
+  const [expandedSets, setExpandedSets] = useState<{ name: string; sets: { weight: number; reps: number; isPR?: boolean }[] }[]>([]);
   const [lastWorkout, setLastWorkout] = useState<WorkoutSession | null>(null);
   const [allExercises, setAllExercises] = useState<Exercise[]>([]);
   const [recentExerciseIds, setRecentExerciseIds] = useState<Set<number>>(new Set());
+
+  const unitLabel = unitSystem === 'metric' ? 'kg' : 'lb';
 
   const todayQuote = useMemo(() => {
     const day = Math.floor(Date.now() / 86400000) % FITNESS_QUOTES.length;
@@ -77,42 +104,88 @@ export default function HomePage() {
 
   const loadDashboard = async () => {
     try {
-      const sessions = await db.workoutSessions.orderBy('startedAt').reverse().limit(10).toArray();
-      const completedSessions = sessions.filter(s => s.isComplete);
-      setRecentSessions(completedSessions);
-      if (completedSessions.length > 0) setLastWorkout(completedSessions[0]);
-
-      const allSessions = await db.workoutSessions.toArray();
+      const allSessions = await db.workoutSessions.orderBy('startedAt').reverse().toArray();
       const completedAll = allSessions.filter(s => s.isComplete);
-      const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
-      const weekSessions = completedAll.filter(s => s.startedAt >= weekAgo);
+      setRecentSessions(completedAll.slice(0, 10));
+      if (completedAll.length > 0) setLastWorkout(completedAll[0]);
 
+      // Start of current week (Monday)
+      const now = new Date();
+      const dayOfWeek = (now.getDay() + 6) % 7; // 0 = Mon, 6 = Sun
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - dayOfWeek);
+      startOfWeek.setHours(0, 0, 0, 0);
+
+      const weekSessions = completedAll.filter(s => new Date(s.startedAt) >= startOfWeek);
+
+      // Daily Activity Map (local timezone keys)
+      const byDate = new Map<string, DayActivitySummary>();
+      for (const s of completedAll) {
+        const key = toLocalDateKey(s.startedAt);
+        const existing = byDate.get(key) || {
+          dateKey: key,
+          count: 0,
+          volume: 0,
+          sets: 0,
+          durationSec: 0,
+          sessions: [],
+        };
+        existing.count += 1;
+        existing.volume += s.totalVolume || 0;
+        existing.sets += s.totalSets || 0;
+        existing.durationSec += s.duration || 0;
+        existing.sessions.push(s);
+        byDate.set(key, existing);
+      }
+      setActivityByDate(byDate);
+
+      // Current & Best Streak
       let streak = 0;
-      const sessionDates = new Set(completedAll.map(s => new Date(s.startedAt).toDateString()));
-      const d = new Date();
-      while (sessionDates.has(d.toDateString())) { streak++; d.setDate(d.getDate() - 1); }
-      if (streak === 0) {
-        d.setDate(d.getDate() - 1);
-        while (sessionDates.has(d.toDateString())) { streak++; d.setDate(d.getDate() - 1); }
+      const cursor = new Date();
+      if (!byDate.has(toLocalDateKey(cursor))) {
+        cursor.setDate(cursor.getDate() - 1);
+      }
+      while (byDate.has(toLocalDateKey(cursor))) {
+        streak++;
+        cursor.setDate(cursor.getDate() - 1);
       }
 
-      const monthAgo = new Date(); monthAgo.setMonth(monthAgo.getMonth() - 1);
+      let bestStreak = 0;
+      let runStreak = 0;
+      const sortedDateKeys = Array.from(byDate.keys()).sort();
+      for (let i = 0; i < sortedDateKeys.length; i++) {
+        if (i === 0) {
+          runStreak = 1;
+        } else {
+          const prevDate = new Date(`${sortedDateKeys[i - 1]}T00:00:00`);
+          const currDate = new Date(`${sortedDateKeys[i]}T00:00:00`);
+          const diffDays = Math.round((currDate.getTime() - prevDate.getTime()) / 86400000);
+          runStreak = diffDays === 1 ? runStreak + 1 : 1;
+        }
+        bestStreak = Math.max(bestStreak, runStreak);
+      }
+
+      // Active days in last 30 days
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const activeDays30d = Array.from(byDate.keys()).filter(k => new Date(`${k}T12:00:00`) >= thirtyDaysAgo).length;
+
+      const monthAgo = new Date();
+      monthAgo.setMonth(monthAgo.getMonth() - 1);
       const monthPRs = await db.personalRecords.filter(pr => new Date(pr.date) >= monthAgo).count();
 
       setStats({
         totalWorkouts: completedAll.length,
         weekWorkouts: weekSessions.length,
         streak,
+        bestStreak,
         totalVolume: completedAll.reduce((sum, s) => sum + (s.totalVolume || 0), 0),
         prsThisMonth: monthPRs,
+        activeDays30d,
+        weekDurationSec: weekSessions.reduce((sum, s) => sum + (s.duration || 0), 0),
+        weekSets: weekSessions.reduce((sum, s) => sum + (s.totalSets || 0), 0),
+        weekVolume: weekSessions.reduce((sum, s) => sum + (s.totalVolume || 0), 0),
       });
-
-      const heatmap = new Map<string, number>();
-      completedAll.forEach(s => {
-        const date = new Date(s.startedAt).toISOString().split('T')[0];
-        heatmap.set(date, (heatmap.get(date) || 0) + 1);
-      });
-      setHeatmapData(heatmap);
 
       const plans = await db.workoutPlans.filter(p => !!p.isActive).first();
       if (plans) {
@@ -131,17 +204,44 @@ export default function HomePage() {
     } catch {}
   };
 
+  const toggleExpandSession = async (session: WorkoutSession) => {
+    if (!session.id) return;
+    if (expandedSessionId === session.id) {
+      setExpandedSessionId(null);
+      setExpandedSets([]);
+      return;
+    }
+    setExpandedSessionId(session.id);
+    try {
+      const sets = await db.sets.where('sessionId').equals(session.id).toArray();
+      const exMap = new Map(allExercises.filter(e => e.id != null).map(e => [e.id!, e.name]));
+      const grouped: Record<number, { name: string; sets: { weight: number; reps: number; isPR?: boolean }[] }> = {};
+      for (const s of sets) {
+        if (!grouped[s.exerciseId]) {
+          grouped[s.exerciseId] = { name: exMap.get(s.exerciseId) || 'Exercise', sets: [] };
+        }
+        grouped[s.exerciseId].sets.push({ weight: s.weight, reps: s.reps, isPR: s.isPR });
+      }
+      setExpandedSets(Object.values(grouped));
+    } catch {
+      setExpandedSets([]);
+    }
+  };
+
   const formatDuration = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
+    const m = Math.max(1, Math.round(seconds / 60));
     return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
   };
 
   const getRelativeTime = (date: Date) => {
-    const now = new Date();
-    const diff = now.getTime() - new Date(date).getTime();
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    if (days === 0) return 'Today';
-    if (days === 1) return 'Yesterday';
+    const todayKey = toLocalDateKey(new Date());
+    const targetKey = toLocalDateKey(date);
+    if (todayKey === targetKey) return 'Today';
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (toLocalDateKey(yesterday) === targetKey) return 'Yesterday';
+    const diff = Date.now() - new Date(date).getTime();
+    const days = Math.floor(diff / 86400000);
     if (days < 7) return `${days} days ago`;
     return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
@@ -156,7 +256,7 @@ export default function HomePage() {
   const handleQuickStart = async (day: WorkoutDay, extraSeed = 0) => {
     if (!activePlan) return;
 
-    let savedSwaps: Record<string, { newExerciseId: number; newExerciseName: string; newGifUrl?: string }> = {};
+    const savedSwaps: Record<string, { newExerciseId: number; newExerciseName: string; newGifUrl?: string }> = {};
     try {
       const swaps = await db.exerciseSwaps.where('planName').equals(activePlan.name).filter(s => s.dayName === day.name).toArray();
       for (const swap of swaps) {
@@ -222,23 +322,70 @@ export default function HomePage() {
     startWorkout('Smart Mix', 'Full Body Express', exercises);
   };
 
-  // Generate heatmap grid (last 16 weeks)
-  const today = useMemo(() => new Date().toISOString().split('T')[0], []);
-  const heatmapWeeks = useMemo(() => {
-    const weeks: { date: string; count: number }[][] = [];
+  const todayKey = useMemo(() => toLocalDateKey(new Date()), []);
+
+  // Current week Mon–Sun strip
+  const currentWeekDays = useMemo(() => {
     const now = new Date();
+    const dayOfWeek = (now.getDay() + 6) % 7; // 0 = Mon
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - dayOfWeek);
+    const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+    return labels.map((label, idx) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + idx);
+      const key = toLocalDateKey(d);
+      const summary = activityByDate.get(key);
+      return {
+        label,
+        dayNum: d.getDate(),
+        dateKey: key,
+        isToday: key === todayKey,
+        count: summary?.count || 0,
+        volume: summary?.volume || 0,
+      };
+    });
+  }, [activityByDate, todayKey]);
+
+  // 16-Week Calendar Grid with Month Headers
+  const { heatmapWeeks, monthHeaders } = useMemo(() => {
+    const weeks: { date: string; monthShort: string; summary: DayActivitySummary }[][] = [];
+    const headers: { label: string; weekIndex: number }[] = [];
+    const now = new Date();
+    let lastMonth = '';
+
     for (let w = 15; w >= 0; w--) {
-      const week: { date: string; count: number }[] = [];
+      const week: { date: string; monthShort: string; summary: DayActivitySummary }[] = [];
       for (let d = 0; d < 7; d++) {
         const date = new Date(now);
         date.setDate(date.getDate() - (w * 7 + (6 - d)));
-        const key = date.toISOString().split('T')[0];
-        week.push({ date: key, count: heatmapData.get(key) || 0 });
+        const key = toLocalDateKey(date);
+        const monthShort = date.toLocaleDateString('en-US', { month: 'short' });
+        const summary = activityByDate.get(key) || {
+          dateKey: key,
+          count: 0,
+          volume: 0,
+          sets: 0,
+          durationSec: 0,
+          sessions: [],
+        };
+        week.push({ date: key, monthShort, summary });
+      }
+      const firstDayMonth = week[0].monthShort;
+      if (firstDayMonth !== lastMonth) {
+        headers.push({ label: firstDayMonth, weekIndex: 15 - w });
+        lastMonth = firstDayMonth;
       }
       weeks.push(week);
     }
-    return weeks;
-  }, [heatmapData]);
+    return { heatmapWeeks: weeks, monthHeaders: headers };
+  }, [activityByDate]);
+
+  const weeklyGoalTarget = activePlan?.daysPerWeek || 4;
+  const activeWeekDaysCount = currentWeekDays.filter(d => d.count > 0).length;
+  const estWeekCalories = Math.round((stats.weekDurationSec / 60) * 6.5 + stats.weekSets * 11);
+  const selectedDaySummary = activityByDate.get(selectedDateKey);
 
   // Streak ring
   const streakDashOffset = Math.max(0, 251 - (251 * Math.min(stats.streak, 7) / 7));
@@ -267,7 +414,6 @@ export default function HomePage() {
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
         className="hero-gradient" style={{ padding: 20, marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-          {/* Animated Streak Ring SVG */}
           <div style={{ position: 'relative', width: 86, height: 86, flexShrink: 0 }}>
             <svg width="86" height="86" viewBox="0 0 86 86">
               <circle cx="43" cy="43" r="38" fill="none" stroke="var(--border)" strokeWidth="4" />
@@ -282,12 +428,11 @@ export default function HomePage() {
               <span style={{ fontSize: 8, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>Day{stats.streak !== 1 ? 's' : ''}</span>
             </div>
           </div>
-          {/* Stats grid */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, flex: 1 }}>
             {[
-              { value: stats.weekWorkouts, label: 'This Week', color: 'var(--accent-purple)' },
-              { value: stats.totalWorkouts, label: 'Total', color: 'var(--accent-yellow)' },
-              { value: stats.totalVolume > 1000 ? `${(stats.totalVolume / 1000).toFixed(0)}k` : stats.totalVolume, label: `Volume ${unitSystem === 'metric' ? 'kg' : 'lb'}`, color: 'var(--accent-green)' },
+              { value: `${activeWeekDaysCount}/${weeklyGoalTarget}`, label: 'Week Goal', color: 'var(--accent-purple)' },
+              { value: stats.totalWorkouts, label: 'Workouts', color: 'var(--accent-yellow)' },
+              { value: stats.totalVolume > 1000 ? `${(stats.totalVolume / 1000).toFixed(0)}k` : stats.totalVolume, label: `Volume ${unitLabel}`, color: 'var(--accent-green)' },
             ].map((stat, i) => (
               <motion.div key={i} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 + i * 0.05 }}
                 style={{ textAlign: 'center' }}>
@@ -301,9 +446,191 @@ export default function HomePage() {
         </div>
       </motion.div>
 
+      {/* Upgraded Activity & Consistency Tracker */}
+      {showActivityHeatmap !== false && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}
+          style={{ marginBottom: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <h2 className="font-display" style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Activity size={16} color="var(--accent-green)" /> Activity Tracker
+            </h2>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {([
+                { id: 'workouts' as const, label: 'Sessions' },
+                { id: 'volume' as const, label: 'Volume' },
+                { id: 'duration' as const, label: 'Time' },
+              ]).map(m => (
+                <button
+                  key={m.id}
+                  onClick={() => setHeatmapMetric(m.id)}
+                  style={{
+                    padding: '4px 8px', borderRadius: 7, fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                    background: heatmapMetric === m.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
+                    border: heatmapMetric === m.id ? 'none' : '1px solid var(--border)',
+                    color: heatmapMetric === m.id ? '#fff' : 'var(--text-muted)',
+                  }}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="card" style={{ padding: 16, border: '1px solid var(--border-subtle)' }}>
+            {/* Current Week Mon-Sun Interactive Tracker */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>
+                  This Week ({activeWeekDaysCount} of {weeklyGoalTarget} days active)
+                </span>
+                <span className="font-mono" style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-orange)' }}>
+                  🔥 ~{estWeekCalories.toLocaleString()} kcal
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6, marginBottom: 10 }}>
+                {currentWeekDays.map((d) => {
+                  const isActive = d.count > 0;
+                  const isSelected = selectedDateKey === d.dateKey;
+                  return (
+                    <button
+                      key={d.dateKey}
+                      onClick={() => setSelectedDateKey(d.dateKey)}
+                      style={{
+                        padding: '8px 2px', borderRadius: 12, cursor: 'pointer', textAlign: 'center',
+                        background: isActive ? 'rgba(16,232,154,0.12)' : 'var(--bg-glass)',
+                        border: isSelected
+                          ? '1.5px solid var(--accent-purple)'
+                          : d.isToday
+                            ? '1.5px solid var(--accent-red)'
+                            : isActive
+                              ? '1px solid rgba(16,232,154,0.35)'
+                              : '1px solid var(--border)',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                      }}
+                    >
+                      <span style={{ fontSize: 9, fontWeight: 700, color: d.isToday ? 'var(--accent-red)' : 'var(--text-muted)' }}>
+                        {d.label}
+                      </span>
+                      <div style={{
+                        width: 24, height: 24, borderRadius: '50%',
+                        background: isActive ? 'var(--accent-green)' : 'rgba(255,255,255,0.04)',
+                        color: isActive ? '#06120e' : 'var(--text-secondary)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 11, fontWeight: 800,
+                      }}>
+                        {isActive ? <Check size={13} strokeWidth={3} /> : d.dayNum}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Weekly Metrics Strip */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+                {[
+                  { label: 'Active Time', value: stats.weekDurationSec > 0 ? formatDuration(stats.weekDurationSec) : '0m', color: 'var(--accent-cyan)' },
+                  { label: 'Week Sets', value: stats.weekSets.toString(), color: 'var(--accent-purple)' },
+                  { label: '30D Active', value: `${stats.activeDays30d}d`, color: 'var(--accent-green)' },
+                  { label: 'Best Streak', value: `${stats.bestStreak}d`, color: 'var(--accent-yellow)' },
+                ].map((m, idx) => (
+                  <div key={idx} style={{ padding: '7px 4px', background: 'var(--bg-glass)', borderRadius: 9, textAlign: 'center', border: '1px solid var(--border)' }}>
+                    <div className="font-mono" style={{ fontSize: 13, fontWeight: 800, color: m.color }}>{m.value}</div>
+                    <div style={{ fontSize: 8, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginTop: 2 }}>{m.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 16-Week Interactive Heatmap */}
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, paddingLeft: 20 }}>
+                {monthHeaders.map((mh, idx) => (
+                  <span key={idx} style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700 }}>{mh.label}</span>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: 110, paddingRight: 4, fontSize: 8, color: 'var(--text-dim)', fontWeight: 700 }}>
+                  <span>Sun</span>
+                  <span>Wed</span>
+                  <span>Sat</span>
+                </div>
+                <div style={{ display: 'flex', gap: 3, overflowX: 'auto', flex: 1, justifyContent: 'space-between' }}>
+                  {heatmapWeeks.map((week, wi) => (
+                    <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      {week.map((day, di) => {
+                        const isToday = day.date === todayKey;
+                        const isSelected = day.date === selectedDateKey;
+                        const s = day.summary;
+                        const hasActivity = s.count > 0;
+
+                        let intensity = 0;
+                        if (hasActivity) {
+                          if (heatmapMetric === 'workouts') intensity = Math.min(1, s.count / 2);
+                          else if (heatmapMetric === 'volume') intensity = Math.min(1, s.volume / 8000);
+                          else intensity = Math.min(1, s.durationSec / 3600);
+                        }
+
+                        return (
+                          <button
+                            key={di}
+                            onClick={() => setSelectedDateKey(day.date)}
+                            title={`${day.date}: ${s.count} workout${s.count !== 1 ? 's' : ''}, ${s.volume.toLocaleString()}${unitLabel}`}
+                            style={{
+                              width: 14, height: 14, borderRadius: 3.5, padding: 0, cursor: 'pointer',
+                              background: !hasActivity
+                                ? 'var(--bg-glass)'
+                                : intensity >= 0.75
+                                  ? 'var(--accent-green)'
+                                  : intensity >= 0.4
+                                    ? 'var(--accent-cyan)'
+                                    : 'var(--accent-purple)',
+                              opacity: !hasActivity ? 0.28 : 0.65 + intensity * 0.35,
+                              border: isSelected
+                                ? '1.5px solid #ffffff'
+                                : isToday
+                                  ? '1.5px solid var(--accent-red)'
+                                  : 'none',
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Selected Date Activity Inspector */}
+              <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, background: 'var(--bg-glass)', border: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)' }}>
+                    {selectedDateKey === todayKey ? 'Today' : new Date(`${selectedDateKey}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+                    {selectedDaySummary && selectedDaySummary.count > 0
+                      ? `${selectedDaySummary.sessions.map(s => s.dayName || s.planName || 'Workout').join(', ')} • ${selectedDaySummary.sets} sets • ${selectedDaySummary.volume.toLocaleString()}${unitLabel}`
+                      : 'Rest day — no workouts logged on this date'}
+                  </div>
+                </div>
+                {selectedDaySummary && selectedDaySummary.count > 0 ? (
+                  <span className="badge" style={{ background: 'rgba(16,232,154,0.12)', color: 'var(--accent-green)', fontSize: 10 }}>
+                    {formatDuration(selectedDaySummary.durationSec)}
+                  </span>
+                ) : (
+                  <button onClick={handleSurpriseWorkout} className="btn-secondary" style={{ padding: '6px 10px', fontSize: 10, minHeight: 30, borderRadius: 8 }}>
+                    Train Now
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* Daily Quote */}
       {showDailyQuote !== false && (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
           className="card" style={{ marginBottom: 20, padding: '16px 18px', border: '1px solid var(--border-subtle)', position: 'relative', overflow: 'hidden' }}>
           <div style={{ position: 'absolute', top: 10, right: 14, opacity: 0.06, fontSize: 48 }}>❝</div>
           <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.55, fontStyle: 'italic', marginBottom: 6, position: 'relative', zIndex: 1 }}>
@@ -317,7 +644,7 @@ export default function HomePage() {
 
       {/* Last Workout Summary */}
       {showLastWorkout !== false && lastWorkout && lastWorkout.isComplete && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.11 }}
           style={{ marginBottom: 20 }}>
           <h2 className="font-display" style={{ fontSize: 16, fontWeight: 700, marginBottom: 10, letterSpacing: '-0.01em', color: 'var(--text-secondary)' }}>Last Workout</h2>
           <div className="card" style={{ padding: 16, border: '1px solid var(--border-subtle)' }}>
@@ -371,7 +698,7 @@ export default function HomePage() {
                   </div>
                   <div>
                     <div style={{ fontSize: 15, fontWeight: 700 }}>{day.name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{day.exercises.length} exercises • Equipment-filtered</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{day.exercises.length} exercises • Balanced & equipment-filtered</div>
                   </div>
                 </button>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -404,7 +731,7 @@ export default function HomePage() {
           </div>
           <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>No Active Plan</h3>
           <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.5 }}>
-            Choose a workout program to get started
+            Choose a balanced workout program to get started
           </p>
           <button
             className="btn-primary"
@@ -429,93 +756,93 @@ export default function HomePage() {
         </motion.div>
       )}
 
-      {/* Workout Heatmap */}
-      {showActivityHeatmap !== false && (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
-          style={{ marginBottom: 24 }}>
-          <h2 className="font-display" style={{ fontSize: 16, fontWeight: 700, marginBottom: 10, letterSpacing: '-0.01em', color: 'var(--text-secondary)' }}>Activity</h2>
-          <div className="card" style={{ padding: 14, border: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', gap: 3, justifyContent: 'center' }}>
-              {heatmapWeeks.map((week, wi) => (
-                <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  {week.map((day, di) => {
-                    const isToday = day.date === today;
-                    return (
-                      <div key={di} title={`${day.date}: ${day.count} workout${day.count !== 1 ? 's' : ''}`}
-                        style={{
-                          width: 14, height: 14, borderRadius: 3,
-                          background: day.count === 0 ? 'var(--bg-glass)' : day.count === 1 ? 'var(--accent-green)' : day.count >= 2 ? 'var(--accent-red)' : 'var(--accent-yellow)',
-                          opacity: day.count === 0 ? 0.3 : 0.6 + Math.min(day.count * 0.2, 0.4),
-                          border: isToday ? '1.5px solid var(--accent-purple)' : 'none',
-                          boxShadow: isToday ? '0 0 4px var(--glow-purple)' : 'none',
-                        }} />
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
-              <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>16 weeks ago</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>Less</span>
-                {[0.3, 0.5, 0.7, 1].map((o, i) => (
-                  <div key={i} style={{ width: 10, height: 10, borderRadius: 2, background: i === 0 ? 'var(--bg-glass)' : 'var(--accent-green)', opacity: o }} />
-                ))}
-                <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>More</span>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
       {/* Feature Cards */}
       {showFeatureCards !== false && (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}
           style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 24 }}>
           {[
             { icon: Dumbbell, label: 'Exercises', count: exerciseCount, color: 'var(--accent-red)', tab: 'exercises' as const },
-            { icon: BarChart3, label: 'Progress', count: stats.totalWorkouts, color: 'var(--accent-purple)', tab: 'progress' as const },
-            { icon: Calendar, label: 'Plans', count: '16+', color: 'var(--accent-green)', tab: 'plans' as const },
-            { icon: Star, label: 'Profile', count: '', color: 'var(--accent-yellow)', tab: 'profile' as const },
+            { icon: BarChart3, label: 'Progress & Body Map', count: stats.totalWorkouts, color: 'var(--accent-purple)', tab: 'progress' as const },
+            { icon: Calendar, label: 'Balanced Plans', count: '18', color: 'var(--accent-green)', tab: 'plans' as const },
+            { icon: Star, label: 'Profile & Tools', count: '', color: 'var(--accent-yellow)', tab: 'profile' as const },
           ].map((item, i) => (
             <motion.button key={i} className="card" onClick={() => setActiveTab(item.tab)}
               style={{ padding: 16, textAlign: 'left', cursor: 'pointer', width: '100%', border: '1px solid var(--border-subtle)', minHeight: 80 }}
               whileTap={{ scale: 0.97 }}>
               <item.icon size={20} color={item.color} style={{ marginBottom: 8 }} />
               <div style={{ fontSize: 14, fontWeight: 700 }}>{item.label}</div>
-              {item.count !== '' && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{item.count} {item.label === 'Exercises' ? 'in catalog' : item.label === 'Progress' ? 'sessions' : 'programs'}</div>}
+              {item.count !== '' && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{item.count} {item.label === 'Exercises' ? 'in catalog' : item.label.startsWith('Progress') ? 'sessions' : 'programs'}</div>}
             </motion.button>
           ))}
         </motion.div>
       )}
 
-      {/* Recent Workouts */}
+      {/* Interactive Recent Activity Feed */}
       {recentSessions.length > 0 && (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
           <h2 className="font-display" style={{ fontSize: 16, fontWeight: 700, marginBottom: 12, letterSpacing: '-0.01em', color: 'var(--text-secondary)' }}>Recent Activity</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {recentSessions.slice(0, 5).map((session) => (
-              <div key={session.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 14, minHeight: 64 }}>
-                <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(16,232,154,0.08)', border: '1px solid rgba(16,232,154,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Trophy size={16} color="var(--accent-green)" />
+            {recentSessions.slice(0, 6).map((session) => {
+              const isExpanded = expandedSessionId === session.id;
+              return (
+                <div key={session.id} className="card" style={{ padding: 14 }}>
+                  <button
+                    onClick={() => toggleExpandSession(session)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', textAlign: 'left', padding: 0 }}
+                  >
+                    <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(16,232,154,0.08)', border: '1px solid rgba(16,232,154,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Trophy size={16} color="var(--accent-green)" />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {session.dayName || session.planName || 'Quick Workout'}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        {getRelativeTime(session.startedAt)}
+                        {session.duration > 0 && ` • ${formatDuration(session.duration)}`}
+                        {session.totalSets > 0 && ` • ${session.totalSets} sets`}
+                      </div>
+                    </div>
+                    {session.totalVolume > 0 && (
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div className="font-mono" style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-green)' }}>{session.totalVolume.toLocaleString()}</div>
+                        <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600 }}>{unitLabel.toUpperCase()}</div>
+                      </div>
+                    )}
+                    {isExpanded ? <ChevronDown size={14} color="var(--text-muted)" /> : <ChevronRight size={14} color="var(--text-muted)" />}
+                  </button>
+
+                  <AnimatePresence>
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        style={{ overflow: 'hidden', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}
+                      >
+                        {session.notes && (
+                          <div style={{ fontSize: 11, color: 'var(--text-secondary)', fontStyle: 'italic', marginBottom: 8 }}>
+                            📝 {session.notes}
+                          </div>
+                        )}
+                        {expandedSets.map((ex, i) => (
+                          <div key={i} style={{ marginBottom: 6 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'capitalize', marginBottom: 3 }}>{ex.name}</div>
+                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                              {ex.sets.map((st, si) => (
+                                <span key={si} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
+                                  {st.weight}{unitLabel} × {st.reps} {st.isPR ? '🏆' : ''}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {session.dayName || session.planName || 'Quick Workout'}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                    {getRelativeTime(session.startedAt)}
-                    {session.duration > 0 && ` • ${formatDuration(session.duration)}`}
-                  </div>
-                </div>
-                {session.totalVolume > 0 && (
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div className="font-mono" style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-green)' }}>{session.totalVolume.toLocaleString()}</div>
-                    <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600 }}>{unitSystem === 'metric' ? 'KG' : 'LB'}</div>
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </motion.div>
       )}

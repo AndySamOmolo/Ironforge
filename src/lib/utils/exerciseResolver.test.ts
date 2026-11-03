@@ -4,7 +4,9 @@ import {
   getExerciseRequiredEquipment,
   resolveWorkoutDayExercises,
   generateSmartWorkout,
+  analyzePlanMuscleBalance,
 } from './exerciseResolver';
+import { getExerciseGifUrl, getExerciseImageFrames, hasGifExerciseMedia } from './exerciseMedia';
 import type { Exercise, WorkoutDayExercise } from '@/lib/types';
 import { SetType } from '@/lib/types';
 
@@ -23,6 +25,7 @@ const MOCK_EXERCISES: Exercise[] = [
     category: 'strength',
     images: [],
     imageUrls: [],
+    gifUrl: '/exercises/ex1.gif',
   },
   {
     id: 2,
@@ -38,6 +41,7 @@ const MOCK_EXERCISES: Exercise[] = [
     category: 'strength',
     images: [],
     imageUrls: [],
+    gifUrl: '/exercises/ex2.gif',
   },
   {
     id: 3,
@@ -51,8 +55,9 @@ const MOCK_EXERCISES: Exercise[] = [
     secondaryMuscles: ['shoulders'],
     instructions: ['Step 1'],
     category: 'strength',
-    images: [],
-    imageUrls: [],
+    images: ['Dumbbell_Flyes/0.jpg', 'Dumbbell_Flyes/1.jpg'],
+    imageUrls: ['/exercise-images/Dumbbell_Flyes/0.jpg', '/exercise-images/Dumbbell_Flyes/1.jpg'],
+    gifUrl: '/exercises/ex3.gif',
   },
   {
     id: 4,
@@ -66,8 +71,8 @@ const MOCK_EXERCISES: Exercise[] = [
     secondaryMuscles: ['shoulders'],
     instructions: ['Step 1'],
     category: 'strength',
-    images: [],
-    imageUrls: [],
+    images: ['Incline_Dumbbell_Flyes/0.jpg', 'Incline_Dumbbell_Flyes/1.jpg'],
+    imageUrls: ['/exercise-images/Incline_Dumbbell_Flyes/0.jpg', '/exercise-images/Incline_Dumbbell_Flyes/1.jpg'],
   },
   {
     id: 5,
@@ -81,12 +86,13 @@ const MOCK_EXERCISES: Exercise[] = [
     secondaryMuscles: ['triceps'],
     instructions: ['Step 1'],
     category: 'strength',
-    images: [],
-    imageUrls: [],
+    images: ['Pushups/0.jpg', 'Pushups/1.jpg'],
+    imageUrls: ['/exercise-images/Pushups/0.jpg', '/exercise-images/Pushups/1.jpg'],
+    gifUrl: '/exercises/ex5.gif',
   },
 ];
 
-describe('exerciseResolver equipment filtering & anti-repetition', () => {
+describe('exerciseResolver equipment filtering, GIF priority & anti-repetition', () => {
   it('detects cable requirement even when raw equipment field is mislabeled', () => {
     expect(getExerciseRequiredEquipment(MOCK_EXERCISES[0])).toContain('cable');
     expect(getExerciseRequiredEquipment(MOCK_EXERCISES[1])).toContain('cable');
@@ -95,7 +101,7 @@ describe('exerciseResolver equipment filtering & anti-repetition', () => {
     expect(matchesUserEquipment(MOCK_EXERCISES[2], ['dumbbell', 'body weight'])).toBe(true);
   });
 
-  it('replaces cable exercises with non-repeating dumbbell/bodyweight alternatives when cable is not selected', () => {
+  it('replaces cable exercises with non-repeating dumbbell/bodyweight alternatives and prioritizes GIFs', () => {
     const dayExercises: WorkoutDayExercise[] = [
       { exerciseId: 0, exerciseName: 'cable fly', sets: 3, reps: 12, restTime: 90, setType: SetType.Normal, order: 0 },
       { exerciseId: 0, exerciseName: 'cable crossover', sets: 3, reps: 12, restTime: 90, setType: SetType.Normal, order: 1 },
@@ -114,8 +120,24 @@ describe('exerciseResolver equipment filtering & anti-repetition', () => {
     expect(resolved).toHaveLength(2);
     expect(resolved[0].exerciseName.toLowerCase()).not.toContain('cable');
     expect(resolved[1].exerciseName.toLowerCase()).not.toContain('cable');
-    // Must not repeat the same exercise within the same day
     expect(resolved[0].exerciseId).not.toBe(resolved[1].exerciseId);
+    // Both resolved exercises should have GIFs prioritized and backup frames preserved
+    expect(resolved[0].gifUrl).toBeDefined();
+    expect(resolved[0].mediaFrames?.length).toBeGreaterThan(0);
+  });
+
+  it('separates primary GIF URLs from static backup image frames', () => {
+    expect(hasGifExerciseMedia(MOCK_EXERCISES[2])).toBe(true);
+    expect(getExerciseGifUrl(MOCK_EXERCISES[2])).toBe('/exercises/ex3.gif');
+    expect(getExerciseImageFrames(MOCK_EXERCISES[2])).toEqual([
+      '/exercise-images/Dumbbell_Flyes/0.jpg',
+      '/exercise-images/Dumbbell_Flyes/1.jpg',
+    ]);
+
+    // Image-only exercise has undefined gifUrl and 2 backup frames
+    expect(hasGifExerciseMedia(MOCK_EXERCISES[3])).toBe(false);
+    expect(getExerciseGifUrl(MOCK_EXERCISES[3])).toBeUndefined();
+    expect(getExerciseImageFrames(MOCK_EXERCISES[3])).toHaveLength(2);
   });
 
   it('generates smart workouts strictly matching selected equipment', () => {
@@ -130,5 +152,27 @@ describe('exerciseResolver equipment filtering & anti-repetition', () => {
     for (const item of generated) {
       expect(item.name.toLowerCase()).not.toContain('cable');
     }
+  });
+
+  it('computes plan muscle balance across push, pull, legs, arms, and core', () => {
+    const summary = analyzePlanMuscleBalance(
+      [
+        {
+          planId: 1,
+          dayNumber: 1,
+          name: 'Full Body',
+          exercises: [
+            { exerciseId: 0, exerciseName: 'barbell squat', sets: 4, reps: 8, restTime: 90, setType: SetType.Normal, order: 0 },
+            { exerciseId: 0, exerciseName: 'barbell bench press', sets: 4, reps: 8, restTime: 90, setType: SetType.Normal, order: 1 },
+            { exerciseId: 0, exerciseName: 'barbell row', sets: 4, reps: 8, restTime: 90, setType: SetType.Normal, order: 2 },
+            { exerciseId: 0, exerciseName: 'barbell curl', sets: 3, reps: 10, restTime: 90, setType: SetType.Normal, order: 3 },
+            { exerciseId: 0, exerciseName: 'plank', sets: 3, reps: 45, restTime: 90, setType: SetType.Normal, order: 4 },
+          ],
+        },
+      ],
+      MOCK_EXERCISES
+    );
+    expect(summary.totalSets).toBe(18);
+    expect(summary.balanceScore).toBeGreaterThanOrEqual(80);
   });
 });

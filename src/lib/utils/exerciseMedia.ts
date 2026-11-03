@@ -2,7 +2,7 @@ import type { Exercise } from '@/lib/types';
 
 type ExerciseMediaLike = Pick<Exercise, 'gifUrl' | 'imageUrls' | 'images'>;
 
-function cleanUrl(value?: string): string | null {
+function cleanUrl(value?: string | null): string | null {
   if (!value) {
     return null;
   }
@@ -10,30 +10,59 @@ function cleanUrl(value?: string): string | null {
   return next.length > 0 ? next : null;
 }
 
+export function isGifUrl(value?: string | null): boolean {
+  const clean = cleanUrl(value);
+  if (!clean) return false;
+  return /\.gif(?:$|[?#])/i.test(clean) || clean.startsWith('/exercises/');
+}
+
+export function getExerciseGifUrl(exercise: ExerciseMediaLike): string | undefined {
+  const clean = cleanUrl(exercise.gifUrl);
+  if (clean && isGifUrl(clean)) {
+    return clean;
+  }
+  return undefined;
+}
+
 export function toLocalExerciseImageUrl(relativePath: string): string {
+  if (relativePath.startsWith('/') || relativePath.startsWith('http')) {
+    return relativePath;
+  }
   return `/exercise-images/${relativePath}`;
 }
 
 export function getExerciseImageFrames(exercise: ExerciseMediaLike): string[] {
-  const byImageUrls = (exercise.imageUrls || [])
-    .map((value) => cleanUrl(value))
-    .filter((value): value is string => Boolean(value));
+  const frames: string[] = [];
 
-  if (byImageUrls.length > 0) {
-    return Array.from(new Set(byImageUrls));
+  for (const raw of exercise.imageUrls || []) {
+    const clean = cleanUrl(raw);
+    if (clean && !isGifUrl(clean)) {
+      frames.push(clean);
+    }
   }
 
-  const byImages = (exercise.images || [])
-    .map((value) => cleanUrl(value))
-    .filter((value): value is string => Boolean(value))
-    .map((value) => toLocalExerciseImageUrl(value));
+  for (const raw of exercise.images || []) {
+    const clean = cleanUrl(raw);
+    if (clean && !isGifUrl(clean)) {
+      frames.push(toLocalExerciseImageUrl(clean));
+    }
+  }
 
-  return Array.from(new Set(byImages));
+  // If a non-GIF image URL was mistakenly placed in gifUrl, treat it as a backup image frame
+  const rawGif = cleanUrl(exercise.gifUrl);
+  if (rawGif && !isGifUrl(rawGif)) {
+    frames.push(rawGif);
+  }
+
+  return Array.from(new Set(frames));
+}
+
+export function hasGifExerciseMedia(exercise: ExerciseMediaLike): boolean {
+  return Boolean(getExerciseGifUrl(exercise));
 }
 
 export function hasAnimatedExerciseMedia(exercise: ExerciseMediaLike): boolean {
-  const gif = cleanUrl(exercise.gifUrl);
-  if (gif) {
+  if (hasGifExerciseMedia(exercise)) {
     return true;
   }
 
@@ -41,7 +70,7 @@ export function hasAnimatedExerciseMedia(exercise: ExerciseMediaLike): boolean {
 }
 
 export function getPrimaryExerciseImage(exercise: ExerciseMediaLike): string | undefined {
-  const gif = cleanUrl(exercise.gifUrl);
+  const gif = getExerciseGifUrl(exercise);
   if (gif) {
     return gif;
   }
