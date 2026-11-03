@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Trophy, Dumbbell, Calendar, Target, ChevronRight, ChevronDown, Zap,
-  Star, BarChart3, Shuffle, Flame, Clock, Check, Activity,
+  Star, BarChart3, Shuffle, Check, Activity,
 } from 'lucide-react';
 import { db } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';

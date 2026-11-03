@@ -15,7 +15,7 @@ import type { Exercise } from '@/lib/types';
 import { getSwapSuggestions, calculatePlates } from '@/lib/utils/swapEngine';
 import { getProgressionSuggestion, estimate1RM, type ProgressionSuggestion } from '@/lib/utils/progressionEngine';
 import { matchesUserEquipment } from '@/lib/utils/exerciseResolver';
-import { getWorkoutStartingWeight } from '@/lib/utils/workoutDefaults';
+import { getWorkoutStartingWeight, createKeepScreenAwakeController } from '@/lib/utils/workoutDefaults';
 import { getYoutubeSearchUrl, getVideoSearchOptions } from '@/lib/data/youtube-ids';
 import {
   getPrimaryExerciseImage,
@@ -24,7 +24,6 @@ import {
   hasAnimatedExerciseMedia,
   hasGifExerciseMedia,
 } from '@/lib/utils/exerciseMedia';
-import { createKeepScreenAwakeController } from '@/lib/utils/wakeLock';
 import ExerciseMedia from '@/components/ui/ExerciseMedia';
 
 interface ActiveWorkoutPageProps { onComplete: () => void; }
@@ -520,7 +519,6 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
         e.primaryMuscles?.some(m => m.toLowerCase().includes(q))
       );
     }
-    // Sort GIF-backed exercises first
     list = [...list].sort((a, b) => Number(hasGifExerciseMedia(b)) - Number(hasGifExerciseMedia(a)));
     return list.slice(0, 60);
   }, [allCatalog, userEquipment, addSearch]);
@@ -574,20 +572,19 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     } else setNumpadValue(prev => prev === '0' ? key : prev + key);
   };
 
-  if (!currentExercise) {
-    return <div className="page-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ textAlign: 'center' }}><Dumbbell size={48} color="var(--text-dim)" style={{ marginBottom: 16 }} /><h2>No exercises</h2><button className="btn-secondary" onClick={() => endWorkout()} style={{ marginTop: 16 }}>Go Back</button></div>
-    </div>;
-  }
-
   // Strictly separate primary GIF from backup static image frames so GIFs are always primary
   // and multi-frame static images animate continuously when no GIF exists or GIF fails
-  const primaryGifUrl = getExerciseGifUrl({
-    gifUrl: currentExercise.gifUrl || exerciseInfo?.gifUrl,
-    imageUrls: [],
-    images: [],
-  });
+  const primaryGifUrl = useMemo(() => {
+    if (!currentExercise) return undefined;
+    return getExerciseGifUrl({
+      gifUrl: currentExercise.gifUrl || exerciseInfo?.gifUrl,
+      imageUrls: [],
+      images: [],
+    });
+  }, [currentExercise, exerciseInfo]);
+
   const backupFrames = useMemo(() => {
+    if (!currentExercise) return [];
     const fromActive = currentExercise.mediaFrames || [];
     if (fromActive.length > 0) return fromActive;
     if (exerciseInfo) {
@@ -597,7 +594,13 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
       return [currentExercise.imageUrl];
     }
     return [];
-  }, [currentExercise.mediaFrames, currentExercise.imageUrl, exerciseInfo, primaryGifUrl]);
+  }, [currentExercise, exerciseInfo, primaryGifUrl]);
+
+  if (!currentExercise) {
+    return <div className="page-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ textAlign: 'center' }}><Dumbbell size={48} color="var(--text-dim)" style={{ marginBottom: 16 }} /><h2>No exercises</h2><button className="btn-secondary" onClick={() => endWorkout()} style={{ marginTop: 16 }}>Go Back</button></div>
+    </div>;
+  }
 
   const mediaErrorKey = `${currentExercise.exerciseId || 0}_${currentExercise.exerciseName}`;
   const hasImgError = imgErrors.has(mediaErrorKey);

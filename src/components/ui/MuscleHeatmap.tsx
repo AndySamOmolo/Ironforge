@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Play, Flame, ShieldCheck, Scale, Sparkles, Activity, RotateCcw } from 'lucide-react';
+import { Play, Flame, ShieldCheck, Scale, Sparkles, Activity } from 'lucide-react';
 import { db } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
 import { useWorkoutStore } from '@/lib/store/workoutStore';

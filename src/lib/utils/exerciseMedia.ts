@@ -1,6 +1,8 @@
-import type { Exercise } from '@/lib/types';
-
-type ExerciseMediaLike = Pick<Exercise, 'gifUrl' | 'imageUrls' | 'images'>;
+export type ExerciseMediaLike = {
+  gifUrl?: string | null;
+  imageUrls?: string[] | null;
+  images?: string[] | null;
+};
 
 function cleanUrl(value?: string | null): string | null {
   if (!value) {
