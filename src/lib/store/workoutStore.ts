@@ -407,4 +407,14 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
     saveSnapshot({ ...state, isPaused });
     return { isPaused };
   }),
+
+  minimizeWorkout: () => set((state) => {
+    saveSnapshot({ ...state, isMinimized: true });
+    return { isMinimized: true };
+  }),
+
+  resumeWorkout: () => set((state) => {
+    saveSnapshot({ ...state, isMinimized: false });
+    return { isMinimized: false };
+  }),
 }));
