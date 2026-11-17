@@ -93,17 +93,6 @@ jobs:
           fi
           ls -lh ./IronForge*.apk
 
-      - name: Upload Root APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: IronForge-apk
-          path: |
-            ./IronForge.apk
-            ./IronForge-debug.apk
-            ./IronForge-release-unsigned.apk
-          if-no-files-found: error
-          retention-days: 30
-
       - name: Commit & Push APK to root directory (with Git LFS support for >100MB APK)
         if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/')
         continue-on-error: true
@@ -125,9 +114,10 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'latest' }}
-          name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'Latest IronForge Android APK' }}
+          tag_name: latest
+          name: Latest IronForge Android APK
           make_latest: true
+          overwrite_files: true
           files: |
             ./IronForge.apk
             ./IronForge-debug.apk

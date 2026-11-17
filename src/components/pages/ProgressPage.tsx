@@ -1,697 +1,583 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { BarChart3, Calendar, Clock, Dumbbell, TrendingUp, Trophy, Target, Zap, History, ChevronDown, ChevronRight, Trash2, Flame, Star, Activity, Search } from 'lucide-react';
-import { db } from '@/lib/db/schema';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import { db } from '@/lib/db';
+import { WorkoutSession, PersonalRecord, MuscleGroup, Exercise } from '@/lib/types';
 import { useUserStore } from '@/lib/store/userStore';
-import type { WorkoutSession, PersonalRecord } from '@/lib/types';
-import { estimate1RM } from '@/lib/utils/progressionEngine';
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid, AreaChart, Area, LineChart, Line } from 'recharts';
+import { Trophy, TrendingUp, Calendar, Dumbbell, Clock, Flame, Activity, ChevronDown, ChevronUp, Sparkles, X } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import MuscleHeatmap from '@/components/ui/MuscleHeatmap';
 
-type TabId = 'overview' | 'strength' | 'records' | 'body' | 'history';
-
-interface SessionDetail {
-  session: WorkoutSession;
-  exercises: { name: string; sets: { weight: number; reps: number; setNumber: number; isPR?: boolean }[] }[];
-}
-
-function toLocalDateKey(dateInput: Date | string | number): string {
-  const d = new Date(dateInput);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+type SubTab = 'overview' | 'muscles' | 'log' | 'records';
 
 export default function ProgressPage() {
-  const unitSystem = useUserStore(s => s.unitSystem);
-  const unitLabel = unitSystem === 'metric' ? 'kg' : 'lbs';
+  const { profile } = useUserStore();
+  const [subTab, setSubTab] = useState<SubTab>('overview');
   const [sessions, setSessions] = useState<WorkoutSession[]>([]);
-  const [prs, setPrs] = useState<PersonalRecord[]>([]);
-  const [tab, setTab] = useState<TabId>('overview');
+  const [prs, setPRs] = useState<PersonalRecord[]>([]);
+  const [exerciseMap, setExerciseMap] = useState<Record<string, Exercise>>({});
   const [expandedSession, setExpandedSession] = useState<number | null>(null);
-  const [sessionDetail, setSessionDetail] = useState<SessionDetail | null>(null);
-  const [historyFilter, setHistoryFilter] = useState<'all' | 'week' | 'month'>('all');
-  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
-  const [historyPage, setHistoryPage] = useState(0);
-  const [calendarView, setCalendarView] = useState(true);
-  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
-  const [exerciseChartId, setExerciseChartId] = useState<number | null>(null);
-  const [exerciseSearch, setExerciseSearch] = useState('');
-  const [exerciseChartData, setExerciseChartData] = useState<{ date: string; weight: number; est1RM: number; volume: number }[]>([]);
-  const [loggedExercises, setLoggedExercises] = useState<{ id: number; name: string; count: number }[]>([]);
-  const PAGE_SIZE = 15;
-
-  const loadExerciseChart = useCallback(async (exerciseId: number) => {
-    try {
-      const sets = await db.sets.where('exerciseId').equals(exerciseId).toArray();
-      const sessionIds = [...new Set(sets.map(s => s.sessionId))];
-      const sessionsForEx = await db.workoutSessions.where('id').anyOf(sessionIds).toArray();
-      const sessionDateMap = new Map(sessionsForEx.map(s => [s.id!, new Date(s.startedAt)]));
-
-      const byDate: Record<string, { maxWeight: number; max1RM: number; totalVolume: number }> = {};
-      sets.forEach(s => {
-        const d = sessionDateMap.get(s.sessionId);
-        if (!d) return;
-        const key = toLocalDateKey(d);
-        if (!byDate[key]) byDate[key] = { maxWeight: 0, max1RM: 0, totalVolume: 0 };
-        byDate[key].maxWeight = Math.max(byDate[key].maxWeight, s.weight);
-        byDate[key].max1RM = Math.max(byDate[key].max1RM, estimate1RM(s.weight, s.reps));
-        byDate[key].totalVolume += s.weight * s.reps;
-      });
-
-      const data = Object.entries(byDate)
-        .map(([date, v]) => ({ date, weight: v.maxWeight, est1RM: v.max1RM, volume: v.totalVolume }))
-        .sort((a, b) => a.date.localeCompare(b.date));
-
-      setExerciseChartData(data);
-      setExerciseChartId(exerciseId);
-    } catch {}
-  }, []);
+  const [selectedDateFilter, setSelectedDateFilter] = useState<string | null>(null);
+  const [prFilter, setPrFilter] = useState<string>('all');
 
   const loadData = useCallback(async () => {
-    const allSessions = await db.workoutSessions.orderBy('startedAt').reverse().toArray();
-    setSessions(allSessions.filter(s => s.isComplete));
-    const allPRs = await db.personalRecords.orderBy('date').reverse().toArray();
-    setPrs(allPRs);
+    const allSessions = await db.workoutSessions.where('completed').equals(1).toArray().catch(async () => {
+      const all = await db.workoutSessions.toArray();
+      return all.filter((s) => s.completed);
+    });
+    allSessions.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+    setSessions(allSessions);
 
-    try {
-      const [allSets, exercises] = await Promise.all([
-        db.sets.toArray(),
-        db.exercises.toArray(),
-      ]);
-      const countByEx = new Map<number, number>();
-      for (const s of allSets) {
-        if (s.exerciseId) countByEx.set(s.exerciseId, (countByEx.get(s.exerciseId) || 0) + 1);
-      }
-      const exList = exercises
-        .filter(e => e.id != null)
-        .map(e => ({ id: e.id!, name: e.name, count: countByEx.get(e.id!) || 0 }))
-        .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-      setLoggedExercises(exList.slice(0, 200));
-      if (exList.length > 0 && exList[0].count > 0 && !exerciseChartId) {
-        void loadExerciseChart(exList[0].id);
-      }
-    } catch {}
-  }, [exerciseChartId, loadExerciseChart]);
+    const allPRs = await db.personalRecords.orderBy('achievedAt').reverse().toArray();
+    setPRs(allPRs);
 
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
-
-  const loadSessionDetail = useCallback(async (session: WorkoutSession) => {
-    if (!session.id) return;
-    try {
-      const sets = await db.sets.where('sessionId').equals(session.id).toArray();
-      const exerciseIds = [...new Set(sets.map(s => s.exerciseId))];
-      const exercises = await db.exercises.where('id').anyOf(exerciseIds).toArray();
-      const exMap = new Map(exercises.map(e => [e.id!, e.name]));
-
-      const grouped: Record<number, { name: string; sets: { weight: number; reps: number; setNumber: number; isPR?: boolean }[] }> = {};
-      sets.forEach(s => {
-        if (!grouped[s.exerciseId]) grouped[s.exerciseId] = { name: exMap.get(s.exerciseId) || 'Exercise', sets: [] };
-        grouped[s.exerciseId].sets.push({ weight: s.weight, reps: s.reps, setNumber: s.setNumber, isPR: s.isPR });
-      });
-      Object.values(grouped).forEach(g => g.sets.sort((a, b) => a.setNumber - b.setNumber));
-      setSessionDetail({ session, exercises: Object.values(grouped) });
-    } catch { setSessionDetail(null); }
+    const allEx = await db.exercises.toArray();
+    const map: Record<string, Exercise> = {};
+    allEx.forEach((e) => { map[e.name.toLowerCase()] = e; });
+    setExerciseMap(map);
   }, []);
 
-  const handleDeleteSession = async (id: number) => {
-    await db.transaction('rw', [db.workoutSessions, db.sets, db.sessionExercises, db.personalRecords], async () => {
-      await db.workoutSessions.delete(id);
-      await db.sets.where('sessionId').equals(id).delete();
-      await db.sessionExercises.where('sessionId').equals(id).delete();
-      await db.personalRecords.where('sessionId').equals(id).delete();
-    });
-    setDeleteConfirm(null);
-    setExpandedSession(null);
-    void loadData();
-  };
+  useEffect(() => { loadData(); }, [loadData]);
 
-  const filteredHistory = useMemo(() => {
-    let filtered = sessions;
-    if (selectedCalendarDate) {
-      return sessions.filter(s => toLocalDateKey(s.startedAt) === selectedCalendarDate);
-    }
-    if (historyFilter === 'week') {
-      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      filtered = sessions.filter(s => new Date(s.startedAt) >= weekAgo);
-    } else if (historyFilter === 'month') {
-      const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      filtered = sessions.filter(s => new Date(s.startedAt) >= monthAgo);
-    }
-    return filtered;
-  }, [sessions, historyFilter, selectedCalendarDate]);
+  // Overview stats
+  const totalWorkouts = sessions.length;
+  const totalVolume = useMemo(() => sessions.reduce((s, w) => s + (w.totalVolume || 0), 0), [sessions]);
+  const totalDuration = useMemo(() => sessions.reduce((s, w) => s + (w.duration || 0), 0), [sessions]);
+  const totalSets = useMemo(() => sessions.reduce((s, w) =>
+    s + w.exercises.reduce((es, e) => es + e.sets.filter((st) => st.completed).length, 0), 0), [sessions]);
+  const avgDuration = totalWorkouts > 0 ? Math.round(totalDuration / totalWorkouts / 60) : 0;
 
-  const paginatedHistory = useMemo(() => {
-    return filteredHistory.slice(0, (historyPage + 1) * PAGE_SIZE);
-  }, [filteredHistory, historyPage]);
-
-  const calendarData = useMemo(() => {
-    const map = new Map<string, number>();
-    sessions.forEach(s => {
-      const key = toLocalDateKey(s.startedAt);
-      map.set(key, (map.get(key) || 0) + 1);
-    });
-    return map;
+  // This week stats (Monday start, consistent with HomePage)
+  const weekStats = useMemo(() => {
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() + mondayOffset);
+    weekStart.setHours(0, 0, 0, 0);
+    const thisWeek = sessions.filter((s) => new Date(s.startTime) >= weekStart);
+    return {
+      workouts: thisWeek.length,
+      volume: thisWeek.reduce((s, w) => s + (w.totalVolume || 0), 0),
+      sets: thisWeek.reduce((s, w) => s + w.exercises.reduce((es, e) => es + e.sets.filter((st) => st.completed).length, 0), 0),
+      duration: thisWeek.reduce((s, w) => s + (w.duration || 0), 0),
+    };
   }, [sessions]);
 
-  const calendarWeeks = useMemo(() => {
-    const weeks: { date: string; count: number; isToday: boolean }[][] = [];
+  // Weekly volume chart (last 8 weeks)
+  const weeklyChart = useMemo(() => {
     const now = new Date();
-    const today = toLocalDateKey(now);
+    const weeks: { label: string; volume: number; workouts: number; sets: number }[] = [];
+    for (let w = 7; w >= 0; w--) {
+      const start = new Date(now);
+      start.setDate(now.getDate() - w * 7 - now.getDay());
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setDate(start.getDate() + 7);
+      const matching = sessions.filter((s) => {
+        const d = new Date(s.startTime);
+        return d >= start && d < end;
+      });
+      const vol = matching.reduce((s, m) => s + (m.totalVolume || 0), 0);
+      const sets = matching.reduce((s, m) => s + m.exercises.reduce((es, e) => es + e.sets.filter((st) => st.completed).length, 0), 0);
+      weeks.push({
+        label: start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        volume: Math.round(vol),
+        workouts: matching.length,
+        sets,
+      });
+    }
+    return weeks;
+  }, [sessions]);
+
+  // Muscle heatmap data (last 7 days)
+  const muscleVolumes = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 7);
+    const recent = sessions.filter((s) => new Date(s.startTime) >= cutoff);
+    const counts: Record<string, number> = {};
+    recent.forEach((s) => {
+      s.exercises.forEach((ex) => {
+        const completedSets = ex.sets.filter((st) => st.completed).length;
+        if (completedSets === 0) return;
+        const found = exerciseMap[ex.exerciseName.toLowerCase()];
+        if (found) {
+          found.primaryMuscles.forEach((m) => { counts[m] = (counts[m] || 0) + completedSets; });
+          found.secondaryMuscles.forEach((m) => { counts[m] = (counts[m] || 0) + completedSets * 0.4; });
+        }
+      });
+    });
+    const maxSets = Math.max(...Object.values(counts), 1);
+    const normalized: Partial<Record<MuscleGroup, number>> = {};
+    Object.entries(counts).forEach(([m, v]) => {
+      normalized[m as MuscleGroup] = Math.min(1, v / Math.max(maxSets, 12));
+    });
+    return normalized;
+  }, [sessions, exerciseMap]);
+
+  // Top trained muscles (all time)
+  const topMuscles = useMemo(() => {
+    const counts: Record<string, number> = {};
+    sessions.forEach((s) => {
+      s.exercises.forEach((ex) => {
+        const completedSets = ex.sets.filter((st) => st.completed).length;
+        const found = exerciseMap[ex.exerciseName.toLowerCase()];
+        if (found) {
+          found.primaryMuscles.forEach((m) => { counts[m] = (counts[m] || 0) + completedSets; });
+        }
+      });
+    });
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6);
+  }, [sessions, exerciseMap]);
+
+  // Calendar heatmap (last 12 weeks)
+  const calendarWeeks = useMemo(() => {
+    const today = new Date();
+    const weeks: { date: Date; count: number; volume: number }[][] = [];
+    const endOfWeek = new Date(today);
+    endOfWeek.setDate(today.getDate() + (6 - today.getDay()));
+
     for (let w = 11; w >= 0; w--) {
-      const week: { date: string; count: number; isToday: boolean }[] = [];
+      const week: { date: Date; count: number; volume: number }[] = [];
       for (let d = 0; d < 7; d++) {
-        const date = new Date(now);
-        date.setDate(date.getDate() - (w * 7 + (6 - d)));
-        const key = toLocalDateKey(date);
-        week.push({ date: key, count: calendarData.get(key) || 0, isToday: key === today });
+        const cellDate = new Date(endOfWeek);
+        cellDate.setDate(endOfWeek.getDate() - w * 7 - (6 - d));
+        cellDate.setHours(0, 0, 0, 0);
+        const nextDate = new Date(cellDate);
+        nextDate.setDate(cellDate.getDate() + 1);
+        const daySessions = sessions.filter((s) => {
+          const st = new Date(s.startTime);
+          return st >= cellDate && st < nextDate;
+        });
+        week.push({
+          date: cellDate,
+          count: daySessions.length,
+          volume: daySessions.reduce((s, w) => s + (w.totalVolume || 0), 0),
+        });
       }
       weeks.push(week);
     }
     return weeks;
-  }, [calendarData]);
-
-  const weekStats = useMemo(() => {
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const weekSessions = sessions.filter(s => new Date(s.startedAt) >= weekAgo);
-    return {
-      count: weekSessions.length,
-      volume: weekSessions.reduce((a, s) => a + (s.totalVolume || 0), 0),
-      duration: weekSessions.reduce((a, s) => a + (s.duration || 0), 0),
-    };
   }, [sessions]);
 
-  const { currentStreak, longestStreak, activeDays30d } = useMemo(() => {
-    const dates = new Set(sessions.map(s => toLocalDateKey(s.startedAt)));
-    let current = 0;
-    const d = new Date();
-    if (!dates.has(toLocalDateKey(d))) {
-      d.setDate(d.getDate() - 1);
-    }
-    while (dates.has(toLocalDateKey(d))) {
-      current++;
-      d.setDate(d.getDate() - 1);
-    }
-
-    let longest = 0, streak = 0;
-    const allDates = [...dates].map(ds => new Date(`${ds}T00:00:00`).getTime()).sort((a, b) => a - b);
-    for (let i = 0; i < allDates.length; i++) {
-      if (i === 0 || allDates[i] - allDates[i - 1] <= 86400000 * 1.5) { streak++; } else { streak = 1; }
-      longest = Math.max(longest, streak);
-    }
-
-    const thirtyAgo = Date.now() - 30 * 86400000;
-    const active30 = [...dates].filter(ds => new Date(`${ds}T12:00:00`).getTime() >= thirtyAgo).length;
-
-    return { currentStreak: current, longestStreak: longest, activeDays30d: active30 };
-  }, [sessions]);
-
-  const totalVolume = sessions.reduce((a, s) => a + (s.totalVolume || 0), 0);
-  const totalDurationSec = sessions.reduce((a, s) => a + (s.duration || 0), 0);
-  const totalSets = sessions.reduce((a, s) => a + (s.totalSets || 0), 0);
-  const estTotalCalories = Math.round((totalDurationSec / 60) * 6.5 + totalSets * 11);
-  const avgDuration = sessions.length > 0 ? Math.round(totalDurationSec / sessions.length / 60) : 0;
-
-  const getWeeklyData = () => {
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const now = new Date();
-    const dayOfWeek = (now.getDay() + 6) % 7;
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - dayOfWeek);
-
-    return days.map((day, i) => {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
-      const key = toLocalDateKey(d);
-      const daySessions = sessions.filter(s => toLocalDateKey(s.startedAt) === key);
-      return {
-        day,
-        volume: daySessions.reduce((a, s) => a + (s.totalVolume || 0), 0),
-        sets: daySessions.reduce((a, s) => a + (s.totalSets || 0), 0),
-      };
+  // Filtered sessions for log
+  const filteredSessions = useMemo(() => {
+    if (!selectedDateFilter) return sessions;
+    return sessions.filter((s) => {
+      const d = new Date(s.startTime).toISOString().split('T')[0];
+      return d === selectedDateFilter;
     });
+  }, [sessions, selectedDateFilter]);
+
+  // Unique exercises in PRs
+  const prExercises = useMemo(() => {
+    const names = new Set(prs.map((p) => p.exerciseName));
+    return Array.from(names);
+  }, [prs]);
+
+  const filteredPRs = useMemo(() => {
+    if (prFilter === 'all') return prs;
+    return prs.filter((p) => p.exerciseName === prFilter);
+  }, [prs, prFilter]);
+
+  // Best PR per exercise
+  const bestPRsByExercise = useMemo(() => {
+    const best: Record<string, PersonalRecord> = {};
+    prs.forEach((p) => {
+      if (!best[p.exerciseName] || p.estimated1RM > best[p.exerciseName].estimated1RM) {
+        best[p.exerciseName] = p;
+      }
+    });
+    return Object.values(best).sort((a, b) => b.estimated1RM - a.estimated1RM);
+  }, [prs]);
+
+  const fmtDur = (s: number) => {
+    if (!s || s <= 0) return '0m';
+    const m = Math.max(1, Math.round(s / 60));
+    return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
   };
-
-  const getTrendData = () => {
-    const weeks: { week: string; volume: number }[] = [];
-    for (let i = 7; i >= 0; i--) {
-      const now = new Date();
-      const weekStart = new Date(now.getTime() - (i + 1) * 7 * 86400000);
-      const weekEnd = new Date(now.getTime() - i * 7 * 86400000);
-      const weekSessions = sessions.filter(s => { const sd = new Date(s.startedAt); return sd >= weekStart && sd < weekEnd; });
-      weeks.push({ week: `W${8 - i}`, volume: weekSessions.reduce((a, s) => a + (s.totalVolume || 0), 0) });
-    }
-    return weeks;
-  };
-
-  const fmtVol = (v: number) => v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toString();
-  const fmtDur = (s: number) => { const m = Math.max(1, Math.round(s / 60)); return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`; };
-
-  const selectedExerciseName = loggedExercises.find(e => e.id === exerciseChartId)?.name || '';
-  const filteredLoggedExercises = useMemo(() => {
-    if (!exerciseSearch.trim()) return loggedExercises.slice(0, 60);
-    const q = exerciseSearch.trim().toLowerCase();
-    return loggedExercises.filter(e => e.name.toLowerCase().includes(q)).slice(0, 60);
-  }, [loggedExercises, exerciseSearch]);
 
   return (
     <div className="page-container">
-      {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-          <div className="icon-badge" style={{ background: 'rgba(16,232,154,0.1)', width: 38, height: 38, borderRadius: 10 }}>
-            <BarChart3 size={18} color="var(--accent-green)" />
-          </div>
-          <div>
-            <h1 className="font-display" style={{ fontSize: 24, fontWeight: 800 }}>
-              <span className="gradient-text">Progress &amp; Analytics</span>
-            </h1>
-            <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>Track your activity consistency, strength, records &amp; 3D body map</p>
-          </div>
-        </div>
-      </motion.div>
+      <h1 className="page-title animate-in" style={{ marginBottom: 4 }}>Progress</h1>
+      <p style={{ color: 'var(--text-tertiary)', fontSize: '0.78rem', marginBottom: 14 }}>
+        Track muscle activation, volume & personal records
+      </p>
 
-      {/* Tabs */}
-      <div className="chip-scroll" style={{ marginBottom: 16, paddingBottom: 4 }}>
+      {/* Sub-navigation */}
+      <div className="chip-scroll" style={{ marginBottom: 18 }}>
         {([
-          { id: 'overview' as const, label: 'Overview', icon: BarChart3 },
-          { id: 'body' as const, label: '3D Body Map', icon: Target },
-          { id: 'history' as const, label: 'Activity Log', icon: History },
-          { id: 'strength' as const, label: 'Strength', icon: TrendingUp },
-          { id: 'records' as const, label: 'Records', icon: Trophy },
-        ]).map(t => (
-          <button key={t.id}
-            className={`filter-chip ${tab === t.id ? 'active' : ''}`}
-            onClick={() => setTab(t.id)}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
-            <t.icon size={12} /> {t.label}
-          </button>
-        ))}
+          { id: 'overview', label: 'Overview', icon: TrendingUp },
+          { id: 'muscles', label: 'Muscle Map', icon: Activity },
+          { id: 'log', label: 'Activity Log', icon: Calendar },
+          { id: 'records', label: 'Records', icon: Trophy },
+        ] as const).map((t) => {
+          const Icon = t.icon;
+          return (
+            <button key={t.id} className={`chip ${subTab === t.id ? 'active' : ''}`} onClick={() => setSubTab(t.id)}
+              style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <Icon size={12} /> {t.label}
+            </button>
+          );
+        })}
       </div>
 
-      {/* ════════ OVERVIEW ════════ */}
-      {tab === 'overview' && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16 }}>
-            {[
-              { icon: Dumbbell, value: sessions.length, label: 'Total Workouts', color: 'var(--accent-purple)', bg: 'rgba(124,106,255,0.08)' },
-              { icon: Activity, value: `${activeDays30d}d`, label: 'Active Days (30D)', color: 'var(--accent-green)', bg: 'rgba(0,229,160,0.08)' },
-              { icon: Clock, value: `${avgDuration}m`, label: `Avg Time (${fmtDur(totalDurationSec)} total)`, color: 'var(--accent-orange)', bg: 'rgba(255,140,66,0.08)' },
-              { icon: Flame, value: `${currentStreak}d`, label: `Streak (Best: ${longestStreak}d)`, color: 'var(--accent-red)', bg: 'rgba(255,61,90,0.08)' },
-            ].map((stat, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
-                className="stat-card" style={{ alignItems: 'center', textAlign: 'center' }}>
-                <div className="icon-badge" style={{ background: stat.bg, width: 32, height: 32, borderRadius: 8 }}>
-                  <stat.icon size={16} color={stat.color} />
-                </div>
-                <div className="stat-value" style={{ fontSize: 22 }}>{stat.value}</div>
-                <div className="stat-label">{stat.label}</div>
-              </motion.div>
-            ))}
+      {/* ═══════ OVERVIEW ═══════ */}
+      {subTab === 'overview' && (
+        <div className="animate-in">
+          {/* Lifetime Stats Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 16 }}>
+            <div className="stat-card" style={{ textAlign: 'left', padding: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <Dumbbell size={15} color="var(--accent-primary)" />
+                <span style={{ fontSize: '0.62rem', color: 'var(--success)', fontWeight: 600 }}>+{weekStats.workouts} this wk</span>
+              </div>
+              <div className="stat-value" style={{ fontSize: '1.4rem' }}>{totalWorkouts}</div>
+              <div className="stat-label">Total Workouts</div>
+            </div>
+            <div className="stat-card" style={{ textAlign: 'left', padding: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <Flame size={15} color="#f59e0b" />
+                <span style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)', fontWeight: 600 }}>{totalSets} sets</span>
+              </div>
+              <div className="stat-value" style={{ fontSize: '1.4rem' }}>
+                {totalVolume > 1000 ? `${(totalVolume / 1000).toFixed(1)}k` : Math.round(totalVolume)}
+              </div>
+              <div className="stat-label">Volume ({profile.weightUnit})</div>
+            </div>
+            <div className="stat-card" style={{ textAlign: 'left', padding: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <Clock size={15} color="#06b6d4" />
+                <span style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)', fontWeight: 600 }}>{fmtDur(totalDuration)} total</span>
+              </div>
+              <div className="stat-value" style={{ fontSize: '1.4rem' }}>{avgDuration}m</div>
+              <div className="stat-label">Avg Time</div>
+            </div>
+            <div className="stat-card" style={{ textAlign: 'left', padding: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <Trophy size={15} color="#eab308" />
+                <span style={{ fontSize: '0.62rem', color: 'var(--warning)', fontWeight: 600 }}>{prExercises.length} lifts</span>
+              </div>
+              <div className="stat-value" style={{ fontSize: '1.4rem' }}>{prs.length}</div>
+              <div className="stat-label">Personal Records</div>
+            </div>
           </div>
 
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.14 }} className="card" style={{ marginBottom: 16, padding: 18 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>This Week Volume (Mon–Sun, {unitLabel})</h3>
-            <div style={{ height: 180 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={getWeeklyData()} barSize={24}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
-                  <XAxis dataKey="day" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={35} />
-                  <Tooltip contentStyle={{ background: 'var(--bg-sheet)', border: '1px solid var(--border-bright)', borderRadius: 12, fontSize: 12, color: 'var(--text-primary)' }} />
-                  <Bar dataKey="volume" fill="var(--accent-red)" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+          {/* Weekly Volume Chart */}
+          <div className="card" style={{ marginBottom: 16, padding: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <TrendingUp size={14} color="var(--accent-primary)" /> Weekly Volume Trend
+              </h3>
+              <span style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)' }}>Last 8 weeks ({profile.weightUnit})</span>
             </div>
-          </motion.div>
-
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="card" style={{ marginBottom: 16, padding: 18 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Volume Trend (8 Weeks)</h3>
-            <div style={{ height: 150 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={getTrendData()}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
-                  <XAxis dataKey="week" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={35} />
-                  <Tooltip contentStyle={{ background: 'var(--bg-sheet)', border: '1px solid var(--border-bright)', borderRadius: 12, fontSize: 12, color: 'var(--text-primary)' }} />
-                  <defs><linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--accent-purple)" stopOpacity={0.32} /><stop offset="100%" stopColor="var(--accent-purple)" stopOpacity={0.0} /></linearGradient></defs>
-                  <Area type="monotone" dataKey="volume" stroke="var(--accent-purple)" strokeWidth={2} fill="url(#areaGrad)" dot={{ r: 4, fill: 'var(--accent-purple)', strokeWidth: 0 }} />
+            <div style={{ position: 'relative' }}>
+              <ResponsiveContainer width="100%" height={170}>
+                <AreaChart data={weeklyChart}>
+                  <defs>
+                    <linearGradient id="volGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="label" tick={{ fill: '#55556a', fontSize: 9 }} axisLine={false} tickLine={false} />
+                  <YAxis
+                    domain={totalVolume === 0 ? [0, 1000] : ['auto', 'auto']}
+                    tick={{ fill: '#55556a', fontSize: 9 }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={36}
+                  />
+                  <Tooltip
+                    contentStyle={{ background: '#161622', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, fontSize: '0.75rem' }}
+                    labelStyle={{ color: '#8b8b9e' }}
+                    formatter={(val) => [`${Number(val ?? 0).toLocaleString()} ${profile.weightUnit}`, 'Volume']}
+                  />
+                  <Area type="monotone" dataKey="volume" stroke="#6366f1" strokeWidth={2.5} fill="url(#volGrad)" />
                 </AreaChart>
               </ResponsiveContainer>
-            </div>
-          </motion.div>
-
-          <div className="responsive-stats-3">
-            <div className="stat-card" style={{ borderLeft: '3px solid var(--accent-red)', padding: 12 }}>
-              <div className="stat-label">Total Volume</div>
-              <div className="stat-value" style={{ color: 'var(--accent-red)', fontSize: 18 }}>{fmtVol(totalVolume)} <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{unitLabel}</span></div>
-            </div>
-            <div className="stat-card" style={{ borderLeft: '3px solid var(--accent-orange)', padding: 12 }}>
-              <div className="stat-label">Est. Burned</div>
-              <div className="stat-value" style={{ color: 'var(--accent-orange)', fontSize: 18 }}>{fmtVol(estTotalCalories)} <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>kcal</span></div>
-            </div>
-            <div className="stat-card" style={{ borderLeft: '3px solid var(--accent-yellow)', padding: 12 }}>
-              <div className="stat-label">PRs Set</div>
-              <div className="stat-value" style={{ color: 'var(--accent-yellow)', fontSize: 18 }}>{prs.length}</div>
+              {totalVolume === 0 && (
+                <div style={{
+                  position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  pointerEvents: 'none', paddingBottom: 18,
+                }}>
+                  <span style={{
+                    background: 'rgba(18, 18, 28, 0.85)', border: '1px solid var(--border-glass)',
+                    padding: '6px 12px', borderRadius: 'var(--radius-full)', fontSize: '0.7rem', color: 'var(--text-tertiary)',
+                  }}>
+                    Complete your first session to plot weekly volume
+                  </span>
+                </div>
+              )}
             </div>
           </div>
-        </motion.div>
+
+          {/* Top Muscles Bar Breakdown */}
+          {topMuscles.length > 0 && (
+            <div className="card" style={{ padding: 16 }}>
+              <h3 style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: 12 }}>Most Trained Muscles</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {topMuscles.map(([muscle, sets]) => {
+                  const maxSets = topMuscles[0][1] || 1;
+                  const pct = Math.round((sets / maxSets) * 100);
+                  return (
+                    <div key={muscle}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: 4 }}>
+                        <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{muscle}</span>
+                        <span style={{ color: 'var(--text-tertiary)', fontWeight: 600 }}>{Math.round(sets)} sets</span>
+                      </div>
+                      <div style={{ height: 6, background: 'rgba(255,255,255,0.04)', borderRadius: 3, overflow: 'hidden' }}>
+                        <div style={{
+                          height: '100%', width: `${pct}%`, borderRadius: 3,
+                          background: 'var(--accent-gradient)', transition: 'width 0.4s ease',
+                        }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
-      {/* ════════ HISTORY / ACTIVITY LOG ════════ */}
-      {tab === 'history' && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <div className="responsive-stats-3" style={{ marginBottom: 14 }}>
-            <div className="stat-card" style={{ textAlign: 'center', padding: 10 }}>
-              <div className="stat-value" style={{ fontSize: 18, color: 'var(--accent-green)' }}>{weekStats.count}</div>
+      {/* ═══════ MUSCLE MAP ═══════ */}
+      {subTab === 'muscles' && (
+        <div className="animate-in">
+          <div className="card" style={{ padding: 20, marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <div>
+                <h3 style={{ fontSize: '0.9rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Sparkles size={14} color="var(--accent-primary)" /> Weekly Muscle Activation
+                </h3>
+                <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: 2 }}>
+                  Anatomical heat map from your last 7 days of training
+                </p>
+              </div>
+            </div>
+            <MuscleHeatmap
+              muscleVolumes={muscleVolumes}
+              sessions={sessions}
+              exercises={Object.values(exerciseMap)}
+              bodyweightKg={profile.weightUnit === 'lbs' ? 75 : 75}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ═══════ ACTIVITY LOG ═══════ */}
+      {subTab === 'log' && (
+        <div className="animate-in">
+          {/* This Week Summary Strip */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14 }}>
+            <div className="stat-card" style={{ padding: '10px 8px' }}>
+              <div className="stat-value" style={{ fontSize: '1.1rem' }}>{weekStats.workouts}</div>
               <div className="stat-label">This Week</div>
             </div>
-            <div className="stat-card" style={{ textAlign: 'center', padding: 10 }}>
-              <div className="stat-value" style={{ fontSize: 18, color: 'var(--accent-purple)' }}>{fmtVol(weekStats.volume)}</div>
-              <div className="stat-label">Week Volume</div>
+            <div className="stat-card" style={{ padding: '10px 8px' }}>
+              <div className="stat-value" style={{ fontSize: '1.1rem' }}>{weekStats.sets}</div>
+              <div className="stat-label">Week Sets</div>
             </div>
-            <div className="stat-card" style={{ textAlign: 'center', padding: 10 }}>
-              <div className="stat-value" style={{ fontSize: 18, color: 'var(--accent-orange)' }}>{fmtDur(weekStats.duration)}</div>
+            <div className="stat-card" style={{ padding: '10px 8px' }}>
+              <div className="stat-value" style={{ fontSize: '1.1rem' }}>{fmtDur(weekStats.duration)}</div>
               <div className="stat-label">Week Time</div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8 }}>
-            <div style={{ display: 'flex', gap: 4 }}>
-              {(['all', 'month', 'week'] as const).map(f => (
-                <button key={f} className={historyFilter === f && !selectedCalendarDate ? 'btn-primary btn-high-contrast' : 'btn-secondary'}
-                  onClick={() => { setHistoryFilter(f); setSelectedCalendarDate(null); setHistoryPage(0); }}
-                  style={{ minHeight: 32, padding: '5px 12px', fontSize: 11, borderRadius: 8, width: 'auto' }}>
-                  {f === 'all' ? 'All' : f === 'month' ? '30D' : '7D'}
-                </button>
-              ))}
-              {selectedCalendarDate && (
-                <button
-                  onClick={() => setSelectedCalendarDate(null)}
-                  className="btn-secondary"
-                  style={{ minHeight: 32, padding: '5px 10px', fontSize: 11, borderRadius: 8, color: 'var(--accent-yellow)' }}
-                >
-                  {selectedCalendarDate} ×
-                </button>
-              )}
+          {/* 12-Week Consistency Heatmap */}
+          <div className="card" style={{ marginBottom: 16, padding: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <h3 style={{ fontSize: '0.8rem', fontWeight: 700 }}>12-Week Activity</h3>
+              <span style={{ fontSize: '0.64rem', color: 'var(--text-tertiary)' }}>Tap any date square to filter</span>
             </div>
-            <button className={calendarView ? 'btn-primary btn-high-contrast' : 'btn-secondary'}
-              onClick={() => setCalendarView(!calendarView)}
-              style={{ minHeight: 32, padding: '5px 12px', fontSize: 11, borderRadius: 8, width: 'auto' }}>
-              <Calendar size={12} /> {calendarView ? 'Hide Grid' : '12W Grid'}
-            </button>
+            <div style={{ display: 'flex', gap: 4, justifyContent: 'space-between' }}>
+              {calendarWeeks.map((week, wIdx) => (
+                <div key={wIdx} style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1 }}>
+                  {week.map((day, dIdx) => {
+                    const iso = day.date.toISOString().split('T')[0];
+                    const isSelected = selectedDateFilter === iso;
+                    const intensity = day.count === 0 ? 0 : day.count === 1 ? 0.55 : 1;
+                    return (
+                      <div
+                        key={dIdx}
+                        onClick={() => setSelectedDateFilter(isSelected ? null : iso)}
+                        title={`${day.date.toLocaleDateString()} — ${day.count} workout(s)`}
+                        style={{
+                          aspectRatio: '1', borderRadius: 3, cursor: 'pointer',
+                          background: intensity === 0
+                            ? 'rgba(255,255,255,0.05)'
+                            : intensity < 1
+                              ? 'rgba(99, 102, 241, 0.5)'
+                              : '#6366f1',
+                          border: isSelected ? '1.5px solid #ffffff' : '1px solid rgba(255,255,255,0.03)',
+                          boxShadow: isSelected ? '0 0 8px rgba(99, 102, 241, 0.55)' : undefined,
+                          transition: 'transform 0.12s',
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+
+            {/* Active Date Filter Banner */}
+            {selectedDateFilter && (
+              <div style={{
+                marginTop: 10, padding: '8px 12px', borderRadius: 'var(--radius-md)',
+                background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.3)',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.73rem',
+              }}>
+                <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+                  📅 {new Date(`${selectedDateFilter}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} — {filteredSessions.length} workout{filteredSessions.length !== 1 ? 's' : ''}
+                </span>
+                <button
+                  onClick={() => setSelectedDateFilter(null)}
+                  style={{
+                    background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 'var(--radius-full)',
+                    color: 'var(--text-primary)', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px',
+                    cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3,
+                  }}
+                >
+                  Clear <X size={11} />
+                </button>
+              </div>
+            )}
           </div>
 
-          {calendarView && (
-            <div className="card" style={{ padding: 14, marginBottom: 14 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>Last 12 Weeks (Tap a day to filter)</span>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{activeDays30d} active days in last 30d</span>
-              </div>
-              <div style={{ display: 'flex', gap: 3, justifyContent: 'center' }}>
-                {calendarWeeks.map((week, wi) => (
-                  <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    {week.map((day, di) => {
-                      const isSel = selectedCalendarDate === day.date;
-                      return (
-                        <button
-                          key={di}
-                          onClick={() => setSelectedCalendarDate(isSel ? null : day.date)}
-                          title={`${day.date}: ${day.count} workout${day.count !== 1 ? 's' : ''}`}
-                          style={{
-                            width: 16, height: 16, borderRadius: 3.5, padding: 0, cursor: 'pointer',
-                            background: day.count === 0 ? 'var(--bg-input)' : day.count === 1 ? 'var(--accent-green)' : 'var(--accent-red)',
-                            opacity: day.count === 0 ? 0.35 : 0.7 + Math.min(day.count * 0.15, 0.3),
-                            border: isSel ? '1.5px solid var(--text-primary)' : day.isToday ? '1.5px solid var(--accent-purple)' : 'none',
-                          }}
-                        />
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-                <span style={{ fontSize: 8, color: 'var(--text-muted)' }}>12 weeks ago</span>
-                <span style={{ fontSize: 8, color: 'var(--text-muted)' }}>Today</span>
-              </div>
-            </div>
-          )}
-
-          {paginatedHistory.length === 0 ? (
-            <div className="empty-state">
-              <History size={48} color="var(--text-muted)" />
-              <h3 style={{ fontSize: 18, fontWeight: 700 }}>No workouts found</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
-                {selectedCalendarDate ? `No workouts logged on ${selectedCalendarDate}.` : 'Complete your first workout to see it here.'}
+          {/* Detailed Session Cards */}
+          {filteredSessions.length === 0 ? (
+            <div className="empty-state" style={{ padding: '28px 16px' }}>
+              <Calendar size={28} />
+              <p style={{ fontSize: '0.82rem' }}>
+                {selectedDateFilter
+                  ? `No workouts logged on ${new Date(`${selectedDateFilter}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}.`
+                  : 'No workouts found yet. Start a session to build your log!'}
               </p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {paginatedHistory.map((s) => {
-                const isExpanded = expandedSession === s.id;
+              {filteredSessions.map((s) => {
+                const isOpen = expandedSession === s.id;
+                const completedSets = s.exercises.reduce((sum, e) => sum + e.sets.filter((st) => st.completed).length, 0);
                 return (
-                  <motion.div key={s.id} layout className="card" style={{ overflow: 'hidden' }}>
-                    <button onClick={() => {
-                      if (isExpanded) { setExpandedSession(null); setSessionDetail(null); }
-                      else { setExpandedSession(s.id!); void loadSessionDetail(s); }
-                    }} style={{
-                      display: 'flex', alignItems: 'center', gap: 12, width: '100%', background: 'none', border: 'none',
-                      color: 'var(--text-primary)', cursor: 'pointer', padding: 0, textAlign: 'left',
-                    }}>
-                      <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(16,232,154,0.08)', border: '1px solid rgba(16,232,154,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <Dumbbell size={16} color="var(--accent-green)" />
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 14, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span>{s.dayName || s.planName || 'Workout'}</span>
-                          {s.rating && (
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 10, color: 'var(--accent-yellow)' }}>
-                              <Star size={10} fill="#FBBF24" color="#FBBF24" /> {s.rating}
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                          {new Date(s.startedAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                          {s.duration > 0 && ` • ${fmtDur(s.duration)}`}
+                  <div key={s.id} className="card" style={{ padding: '12px 14px' }}>
+                    <div onClick={() => setExpandedSession(isOpen ? null : (s.id ?? null))} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>{s.dayName || s.planName}</div>
+                        <div style={{ color: 'var(--text-tertiary)', fontSize: '0.7rem', marginTop: 2 }}>
+                          {new Date(s.startTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} • {s.exercises.length} exercises • {completedSets} sets
                         </div>
                       </div>
-                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div className="font-mono" style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-green)' }}>{fmtVol(s.totalVolume)}{unitLabel}</div>
-                        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{s.totalSets} sets</div>
-                      </div>
-                      {isExpanded ? <ChevronDown size={14} color="var(--text-muted)" /> : <ChevronRight size={14} color="var(--text-muted)" />}
-                    </button>
-
-                    <AnimatePresence>
-                      {isExpanded && sessionDetail?.session.id === s.id && (
-                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                          style={{ overflow: 'hidden', borderTop: '1px solid var(--border-subtle)', marginTop: 12, paddingTop: 12 }}>
-                          <div className="responsive-stats-4" style={{ marginBottom: 12 }}>
-                            {[
-                              { v: fmtDur(s.duration), l: 'Duration' },
-                              { v: s.totalSets, l: 'Sets' },
-                              { v: s.totalReps, l: 'Reps' },
-                              { v: `${fmtVol(s.totalVolume)}${unitLabel}`, l: 'Volume' },
-                            ].map((st, i) => (
-                              <div key={i} style={{ textAlign: 'center', padding: 6, background: 'var(--bg-glass)', borderRadius: 8, border: '1px solid var(--border-subtle)' }}>
-                                <div className="font-mono" style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-green)' }}>{st.v}</div>
-                                <div style={{ fontSize: 8, color: 'var(--text-muted)', fontWeight: 600 }}>{st.l}</div>
-                              </div>
-                            ))}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--accent-secondary)' }}>{fmtDur(s.duration)}</div>
+                          <div style={{ fontSize: '0.66rem', color: 'var(--text-tertiary)' }}>
+                            {s.totalVolume > 0 ? `${Math.round(s.totalVolume).toLocaleString()} ${profile.weightUnit}` : 'Done'}
                           </div>
+                        </div>
+                        {isOpen ? <ChevronUp size={15} color="var(--text-tertiary)" /> : <ChevronDown size={15} color="var(--text-tertiary)" />}
+                      </div>
+                    </div>
 
-                          {s.notes && (
-                            <div style={{ fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-glass)', padding: '8px 10px', borderRadius: 8, marginBottom: 10, fontStyle: 'italic' }}>
-                              📝 {s.notes}
-                            </div>
-                          )}
-
-                          {sessionDetail?.exercises.map((ex, ei) => (
-                            <div key={ei} style={{ marginBottom: 10 }}>
-                              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4, color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{ex.name}</div>
-                              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                                {ex.sets.map((set, si) => (
-                                  <div key={si} style={{
-                                    padding: '4px 8px', background: 'var(--bg-elevated)', borderRadius: 6,
-                                    border: set.isPR ? '1px solid var(--accent-yellow)' : '1px solid var(--border-subtle)', fontSize: 11, fontWeight: 600,
+                    {isOpen && (
+                      <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {s.exercises.map((ex, i) => {
+                          const doneSets = ex.sets.filter((st) => st.completed);
+                          if (doneSets.length === 0) return null;
+                          return (
+                            <div key={i} style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 'var(--radius-sm)', padding: '8px 10px' }}>
+                              <div style={{ fontWeight: 600, fontSize: '0.78rem', textTransform: 'capitalize', marginBottom: 4 }}>{ex.exerciseName}</div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                {doneSets.map((st, j) => (
+                                  <span key={j} style={{
+                                    fontSize: '0.68rem', padding: '2px 8px', borderRadius: 'var(--radius-full)',
+                                    background: 'rgba(99, 102, 241, 0.08)', color: 'var(--text-secondary)', fontWeight: 600,
                                   }}>
-                                    <span style={{ color: 'var(--accent-purple)' }}>{set.weight}{unitLabel}</span>
-                                    <span style={{ color: 'var(--text-muted)' }}> × </span>
-                                    <span style={{ color: 'var(--accent-green)' }}>{set.reps}</span>
-                                    {set.isPR && <span style={{ marginLeft: 4 }}>🏆</span>}
-                                  </div>
+                                    {st.weight > 0 ? `${st.weight}${profile.weightUnit} × ${st.reps}` : `${st.reps} reps`}
+                                  </span>
                                 ))}
                               </div>
                             </div>
-                          ))}
-
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-                            {deleteConfirm === s.id ? (
-                              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                                <span style={{ fontSize: 11, color: 'var(--accent-red)' }}>Delete this session?</span>
-                                <button onClick={() => handleDeleteSession(s.id!)} style={{ padding: '4px 10px', background: 'var(--accent-red)', border: 'none', borderRadius: 6, color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Yes</button>
-                                <button onClick={() => setDeleteConfirm(null)} className="btn-secondary" style={{ padding: '4px 10px', fontSize: 11, minHeight: 28 }}>No</button>
-                              </div>
-                            ) : (
-                              <button onClick={() => setDeleteConfirm(s.id!)} style={{ padding: '4px 10px', background: 'rgba(255,61,90,0.08)', border: '1px solid rgba(255,61,90,0.2)', borderRadius: 6, color: 'var(--accent-red)', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <Trash2 size={10} /> Delete
-                              </button>
-                            )}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </motion.div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
-
-              {paginatedHistory.length < filteredHistory.length && (
-                <button onClick={() => setHistoryPage(p => p + 1)} className="btn-secondary"
-                  style={{ minHeight: 44, borderRadius: 12, fontSize: 13, fontWeight: 700 }}>
-                  Load More ({filteredHistory.length - paginatedHistory.length} remaining)
-                </button>
-              )}
             </div>
           )}
-        </motion.div>
+        </div>
       )}
 
-      {/* ════════ STRENGTH ════════ */}
-      {tab === 'strength' && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <div className="card" style={{ marginBottom: 16, padding: 16 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Exercise Strength &amp; Estimated 1RM Progression</h3>
-
-            <div style={{ position: 'relative', marginBottom: 10 }}>
-              <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              <input
-                className="search-bar"
-                value={exerciseSearch}
-                onChange={e => setExerciseSearch(e.target.value)}
-                placeholder="Search exercise to inspect progression..."
-                style={{ padding: '10px 12px 10px 36px', fontSize: 12 }}
-              />
-            </div>
-
-            <div className="chip-scroll" style={{ marginBottom: 12 }}>
-              {filteredLoggedExercises.slice(0, 18).map(ex => (
-                <button
-                  key={ex.id}
-                  onClick={() => void loadExerciseChart(ex.id)}
-                  className={`filter-chip ${exerciseChartId === ex.id ? 'active' : ''}`}
-                  style={{ fontSize: 11, padding: '6px 12px', textTransform: 'capitalize' }}
-                >
-                  <span>{ex.name}</span>
-                  {ex.count > 0 && <span style={{ opacity: 0.75, fontSize: 9 }}>({ex.count})</span>}
-                </button>
-              ))}
-            </div>
-
-            {exerciseChartData.length > 1 && (
-              <>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8, textTransform: 'capitalize' }}>
-                  Max Weight &amp; Est. 1RM ({unitLabel}) — {selectedExerciseName}
-                </div>
-                <div style={{ height: 190 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={exerciseChartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
-                      <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={35} />
-                      <Tooltip contentStyle={{ background: 'var(--bg-sheet)', border: '1px solid var(--border-bright)', borderRadius: 12, fontSize: 12, color: 'var(--text-primary)' }} />
-                      <Line type="monotone" dataKey="est1RM" name="Est. 1RM" stroke="var(--accent-green)" strokeWidth={2} dot={{ r: 4, fill: 'var(--accent-green)' }} />
-                      <Line type="monotone" dataKey="weight" name="Top Weight" stroke="var(--accent-red)" strokeWidth={2} dot={{ r: 4, fill: 'var(--accent-red)' }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </>
-            )}
-
-            {exerciseChartData.length <= 1 && exerciseChartId && (
-              <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>
-                Log at least 2 sessions with <strong style={{ color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{selectedExerciseName}</strong> to display a progression trend line.
-              </div>
-            )}
-          </div>
-
-          <div className="card hero-gradient" style={{ marginBottom: 16, padding: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
-              <Zap size={16} color="var(--accent-yellow)" />
-              <h3 style={{ fontSize: 15, fontWeight: 700 }}>Recent Sessions</h3>
-            </div>
-            {sessions.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 20 }}>
-                <Target size={36} color="var(--text-muted)" style={{ marginBottom: 8 }} />
-                <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Complete workouts to track strength.</p>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {sessions.slice(0, 8).map((s, i) => (
-                  <div key={s.id || i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: i < 7 ? '1px solid var(--border-subtle)' : 'none' }}>
-                    <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(255,59,92,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Dumbbell size={14} color="var(--accent-red)" />
+      {/* ═══════ RECORDS ═══════ */}
+      {subTab === 'records' && (
+        <div className="animate-in">
+          {/* Best All-Time Lifts */}
+          {bestPRsByExercise.length > 0 && (
+            <div style={{ marginBottom: 18 }}>
+              <h3 style={{ fontSize: '0.82rem', fontWeight: 700, marginBottom: 10, color: 'var(--text-secondary)' }}>
+                🏆 All-Time Best per Exercise
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+                {bestPRsByExercise.slice(0, 6).map((pr) => (
+                  <div key={pr.id || pr.exerciseName} className="card" style={{ padding: 12 }}>
+                    <div style={{ fontSize: '0.74rem', fontWeight: 600, textTransform: 'capitalize', marginBottom: 6, lineHeight: 1.2,
+                      display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                      {pr.exerciseName}
                     </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.dayName || s.planName || 'Workout'}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(s.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                    <div className="num" style={{ fontSize: '1.15rem', color: 'var(--warning)' }}>
+                      {pr.weight}<span style={{ fontSize: '0.72rem' }}> {profile.weightUnit}</span> × {pr.reps}
                     </div>
-                    <div className="font-mono" style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-green)' }}>{fmtVol(s.totalVolume)}{unitLabel}</div>
+                    <div style={{ fontSize: '0.64rem', color: 'var(--text-tertiary)', marginTop: 2 }}>
+                      Est. 1RM: <strong style={{ color: 'var(--text-secondary)' }}>{pr.estimated1RM} {profile.weightUnit}</strong>
+                    </div>
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-        </motion.div>
-      )}
-
-      {/* ════════ RECORDS ════════ */}
-      {tab === 'records' && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          {prs.length === 0 ? (
-            <div className="empty-state">
-              <Trophy size={48} color="var(--accent-yellow)" />
-              <h3 style={{ fontSize: 18, fontWeight: 700 }}>No PRs yet</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1.6 }}>
-                Personal records are automatically tracked and saved when you beat your previous best during a workout.
-              </p>
             </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div className="card" style={{ padding: 14, marginBottom: 4, borderLeft: '3px solid var(--accent-yellow)' }}>
-                <div className="stat-label">Total Personal Records</div>
-                <div className="stat-value" style={{ color: 'var(--accent-yellow)', fontSize: 28 }}>{prs.length}</div>
-              </div>
-              {prs.map((pr, i) => (
-                <motion.div key={pr.id || i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(i * 0.03, 0.2) }}
-                  className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, rgba(255,209,102,0.15), rgba(255,140,66,0.1))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Trophy size={18} color="var(--accent-yellow)" />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14, textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pr.exerciseName}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{new Date(pr.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
-                  </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div className="font-mono" style={{ fontSize: 16, fontWeight: 800, color: 'var(--accent-yellow)' }}>{pr.weight}{unitLabel} × {pr.reps}</div>
-                    <div style={{ fontSize: 11, color: 'var(--accent-orange)' }}>Est 1RM: {Math.round(pr.estimated1RM)}{unitLabel}</div>
-                  </div>
-                </motion.div>
+          )}
+
+          {/* Filter by Exercise */}
+          {prExercises.length > 1 && (
+            <div className="chip-scroll" style={{ marginBottom: 12 }}>
+              <button className={`chip ${prFilter === 'all' ? 'active' : ''}`} onClick={() => setPrFilter('all')}>All ({prs.length})</button>
+              {prExercises.map((name) => (
+                <button key={name} className={`chip ${prFilter === name ? 'active' : ''}`} onClick={() => setPrFilter(name)} style={{ textTransform: 'capitalize' }}>
+                  {name}
+                </button>
               ))}
             </div>
           )}
-        </motion.div>
-      )}
 
-      {/* ════════ 3D ANATOMICAL BODY MAP ════════ */}
-      {tab === 'body' && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <MuscleHeatmap sessions={sessions} />
-        </motion.div>
+          {filteredPRs.length === 0 ? (
+            <div className="empty-state" style={{ padding: '28px 16px' }}>
+              <Trophy size={28} />
+              <p style={{ fontSize: '0.82rem' }}>Complete workouts with weights to automatically set PRs!</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {filteredPRs.map((pr, i) => (
+                <div key={pr.id || i} className="card" style={{ padding: '11px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '0.82rem', textTransform: 'capitalize' }}>{pr.exerciseName}</div>
+                    <div style={{ color: 'var(--text-tertiary)', fontSize: '0.68rem' }}>
+                      {new Date(pr.achievedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <span className="badge badge-warning">🏆 {pr.weight}{profile.weightUnit} × {pr.reps}</span>
+                    <div style={{ color: 'var(--text-tertiary)', fontSize: '0.64rem', marginTop: 2 }}>
+                      e1RM: {pr.estimated1RM} {profile.weightUnit}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

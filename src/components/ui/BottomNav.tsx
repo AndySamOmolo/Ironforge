@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Home, ClipboardList, Play, BarChart3, User, Zap, Shuffle, Dumbbell, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Home, ClipboardList, Play, BarChart3, User, Zap, Shuffle, Dumbbell, X, Sparkles } from 'lucide-react';
 import { useUIStore } from '@/lib/store/uiStore';
 import { useUserStore } from '@/lib/store/userStore';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
@@ -9,7 +9,7 @@ import { db } from '@/lib/db/schema';
 import { ALL_EQUIPMENT, resolveWorkoutDayExercises, generateSmartWorkout, matchesUserEquipment } from '@/lib/utils/exerciseResolver';
 import { getWorkoutStartingWeight } from '@/lib/utils/workoutDefaults';
 import { getPrimaryExerciseImage, getExerciseImageFrames, getExerciseGifUrl, hasGifExerciseMedia } from '@/lib/utils/exerciseMedia';
-import { SetType } from '@/lib/types';
+import { SetType, type WorkoutPlan } from '@/lib/types';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const tabs = [
@@ -22,23 +22,21 @@ const tabs = [
 ];
 
 export default function BottomNav() {
-  const activeTab = useUIStore(s => s.activeTab);
-  const setActiveTab = useUIStore(s => s.setActiveTab);
-  const userEquipment = useUserStore(s => s.equipment);
-  const barWeight = useUserStore(s => s.barWeight);
-  const dumbbellWeight = useUserStore(s => s.dumbbellWeight);
-  const exerciseVariety = useUserStore(s => s.exerciseVariety);
-  const defaultRestTime = useUserStore(s => s.defaultRestTime);
-
-  const startWorkout = useWorkoutStore(s => s.startWorkout);
-  const workoutActive = useWorkoutStore(s => s.isActive);
-  const setMinimized = useWorkoutStore(s => s.setMinimized);
+  const { activeTab, setActiveTab } = useUIStore();
+  const { equipment: userEquipment, barWeight, dumbbellWeight, exerciseVariety, defaultRestTime } = useUserStore();
+  const { isActive: workoutActive, isMinimized: workoutMinimized, resumeWorkout, startWorkout } = useWorkoutStore();
   const [showQuickLaunch, setShowQuickLaunch] = useState(false);
+  const [activePlan, setActivePlan] = useState<WorkoutPlan | null>(null);
+
+  useEffect(() => {
+    if (!showQuickLaunch) return;
+    db.workoutPlans.filter(p => !!p.isActive).first().then(p => setActivePlan(p || null)).catch(() => setActivePlan(null));
+  }, [showQuickLaunch]);
 
   const handleTabClick = (tabId: string) => {
     if (tabId === 'start') {
-      if (workoutActive) {
-        setMinimized(false);
+      if (workoutActive && workoutMinimized) {
+        resumeWorkout();
         return;
       }
       setShowQuickLaunch(true);
@@ -49,13 +47,13 @@ export default function BottomNav() {
 
   const handleStartActivePlanDay = async () => {
     try {
-      const activePlan = await db.workoutPlans.filter(p => !!p.isActive).first();
-      if (!activePlan?.id) {
+      const plan = await db.workoutPlans.filter(p => !!p.isActive).first();
+      if (!plan?.id) {
         setShowQuickLaunch(false);
         setActiveTab('plans');
         return;
       }
-      const days = await db.workoutDays.where('planId').equals(activePlan.id).sortBy('dayNumber');
+      const days = await db.workoutDays.where('planId').equals(plan.id).sortBy('dayNumber');
       if (days.length === 0) {
         setShowQuickLaunch(false);
         setActiveTab('plans');
@@ -75,7 +73,7 @@ export default function BottomNav() {
         varietyLevel: exerciseVariety || 'medium',
       });
       setShowQuickLaunch(false);
-      startWorkout(activePlan.name, nextDay.name, resolved);
+      startWorkout(plan.name, nextDay.name, resolved);
     } catch {
       setShowQuickLaunch(false);
       setActiveTab('plans');
@@ -160,7 +158,7 @@ export default function BottomNav() {
 
   return (
     <>
-      <nav className="bottom-nav" aria-label="Main navigation">
+      <nav className="bottom-nav">
         {tabs.map((tab) => {
           if (tab.id === 'start') {
             return (
@@ -168,16 +166,10 @@ export default function BottomNav() {
                 key={tab.id}
                 className="nav-start-btn"
                 onClick={() => handleTabClick(tab.id)}
-                aria-label={workoutActive ? 'Resume active workout' : 'Start workout'}
-                title={workoutActive ? 'Resume active workout' : 'Launch workout'}
+                aria-label={workoutActive && workoutMinimized ? 'Resume active workout' : 'Start workout'}
+                title={workoutActive && workoutMinimized ? 'Resume active workout' : 'Launch workout'}
               >
-                <div style={{
-                  position: 'absolute', width: 62, height: 62, borderRadius: '50%',
-                  border: '2px solid rgba(255,61,90,0.28)',
-                  animation: 'pulse-dot 3s ease-in-out infinite',
-                  pointerEvents: 'none',
-                }} />
-                <Play size={22} fill="currentColor" />
+                <Play size={20} fill="white" />
               </button>
             );
           }
@@ -188,16 +180,15 @@ export default function BottomNav() {
               className={`nav-item ${isActive ? 'active' : ''}`}
               onClick={() => handleTabClick(tab.id)}
               aria-label={tab.label}
-              aria-current={isActive ? 'page' : undefined}
             >
-              <tab.icon size={20} strokeWidth={isActive ? 2.5 : 1.7} />
+              <tab.icon size={20} strokeWidth={isActive ? 2.5 : 1.6} />
               <span className="nav-label" style={{ fontWeight: isActive ? 700 : 500 }}>{tab.label}</span>
               {isActive && (
                 <motion.div
                   layoutId="nav-indicator"
                   style={{
-                    width: 5,
-                    height: 5,
+                    width: 4,
+                    height: 4,
                     borderRadius: '50%',
                     background: 'var(--accent-red)',
                     boxShadow: '0 0 8px var(--glow-red)',
@@ -209,39 +200,30 @@ export default function BottomNav() {
         })}
       </nav>
 
-      {/* Quick Launch Bottom Sheet with Drag-to-Dismiss */}
+      {/* Quick Launch Bottom Sheet */}
       <AnimatePresence>
         {showQuickLaunch && (
           <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowQuickLaunch(false)}>
-            <motion.div
-              className="modal-content"
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              drag="y"
-              dragConstraints={{ top: 0, bottom: 0 }}
-              dragElastic={{ top: 0, bottom: 0.6 }}
-              onDragEnd={(_, info) => {
-                if (info.offset.y > 100 || info.velocity.y > 450) {
-                  setShowQuickLaunch(false);
-                }
-              }}
-              transition={{ type: 'spring', damping: 26, stiffness: 300 }}
-              onClick={e => e.stopPropagation()}
-            >
+            <motion.div className="modal-content" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()}>
               <div className="modal-handle" />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                 <h3 className="font-display" style={{ fontSize: 19, fontWeight: 800 }}>Launch Workout</h3>
-                <button onClick={() => setShowQuickLaunch(false)} aria-label="Close modal" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}><X size={18} /></button>
+                <button onClick={() => setShowQuickLaunch(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}><X size={18} /></button>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <button onClick={handleStartActivePlanDay} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', border: '1px solid rgba(255,61,90,0.3)' }}>
                   <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--gradient-fire)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Play size={18} fill="white" color="white" />
+                    {activePlan ? <Play size={18} fill="white" color="white" /> : <Sparkles size={18} color="white" />}
                   </div>
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 800 }}>Next Day in Active Plan</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Automatically picks the next scheduled day for your equipment</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 800 }}>
+                      {activePlan ? `Next Day in ${activePlan.name}` : 'Choose an Active Workout Plan'}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                      {activePlan
+                        ? 'Starts your next scheduled training day matched to your equipment'
+                        : 'No plan active yet — tap to browse balanced programs'}
+                    </div>
                   </div>
                 </button>
 
@@ -249,7 +231,7 @@ export default function BottomNav() {
                   <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--gradient-ocean)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Shuffle size={18} color="white" />
                   </div>
-                  <div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 15, fontWeight: 800 }}>Smart Full-Body Mix</div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Generates 6 fresh GIF-backed exercises matching your equipment</div>
                   </div>
@@ -259,7 +241,7 @@ export default function BottomNav() {
                   <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--gradient-mint)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Zap size={18} color="white" />
                   </div>
-                  <div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 15, fontWeight: 800 }}>Freestyle Open Session</div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Start immediately and add any exercises on the fly</div>
                   </div>
@@ -269,7 +251,7 @@ export default function BottomNav() {
                   <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Dumbbell size={18} color="var(--text-secondary)" />
                   </div>
-                  <div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 15, fontWeight: 800 }}>Browse Exercise Library</div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Explore 2,240+ exercises with animated GIF demos</div>
                   </div>

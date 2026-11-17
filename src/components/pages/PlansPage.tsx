@@ -1,1115 +1,541 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronRight, ChevronDown, ChevronUp, Target, Plus, X, Check, Settings, Search, Play, XCircle, Shuffle, Sparkles, Trash2, Copy, Scale, ArrowUp, ArrowDown } from 'lucide-react';
-import { db } from '@/lib/db/schema';
-import { useUserStore } from '@/lib/store/userStore';
+import { useEffect, useState, useCallback } from 'react';
+import { db } from '@/lib/db';
+import { WorkoutPlan, WorkoutDay, PlanCategory, Difficulty, Exercise, EquipmentType } from '@/lib/types';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
-import type { WorkoutPlan, WorkoutDay, Exercise } from '@/lib/types';
+import { Plus, Play, Check, Trash2, ChevronDown, ChevronUp, Sparkles, X, Wand2, Scale, RefreshCw } from 'lucide-react';
 import {
-  ALL_EQUIPMENT,
-  EQUIPMENT_PRESETS,
-  matchesUserEquipment,
-  resolveWorkoutDayExercises,
-  generateSmartWorkout,
-  analyzePlanMuscleBalance,
+  buildResolvedActiveExercises,
+  calculatePlanMuscleCoverage,
+  generateSmartBalancedDays,
+  isGifBackedExercise,
+  matchesSelectedEquipment,
+  resolvePlanDayExercises,
 } from '@/lib/utils/exerciseResolver';
-import ExerciseMedia from '@/components/ui/ExerciseMedia';
 
-const CATEGORY_COLORS: Record<string, string> = {
-  Hypertrophy: 'var(--accent-purple)',
-  Strength: 'var(--accent-blue)',
-  Powerlifting: 'var(--accent-red)',
-  Cardio: 'var(--accent-orange)',
-  Bodyweight: 'var(--accent-green)',
-  Mobility: 'var(--accent-cyan)',
-  Custom: 'var(--accent-pink)',
-};
-
-const DIFFICULTY_LABELS: Record<string, { color: string; bg: string }> = {
-  beginner: { color: 'var(--accent-green)', bg: 'rgba(16,232,154,0.08)' },
-  intermediate: { color: 'var(--accent-yellow)', bg: 'rgba(251,191,36,0.08)' },
-  expert: { color: 'var(--accent-red)', bg: 'rgba(255,61,90,0.08)' },
-};
+const CATEGORIES: PlanCategory[] = ['Hypertrophy', 'Strength', 'Powerlifting', 'Bodyweight', 'Athletic', 'General Fitness'];
+const DIFFICULTIES: Difficulty[] = ['beginner', 'intermediate', 'expert'];
+const EQUIPMENT_FILTERS: { id: EquipmentType; label: string }[] = [
+  { id: 'barbell', label: 'Barbell' },
+  { id: 'dumbbell', label: 'Dumbbell' },
+  { id: 'cable', label: 'Cable' },
+  { id: 'machine', label: 'Machine' },
+  { id: 'bodyweight', label: 'Bodyweight' },
+  { id: 'kettlebell', label: 'Kettlebell' },
+  { id: 'bands', label: 'Bands' },
+];
 
 export default function PlansPage() {
-  const userEquipment = useUserStore(s => s.equipment);
-  const setStoreEquipment = useUserStore(s => s.setEquipment);
-  const barWeight = useUserStore(s => s.barWeight);
-  const dumbbellWeight = useUserStore(s => s.dumbbellWeight);
-  const exerciseVariety = useUserStore(s => s.exerciseVariety);
-  const setField = useUserStore(s => s.setField);
-
-  const startWorkout = useWorkoutStore(s => s.startWorkout);
+  const { startWorkout } = useWorkoutStore();
   const [plans, setPlans] = useState<WorkoutPlan[]>([]);
+  const [planDaysMap, setPlanDaysMap] = useState<Record<number, WorkoutDay[]>>({});
+  const [catalog, setCatalog] = useState<Exercise[]>([]);
+  const [isLoadingPlans, setIsLoadingPlans] = useState(true);
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedDifficulty, setSelectedDifficulty] = useState<string>('all');
+  const [selectedEquipment, setSelectedEquipment] = useState<EquipmentType[]>([]);
   const [expandedPlan, setExpandedPlan] = useState<number | null>(null);
-  const [planDays, setPlanDays] = useState<Record<number, WorkoutDay[]>>({});
-  const [allExercises, setAllExercises] = useState<Exercise[]>([]);
-  const [recentExerciseIds, setRecentExerciseIds] = useState<Set<number>>(new Set());
-  const [sessionCount, setSessionCount] = useState(0);
-  const [dayVarietySeeds, setDayVarietySeeds] = useState<Record<string, number>>({});
-  const [showEquipment, setShowEquipment] = useState(false);
-  const [showBuilder, setShowBuilder] = useState(false);
-  const [showSmartGenerator, setShowSmartGenerator] = useState(false);
-  const [categoryFilter, setCategoryFilter] = useState('all');
-  const [confirmDeletePlanId, setConfirmDeletePlanId] = useState<number | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showSmartModal, setShowSmartModal] = useState(false);
 
-  const selectedEquipment = useMemo(
-    () => (userEquipment && userEquipment.length > 0 ? userEquipment : [...ALL_EQUIPMENT]),
-    [userEquipment]
-  );
+  // Custom builder state
+  const [newName, setNewName] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  const [newCat, setNewCat] = useState<PlanCategory>('Hypertrophy');
+  const [newDiff, setNewDiff] = useState<Difficulty>('intermediate');
+  const [newDaysCount, setNewDaysCount] = useState(3);
+  const [newDays, setNewDays] = useState<{ name: string; exercises: { name: string; sets: number; reps: number }[] }[]>([
+    { name: 'Day 1', exercises: [{ name: '', sets: 3, reps: 10 }] },
+    { name: 'Day 2', exercises: [{ name: '', sets: 3, reps: 10 }] },
+    { name: 'Day 3', exercises: [{ name: '', sets: 3, reps: 10 }] },
+  ]);
+  const [allExercises, setAllExercises] = useState<string[]>([]);
 
-  useEffect(() => {
-    void loadPlansAndCatalog();
+  // Smart Balanced Plan Generator state
+  const [smartName, setSmartName] = useState('Custom Balanced Split');
+  const [smartFocus, setSmartFocus] = useState<PlanCategory>('Hypertrophy');
+  const [smartDiff, setSmartDiff] = useState<Difficulty>('intermediate');
+  const [smartDaysCount, setSmartDaysCount] = useState(4);
+  const [smartEquipment, setSmartEquipment] = useState<EquipmentType[]>(['barbell', 'dumbbell', 'cable', 'machine', 'bodyweight']);
+
+  const loadPlans = useCallback(async () => {
+    setIsLoadingPlans(true);
+    try {
+      const allPlans = await db.workoutPlans.toArray();
+      setPlans(allPlans);
+      const daysMap: Record<number, WorkoutDay[]> = {};
+      for (const p of allPlans) {
+        if (p.id) {
+          daysMap[p.id] = await db.workoutDays.where('planId').equals(p.id).sortBy('dayNumber');
+        }
+      }
+      setPlanDaysMap(daysMap);
+
+      const exs = await db.exercises.toArray();
+      setCatalog(exs);
+      setAllExercises(exs.filter(isGifBackedExercise).map((e) => e.name));
+    } finally {
+      setIsLoadingPlans(false);
+    }
   }, []);
 
-  const loadPlansAndCatalog = async () => {
-    try {
-      const [allPlans, allDays, catalog, recentSets, completedCount] = await Promise.all([
-        db.workoutPlans.toArray(),
-        db.workoutDays.toArray(),
-        db.exercises.toArray(),
-        db.sets.orderBy('completedAt').reverse().limit(120).toArray(),
-        db.workoutSessions.filter(s => s.isComplete).count(),
-      ]);
-      const daysByPlan: Record<number, WorkoutDay[]> = {};
-      for (const d of allDays) {
-        if (!daysByPlan[d.planId]) daysByPlan[d.planId] = [];
-        daysByPlan[d.planId].push(d);
-      }
-      for (const pid of Object.keys(daysByPlan)) {
-        daysByPlan[Number(pid)].sort((a, b) => a.dayNumber - b.dayNumber);
-      }
-      setPlans(allPlans);
-      setPlanDays(daysByPlan);
-      setAllExercises(catalog);
-      setRecentExerciseIds(new Set(recentSets.map(s => s.exerciseId).filter(Boolean)));
-      setSessionCount(completedCount);
-    } catch {}
+  useEffect(() => { loadPlans(); }, [loadPlans]);
+
+  const handleActivatePlan = async (planId: number) => {
+    await db.workoutPlans.toCollection().modify({ isActive: false });
+    await db.workoutPlans.update(planId, { isActive: true });
+    loadPlans();
   };
 
-  const persistEquipment = useCallback((updated: string[]) => {
-    const safeList = updated.length > 0 ? updated : ['body weight'];
-    setStoreEquipment(safeList);
-    db.userProfile.toArray().then(profiles => {
-      if (profiles[0]?.id) {
-        db.userProfile.update(profiles[0].id, { equipment: safeList });
-      }
-    });
-  }, [setStoreEquipment]);
-
-  const toggleEquipment = (eq: string) => {
-    const updated = selectedEquipment.includes(eq)
-      ? selectedEquipment.filter(e => e !== eq)
-      : [...selectedEquipment, eq];
-    persistEquipment(updated);
+  const handleDeletePlan = async (planId: number) => {
+    await db.workoutDays.where('planId').equals(planId).delete();
+    await db.workoutPlans.delete(planId);
+    loadPlans();
   };
 
-  const togglePlan = async (planId: number) => {
-    if (expandedPlan === planId) {
-      setExpandedPlan(null);
-      return;
-    }
-    setExpandedPlan(planId);
-    if (!planDays[planId]) {
-      const days = await db.workoutDays.where('planId').equals(planId).sortBy('dayNumber');
-      setPlanDays(prev => ({ ...prev, [planId]: days }));
-    }
+  const handleStartDay = async (plan: WorkoutPlan, day: WorkoutDay) => {
+    const resolvedDayExercises = resolvePlanDayExercises(day.exercises, catalog, selectedEquipment);
+    const activeExercises = await buildResolvedActiveExercises(resolvedDayExercises, selectedEquipment);
+    startWorkout(plan.id!, day.id!, `${plan.name} — ${day.name}`, activeExercises);
   };
 
-  // Atomic transaction + optimistic state update for instant plan activation
-  const activatePlan = async (planId: number) => {
-    setPlans(prev => prev.map(p => ({ ...p, isActive: p.id === planId })));
-    await db.transaction('rw', db.workoutPlans, async () => {
-      const all = await db.workoutPlans.toArray();
-      await Promise.all(
-        all
-          .filter(p => p.id !== undefined)
-          .map(p => db.workoutPlans.update(p.id!, { isActive: p.id === planId }))
-      );
-    });
-    void loadPlansAndCatalog();
+  const handleDaysCountChange = (count: number) => {
+    setNewDaysCount(count);
+    const updated = [...newDays];
+    while (updated.length < count) updated.push({ name: `Day ${updated.length + 1}`, exercises: [{ name: '', sets: 3, reps: 10 }] });
+    while (updated.length > count) updated.pop();
+    setNewDays(updated);
   };
 
-  const deactivatePlan = async (planId: number) => {
-    setPlans(prev => prev.map(p => (p.id === planId ? { ...p, isActive: false } : p)));
-    await db.workoutPlans.update(planId, { isActive: false });
-    void loadPlansAndCatalog();
+  const handleAutoFillCustomDays = () => {
+    const generated = generateSmartBalancedDays(catalog, newDaysCount, selectedEquipment, newCat);
+    setNewDays(
+      generated.map((d) => ({
+        name: d.name,
+        exercises: d.exercises.map((ex) => ({
+          name: ex.exerciseName,
+          sets: ex.sets,
+          reps: ex.reps,
+        })),
+      }))
+    );
   };
 
-  const deleteCustomPlan = async (planId: number) => {
-    await db.transaction('rw', [db.workoutDays, db.workoutPlans], async () => {
-      await db.workoutDays.where('planId').equals(planId).delete();
-      await db.workoutPlans.delete(planId);
-    });
-    setConfirmDeletePlanId(null);
-    if (expandedPlan === planId) setExpandedPlan(null);
-    void loadPlansAndCatalog();
-  };
-
-  const duplicatePlan = async (plan: WorkoutPlan) => {
-    if (!plan.id) return;
-    const days = planDays[plan.id] || await db.workoutDays.where('planId').equals(plan.id).sortBy('dayNumber');
-    const newPlanId = await db.workoutPlans.add({
-      ...plan,
-      id: undefined,
-      name: `${plan.name} (Custom)`,
-      category: 'Custom',
+  const handleCreatePlan = async () => {
+    if (!newName.trim()) return;
+    const planId = await db.workoutPlans.add({
+      name: newName.trim(),
+      description: newDesc.trim() || 'Custom balanced workout plan',
+      category: newCat,
+      difficulty: newDiff,
+      daysPerWeek: newDaysCount,
       isCustom: true,
       isActive: false,
       createdAt: new Date(),
       updatedAt: new Date(),
-    } as any);
-    for (const day of days) {
+    });
+    for (let i = 0; i < newDays.length; i++) {
+      const d = newDays[i];
       await db.workoutDays.add({
-        ...day,
-        id: undefined,
-        planId: newPlanId,
-      } as any);
+        planId,
+        dayNumber: i + 1,
+        name: d.name || `Day ${i + 1}`,
+        exercises: d.exercises.filter((e) => e.name.trim()).map((e, idx) => ({
+          exerciseId: 0,
+          exerciseName: e.name.trim().toLowerCase(),
+          sets: e.sets,
+          reps: e.reps,
+          restTime: 90,
+          setType: 'normal' as const,
+          order: idx,
+        })),
+      });
     }
-    void loadPlansAndCatalog();
+    setShowCreateModal(false);
+    setNewName('');
+    setNewDesc('');
+    loadPlans();
   };
 
-  const getDaySeed = (planId: number, dayNumber: number) => {
-    const key = `${planId}_${dayNumber}`;
-    const customSeed = dayVarietySeeds[key] || 0;
-    return sessionCount + dayNumber * 2 + customSeed;
-  };
+  const handleCreateSmartPlan = async () => {
+    if (!smartName.trim()) return;
+    const generatedDays = generateSmartBalancedDays(catalog, smartDaysCount, smartEquipment, smartFocus);
+    await db.workoutPlans.toCollection().modify({ isActive: false });
 
-  const shuffleDayExercises = (planId: number, dayNumber: number) => {
-    const key = `${planId}_${dayNumber}`;
-    setDayVarietySeeds(prev => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
-  };
-
-  const previewDayExercises = useCallback((plan: WorkoutPlan, day: WorkoutDay) => {
-    if (allExercises.length === 0) {
-      return day.exercises.map(e => e.exerciseName);
-    }
-    const seed = getDaySeed(plan.id || 0, day.dayNumber);
-    const resolved = resolveWorkoutDayExercises({
-      dayExercises: day.exercises,
-      allExercises,
-      userEquipment: selectedEquipment,
-      barWeight,
-      dumbbellWeight,
-      recentExerciseIds,
-      varietySeed: seed,
-      varietyLevel: exerciseVariety || 'medium',
-    });
-    return resolved.map(r => r.exerciseName);
-  }, [allExercises, selectedEquipment, barWeight, dumbbellWeight, recentExerciseIds, exerciseVariety, sessionCount, dayVarietySeeds]);
-
-  const startDay = async (plan: WorkoutPlan, day: WorkoutDay) => {
-    const savedSwaps: Record<string, { newExerciseId: number; newExerciseName: string; newGifUrl?: string }> = {};
-    try {
-      const swaps = await db.exerciseSwaps.where('planName').equals(plan.name).filter(s => s.dayName === day.name).toArray();
-      for (const swap of swaps) {
-        savedSwaps[swap.originalExerciseName.toLowerCase()] = {
-          newExerciseId: swap.newExerciseId,
-          newExerciseName: swap.newExerciseName,
-          newGifUrl: swap.newGifUrl,
-        };
-      }
-    } catch {}
-
-    const catalog = allExercises.length > 0 ? allExercises : await db.exercises.toArray();
-    const seed = getDaySeed(plan.id || 0, day.dayNumber);
-
-    const exercises = resolveWorkoutDayExercises({
-      dayExercises: day.exercises,
-      allExercises: catalog,
-      userEquipment: selectedEquipment,
-      barWeight,
-      dumbbellWeight,
-      savedSwaps,
-      recentExerciseIds,
-      varietySeed: seed,
-      varietyLevel: exerciseVariety || 'medium',
+    const equipLabel = smartEquipment.length > 0 ? smartEquipment.join(', ') : 'full gym';
+    const planId = await db.workoutPlans.add({
+      name: smartName.trim(),
+      description: `Auto-balanced ${smartDaysCount}-day ${smartFocus.toLowerCase()} split targeting Chest, Back, Shoulders, Quads, Hamstrings/Glutes, Biceps, Triceps & Core (${equipLabel}).`,
+      category: smartFocus,
+      difficulty: smartDiff,
+      daysPerWeek: smartDaysCount,
+      isCustom: true,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
 
-    startWorkout(plan.name, day.name, exercises);
+    for (let i = 0; i < generatedDays.length; i++) {
+      const day = generatedDays[i];
+      await db.workoutDays.add({
+        planId,
+        dayNumber: i + 1,
+        name: day.name,
+        exercises: day.exercises,
+      });
+    }
+
+    setShowSmartModal(false);
+    loadPlans();
   };
 
-  const categories = useMemo(() => {
-    const cats = new Set(plans.map(p => p.category));
-    return ['all', ...Array.from(cats)];
-  }, [plans]);
+  const toggleEquipmentFilter = (eq: EquipmentType) => {
+    setSelectedEquipment((prev) =>
+      prev.includes(eq) ? prev.filter((item) => item !== eq) : [...prev, eq]
+    );
+  };
 
-  const filteredPlans = useMemo(() => {
-    if (categoryFilter === 'all') return plans;
-    return plans.filter(p => p.category === categoryFilter);
-  }, [plans, categoryFilter]);
+  const toggleSmartEquipment = (eq: EquipmentType) => {
+    setSmartEquipment((prev) =>
+      prev.includes(eq) ? prev.filter((item) => item !== eq) : [...prev, eq]
+    );
+  };
 
-  const availableExerciseCount = useMemo(() => {
-    if (allExercises.length === 0) return 0;
-    return allExercises.filter(e => matchesUserEquipment(e, selectedEquipment)).length;
-  }, [allExercises, selectedEquipment]);
+  const filtered = plans.filter((p) => {
+    if (selectedCategory !== 'all' && p.category !== selectedCategory) return false;
+    if (selectedDifficulty !== 'all' && p.difficulty !== selectedDifficulty) return false;
+    return true;
+  });
+
+  const getDiffColor = (d: Difficulty) => {
+    if (d === 'beginner') return 'badge-success';
+    if (d === 'intermediate') return 'badge-warning';
+    return 'badge-danger';
+  };
+
+  const gifBackedCount = catalog.filter((e) => isGifBackedExercise(e) && matchesSelectedEquipment(e, selectedEquipment)).length;
 
   return (
     <div className="page-container">
-      {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 18 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-          <div>
-            <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em' }}>
-              <span className="gradient-text">Workout Plans</span>
-            </h1>
-            <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>
-              {plans.length} balanced programs • {availableExerciseCount.toLocaleString()} exercises match your equipment
-            </p>
-          </div>
+      <div className="animate-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 14 }}>
+        <div>
+          <h1 className="page-title" style={{ marginBottom: 4 }}>Workout Plans</h1>
+          <p style={{ color: 'var(--text-tertiary)', fontSize: '0.76rem' }}>
+            {isLoadingPlans
+              ? 'Loading balanced programs & exercise catalog…'
+              : `${plans.length} balanced programs • ${gifBackedCount} GIF-verified exercises ready`}
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginTop: 2 }}>
           <button
-            onClick={() => setShowSmartGenerator(true)}
             className="btn-secondary"
-            style={{ padding: '10px 14px', borderRadius: 12, fontSize: 12, fontWeight: 700, flexShrink: 0, border: '1px solid var(--accent-purple)' }}
+            onClick={() => setShowSmartModal(true)}
+            style={{ padding: '7px 10px', fontSize: '0.72rem' }}
+            title="Smart Plan Generator"
           >
-            <Sparkles size={14} color="var(--accent-purple)" /> Generate
+            <Wand2 size={13} color="var(--accent-primary)" /> Smart
+          </button>
+          <button
+            className="btn-primary"
+            onClick={() => setShowCreateModal(true)}
+            style={{ padding: '7px 11px', fontSize: '0.72rem' }}
+            title="Create Custom Plan"
+          >
+            <Plus size={13} /> Custom
           </button>
         </div>
-      </motion.div>
-
-      {/* Equipment Setup + Variety Control */}
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.04 }}
-        style={{ marginBottom: 16 }}>
-        <button onClick={() => setShowEquipment(!showEquipment)} className="card" style={{
-          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          cursor: 'pointer', padding: '14px 16px', minHeight: 56,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--gradient-mint)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Settings size={16} color="white" />
-            </div>
-            <div style={{ textAlign: 'left' }}>
-              <div style={{ fontSize: 14, fontWeight: 700 }}>My Equipment &amp; Variety</div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                {selectedEquipment.length} selected ({selectedEquipment.slice(0, 3).join(', ')}{selectedEquipment.length > 3 ? '...' : ''}) • Variety: {exerciseVariety || 'medium'}
-              </div>
-            </div>
-          </div>
-          {showEquipment ? <ChevronUp size={16} color="var(--text-muted)" /> : <ChevronDown size={16} color="var(--text-muted)" />}
-        </button>
-
-        <AnimatePresence>
-          {showEquipment && (
-            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} style={{ overflow: 'hidden' }}>
-              <div className="card" style={{ marginTop: 8, padding: 14 }}>
-                <div className="section-label" style={{ marginBottom: 8 }}>Quick Equipment Presets</div>
-                <div className="chip-scroll" style={{ marginBottom: 12 }}>
-                  {EQUIPMENT_PRESETS.map(preset => (
-                    <button
-                      key={preset.id}
-                      className="filter-chip"
-                      onClick={() => persistEquipment(preset.items)}
-                      style={{ fontSize: 11, padding: '6px 12px' }}
-                    >
-                      <span>{preset.icon}</span> {preset.label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="section-label" style={{ marginBottom: 8 }}>Available Equipment (Strict Filter)</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, marginBottom: 12 }}>
-                  {ALL_EQUIPMENT.map(eq => (
-                    <button key={eq} className={`equipment-check ${selectedEquipment.includes(eq) ? 'selected' : ''}`} onClick={() => toggleEquipment(eq)}>
-                      <div className="equipment-check-box">
-                        {selectedEquipment.includes(eq) && <Check size={12} color="white" />}
-                      </div>
-                      <span style={{ fontSize: 12, fontWeight: 600, textTransform: 'capitalize', color: 'var(--text-secondary)' }}>{eq}</span>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="section-label" style={{ marginBottom: 8 }}>Exercise Variety Mode</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-                  {([
-                    { id: 'low' as const, label: 'Consistent', desc: 'Stick to core lifts' },
-                    { id: 'medium' as const, label: 'Balanced', desc: 'Rotate accessories' },
-                    { id: 'high' as const, label: 'High Variety', desc: 'Max exercise mix' },
-                  ]).map(v => (
-                    <button
-                      key={v.id}
-                      onClick={() => {
-                        setField('exerciseVariety', v.id);
-                        db.userProfile.toArray().then(p => {
-                          if (p[0]?.id) db.userProfile.update(p[0].id, { exerciseVariety: v.id });
-                        });
-                      }}
-                      style={{
-                        padding: '10px 6px', borderRadius: 10, cursor: 'pointer', textAlign: 'center',
-                        background: (exerciseVariety || 'medium') === v.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
-                        border: (exerciseVariety || 'medium') === v.id ? 'none' : '1px solid var(--border-subtle)',
-                        color: (exerciseVariety || 'medium') === v.id ? 'var(--on-accent-text)' : 'var(--text-secondary)',
-                      }}
-                    >
-                      <div style={{ fontSize: 11, fontWeight: 700 }}>{v.label}</div>
-                      <div style={{ fontSize: 9, opacity: 0.85, marginTop: 2 }}>{v.desc}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
+      </div>
 
       {/* Category Filter */}
-      <div className="chip-scroll">
-        {categories.map(cat => (
-          <button key={cat} className={`filter-chip ${categoryFilter === cat ? 'active' : ''}`}
-            onClick={() => setCategoryFilter(cat)}>
-            {cat === 'all' ? 'All' : cat}
-          </button>
+      <div className="chip-scroll" style={{ marginBottom: 8 }}>
+        <button className={`chip ${selectedCategory === 'all' ? 'active' : ''}`} onClick={() => setSelectedCategory('all')}>All</button>
+        {CATEGORIES.map((c) => (
+          <button key={c} className={`chip ${selectedCategory === c ? 'active' : ''}`} onClick={() => setSelectedCategory(c)}>{c}</button>
         ))}
       </div>
 
-      {/* Plans List */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {filteredPlans.map((plan, i) => {
+      {/* Difficulty Filter */}
+      <div className="chip-scroll" style={{ marginBottom: 8 }}>
+        <button className={`chip ${selectedDifficulty === 'all' ? 'active' : ''}`} onClick={() => setSelectedDifficulty('all')}>All Levels</button>
+        {DIFFICULTIES.map((d) => (
+          <button key={d} className={`chip ${selectedDifficulty === d ? 'active' : ''}`} onClick={() => setSelectedDifficulty(d)} style={{ textTransform: 'capitalize' }}>{d}</button>
+        ))}
+      </div>
+
+      {/* Available Equipment Filter (dynamically adapts plan exercises) */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Available Equipment {selectedEquipment.length > 0 ? `(${selectedEquipment.length} active — auto-adapts exercises)` : '(All Gym Equipment)'}
+          </span>
+          {selectedEquipment.length > 0 && (
+            <button
+              onClick={() => setSelectedEquipment([])}
+              style={{ background: 'none', border: 'none', color: 'var(--accent-secondary)', fontSize: '0.68rem', cursor: 'pointer', fontWeight: 600 }}
+            >
+              Reset
+            </button>
+          )}
+        </div>
+        <div className="chip-scroll">
+          {EQUIPMENT_FILTERS.map((eq) => (
+            <button
+              key={eq.id}
+              className={`chip ${selectedEquipment.includes(eq.id) ? 'active' : ''}`}
+              onClick={() => toggleEquipmentFilter(eq.id)}
+            >
+              {eq.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Plan Cards */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
+        {filtered.map((plan) => {
+          const rawDays = plan.id ? planDaysMap[plan.id] || [] : [];
+          const resolvedDays = rawDays.map((d) => ({
+            ...d,
+            exercises: resolvePlanDayExercises(d.exercises, catalog, selectedEquipment),
+          }));
+          const coverage = calculatePlanMuscleCoverage(resolvedDays, catalog);
           const isExpanded = expandedPlan === plan.id;
-          const days = planDays[plan.id!] || [];
-          const catColor = CATEGORY_COLORS[plan.category] || 'var(--text-muted)';
-          const diff = DIFFICULTY_LABELS[plan.difficulty] || DIFFICULTY_LABELS.intermediate;
-          const balance = days.length > 0 ? analyzePlanMuscleBalance(days, allExercises) : null;
 
           return (
-            <motion.div key={plan.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i * 0.02, 0.2) }}>
-              <div className="card" style={{ padding: 0, overflow: 'hidden', border: plan.isActive ? '1px solid rgba(16,232,154,0.35)' : '1px solid var(--border-subtle)' }}>
-                {plan.isActive && (
-                  <div style={{ background: 'var(--gradient-mint)', padding: '5px 0', textAlign: 'center', fontSize: 10, fontWeight: 800, color: 'white', letterSpacing: 1.2, textTransform: 'uppercase' }}>
-                    ✓ Active Plan
+            <div key={plan.id} className="card" style={{ border: plan.isActive ? '1px solid var(--accent-primary)' : undefined, position: 'relative' }}>
+              {plan.isActive && (
+                <div style={{ position: 'absolute', top: 12, right: 12 }}>
+                  <span className="badge badge-accent"><Sparkles size={10} /> Active</span>
+                </div>
+              )}
+              <div onClick={() => setExpandedPlan(isExpanded ? null : (plan.id ?? null))} style={{ cursor: 'pointer' }}>
+                <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+                  <span className="badge badge-accent">{plan.category}</span>
+                  <span className={`badge ${getDiffColor(plan.difficulty)}`} style={{ textTransform: 'capitalize' }}>{plan.difficulty}</span>
+                  <span className="badge" style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)' }}>{plan.daysPerWeek}d/wk</span>
+                  <span className="badge badge-success" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                    <Scale size={10} /> Balanced
+                  </span>
+                  {plan.isCustom && <span className="badge" style={{ background: 'rgba(139,92,246,0.15)', color: '#c084fc' }}>Custom</span>}
+                </div>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: 4, paddingRight: plan.isActive ? 74 : 0 }}>{plan.name}</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', lineHeight: 1.4 }}>{plan.description}</p>
+
+                {/* Full-Body Muscle Balance Bar (Shows full labels including Delts & Triceps) */}
+                {coverage.length > 0 && (
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ display: 'flex', height: 5, borderRadius: 999, overflow: 'hidden', background: 'rgba(255,255,255,0.06)', gap: 1 }}>
+                      {coverage.map((c) => (
+                        <div key={c.group} style={{ width: `${Math.max(8, c.percentage)}%`, background: c.color }} />
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 10px', marginTop: 6 }}>
+                      {coverage.map((c) => (
+                        <span key={c.group} style={{ fontSize: '0.63rem', color: 'var(--text-tertiary)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.color, display: 'inline-block', flexShrink: 0 }} />
+                          {c.label} {c.percentage}%
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
-                <button onClick={() => togglePlan(plan.id!)} style={{
-                  width: '100%', padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--text-primary)', minHeight: 80,
-                }}>
-                  <div style={{ flex: 1, paddingRight: 10 }}>
-                    <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 6, letterSpacing: '-0.01em' }}>{plan.name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 10 }}>{plan.description}</div>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: balance ? 10 : 0 }}>
-                      <span className="badge" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-subtle)', fontSize: 10 }}>
-                        📅 {plan.daysPerWeek}d/week
-                      </span>
-                      <span className="badge" style={{ background: diff.bg, color: diff.color, border: `1px solid ${diff.color}20`, fontSize: 10, textTransform: 'capitalize' }}>
-                        ☆ {plan.difficulty}
-                      </span>
-                      <span className="badge" style={{ background: `${catColor}10`, color: catColor, border: `1px solid ${catColor}20`, fontSize: 10 }}>
-                        {plan.category}
-                      </span>
-                      {balance && (
-                        <span className="badge" style={{ background: 'rgba(16,232,154,0.08)', color: 'var(--accent-green)', border: '1px solid rgba(16,232,154,0.2)', fontSize: 10 }}>
-                          ⚖️ {balance.balanceScore}% Balanced • {balance.totalSets} sets/wk
-                        </span>
-                      )}
-                    </div>
 
-                    {/* Visual Body-Part Balance Bar */}
-                    {balance && (
-                      <div>
-                        <div style={{ display: 'flex', height: 5, borderRadius: 999, overflow: 'hidden', background: 'rgba(255,255,255,0.06)', gap: 1 }}>
-                          {balance.categories.filter(c => c.sets > 0).map(c => (
-                            <div key={c.id} style={{ flex: c.sets, background: c.color }} title={`${c.label}: ${c.percentage}%`} />
-                          ))}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 8, color: 'var(--text-tertiary)', fontSize: '0.75rem' }}>
+                  {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  <span>{isExpanded ? 'Hide' : 'Show'} {resolvedDays.length} workout days</span>
+                </div>
+              </div>
+
+              {isExpanded && (
+                <div style={{ marginTop: 16, borderTop: '1px solid var(--border-glass)', paddingTop: 16 }}>
+                  {resolvedDays.map((day) => (
+                    <div key={day.id || day.dayNumber} style={{ marginBottom: 14, padding: 12, background: 'rgba(255,255,255,0.025)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <span style={{ fontWeight: 700, fontSize: '0.86rem', color: 'var(--accent-secondary)', display: 'block', lineHeight: 1.3 }}>
+                            Day {day.dayNumber}: {day.name}
+                          </span>
+                          <span style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', display: 'block', marginTop: 2 }}>
+                            {day.exercises.length} exercises • GIF & equipment matched
+                          </span>
                         </div>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 5 }}>
-                          {balance.categories.filter(c => c.sets > 0).map(c => (
-                            <span key={c.id} style={{ fontSize: 9, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                              <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.color }} />
-                              {c.label.split(' ')[0]} {c.percentage}%
-                            </span>
-                          ))}
-                        </div>
+                        <button
+                          className="btn-primary"
+                          onClick={() => handleStartDay(plan, day)}
+                          style={{ padding: '7px 13px', fontSize: '0.74rem', flexShrink: 0 }}
+                        >
+                          <Play size={12} fill="white" /> Start
+                        </button>
                       </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                        {day.exercises.map((ex, i) => (
+                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: 'var(--text-secondary)', padding: '3px 0', borderBottom: i < day.exercises.length - 1 ? '1px solid rgba(255,255,255,0.03)' : 'none' }}>
+                            <span style={{ textTransform: 'capitalize', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ex.exerciseName}</span>
+                            <span style={{ color: 'var(--text-tertiary)', fontWeight: 600, flexShrink: 0 }}>{ex.sets} × {ex.reps}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                    {!plan.isActive && (
+                      <button className="btn-primary" onClick={() => handleActivatePlan(plan.id!)} style={{ flex: 1, padding: '10px', fontSize: '0.8rem' }}>
+                        <Check size={14} /> Set as Active Plan
+                      </button>
+                    )}
+                    {plan.isCustom && (
+                      <button className="btn-danger" onClick={() => handleDeletePlan(plan.id!)} style={{ padding: '10px 14px', fontSize: '0.8rem' }}>
+                        <Trash2 size={14} />
+                      </button>
                     )}
                   </div>
-                  <motion.div animate={{ rotate: isExpanded ? 90 : 0 }} transition={{ duration: 0.2 }}>
-                    <ChevronRight size={18} color="var(--text-muted)" />
-                  </motion.div>
-                </button>
-
-                <AnimatePresence>
-                  {isExpanded && (
-                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                      style={{ overflow: 'hidden', borderTop: '1px solid var(--border-subtle)' }}>
-                      <div style={{ padding: 16 }}>
-                        {days.map((day, j) => {
-                          const resolvedNames = previewDayExercises(plan, day);
-                          return (
-                            <div key={day.id} style={{ padding: '12px 0', borderBottom: j < days.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
-                                  <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--gradient-fire)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, color: 'var(--on-accent-text)', flexShrink: 0 }}>
-                                    D{day.dayNumber}
-                                  </div>
-                                  <div style={{ minWidth: 0, flex: 1 }}>
-                                    <div style={{ fontSize: 14, fontWeight: 700 }}>{day.name}</div>
-                                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                                      {day.exercises.length} exercises • GIF &amp; equipment matched
-                                    </div>
-                                  </div>
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <button
-                                    onClick={() => shuffleDayExercises(plan.id!, day.dayNumber)}
-                                    title="Vary exercises from catalog"
-                                    className="btn-secondary"
-                                    style={{ borderRadius: 12, padding: '10px 12px', fontSize: 11, fontWeight: 700, minHeight: 40 }}
-                                  >
-                                    <Shuffle size={13} /> Vary
-                                  </button>
-                                  <motion.button
-                                    whileTap={{ scale: 0.94 }}
-                                    onClick={() => startDay(plan, day)}
-                                    className="btn-primary"
-                                    style={{ width: 'auto', borderRadius: 12, padding: '10px 16px', fontSize: 12, minHeight: 40 }}
-                                  >
-                                    <Play size={13} fill="currentColor" /> Start
-                                  </motion.button>
-                                </div>
-                              </div>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8, paddingLeft: 48 }}>
-                                {resolvedNames.map((exName, idx) => (
-                                  <span key={idx} style={{
-                                    fontSize: 10, padding: '3px 8px', borderRadius: 6,
-                                    background: 'var(--bg-glass)', border: '1px solid var(--border-subtle)',
-                                    color: 'var(--text-secondary)', textTransform: 'capitalize',
-                                  }}>
-                                    {exName}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })}
-
-                        <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-                          {!plan.isActive ? (
-                            <motion.button
-                              whileTap={{ scale: 0.96 }}
-                              onClick={() => activatePlan(plan.id!)}
-                              style={{
-                                flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                                padding: '12px 16px', borderRadius: 14, minHeight: 46,
-                                background: 'rgba(16,232,154,0.08)', border: '1px solid rgba(16,232,154,0.25)',
-                                color: 'var(--accent-green)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                              }}
-                            >
-                              <Target size={14} /> Set as Active Plan
-                            </motion.button>
-                          ) : (
-                            <motion.button
-                              whileTap={{ scale: 0.96 }}
-                              onClick={() => deactivatePlan(plan.id!)}
-                              style={{
-                                flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                                padding: '12px 16px', borderRadius: 14, minHeight: 46,
-                                background: 'rgba(255,61,90,0.08)', border: '1px solid rgba(255,61,90,0.25)',
-                                color: 'var(--accent-red)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                              }}
-                            >
-                              <XCircle size={14} /> Remove Active
-                            </motion.button>
-                          )}
-
-                          <button
-                            onClick={() => duplicatePlan(plan)}
-                            className="btn-secondary"
-                            style={{ padding: '10px 14px', borderRadius: 14, minHeight: 46, fontSize: 12 }}
-                            title="Clone this plan to customize"
-                          >
-                            <Copy size={13} /> Clone
-                          </button>
-
-                          {plan.isCustom && (
-                            confirmDeletePlanId === plan.id ? (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <button
-                                  onClick={() => deleteCustomPlan(plan.id!)}
-                                  className="btn-cancel"
-                                  style={{ padding: '10px 12px', borderRadius: 12, minHeight: 46, fontSize: 11 }}
-                                >
-                                  Confirm Delete
-                                </button>
-                                <button
-                                  onClick={() => setConfirmDeletePlanId(null)}
-                                  className="btn-ghost"
-                                  style={{ padding: '10px 10px', minHeight: 46, fontSize: 11 }}
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => setConfirmDeletePlanId(plan.id!)}
-                                className="btn-cancel"
-                                style={{ padding: '10px 14px', borderRadius: 14, minHeight: 46, fontSize: 12 }}
-                                title="Delete custom plan"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            )
-                          )}
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </motion.div>
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
 
-      {/* Action Buttons */}
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}
-        style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <button onClick={() => setShowSmartGenerator(true)} className="btn-secondary" style={{ borderRadius: 16, minHeight: 52, width: '100%', border: '1px solid var(--accent-purple)' }}>
-          <Sparkles size={18} color="var(--accent-purple)" /> Smart Balanced Workout Generator
+      {/* Bottom Action Buttons: Smart Balanced Generator + Custom Builder */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <button className="btn-primary" onClick={() => setShowSmartModal(true)} style={{ width: '100%', padding: 13, fontSize: '0.82rem' }}>
+          <Wand2 size={16} /> Smart Generator
         </button>
-        <button onClick={() => setShowBuilder(true)} className="btn-primary" style={{ borderRadius: 16, minHeight: 52 }}>
-          <Plus size={18} /> Create Custom Plan
+        <button className="btn-secondary" onClick={() => setShowCreateModal(true)} style={{ width: '100%', padding: 13, fontSize: '0.82rem' }}>
+          <Plus size={16} /> Custom Plan
         </button>
-      </motion.div>
+      </div>
 
-      <AnimatePresence>
-        {showBuilder && <CustomPlanBuilder onClose={() => { setShowBuilder(false); void loadPlansAndCatalog(); }} equipment={selectedEquipment} />}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showSmartGenerator && (
-          <SmartWorkoutGeneratorModal
-            onClose={() => { setShowSmartGenerator(false); void loadPlansAndCatalog(); }}
-            equipment={selectedEquipment}
-            allExercises={allExercises}
-            recentExerciseIds={recentExerciseIds}
-            barWeight={barWeight}
-            dumbbellWeight={dumbbellWeight}
-          />
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-/* ===== SMART WORKOUT GENERATOR MODAL ===== */
-function SmartWorkoutGeneratorModal({
-  onClose,
-  equipment,
-  allExercises,
-  recentExerciseIds,
-  barWeight,
-  dumbbellWeight,
-}: {
-  onClose: () => void;
-  equipment: string[];
-  allExercises: Exercise[];
-  recentExerciseIds: Set<number>;
-  barWeight: number;
-  dumbbellWeight: number;
-}) {
-  const startWorkout = useWorkoutStore(s => s.startWorkout);
-  const [selectedMuscles, setSelectedMuscles] = useState<string[]>(['chest', 'back', 'shoulders', 'quads', 'hamstrings', 'biceps', 'triceps', 'abs']);
-  const [exerciseCount, setExerciseCount] = useState(6);
-  const [setsCount, setSetsCount] = useState(3);
-  const [repsCount, setRepsCount] = useState(10);
-  const [seed, setSeed] = useState(() => Date.now());
-  const [saveName, setSaveName] = useState('');
-
-  const MUSCLE_CHOICES = [
-    'chest', 'back', 'shoulders', 'biceps', 'triceps', 'quads', 'hamstrings', 'glutes', 'calves', 'abs', 'forearms', 'traps',
-  ];
-
-  const SPLIT_PRESETS = [
-    { label: 'Full Body Balance', muscles: ['quads', 'hamstrings', 'chest', 'back', 'shoulders', 'biceps', 'triceps', 'abs'] },
-    { label: 'Push (Chest/Delts/Tri)', muscles: ['chest', 'shoulders', 'triceps'] },
-    { label: 'Pull (Back/Traps/Bi)', muscles: ['back', 'traps', 'biceps', 'forearms'] },
-    { label: 'Legs & Core', muscles: ['quads', 'hamstrings', 'glutes', 'calves', 'abs'] },
-    { label: 'Upper Body Symmetry', muscles: ['chest', 'back', 'shoulders', 'biceps', 'triceps'] },
-  ];
-
-  const toggleMuscle = (m: string) => {
-    setSelectedMuscles(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]);
-  };
-
-  const generatedList = useMemo(() => {
-    return generateSmartWorkout({
-      targetMuscles: selectedMuscles,
-      exerciseCount,
-      setsPerExercise: setsCount,
-      repsPerSet: repsCount,
-      allExercises,
-      userEquipment: equipment,
-      recentExerciseIds,
-      seed,
-    });
-  }, [selectedMuscles, exerciseCount, setsCount, repsCount, allExercises, equipment, recentExerciseIds, seed]);
-
-  const handleStartNow = () => {
-    const dayExercises = generatedList.map((item, i) => ({
-      exerciseId: 0,
-      exerciseName: item.name,
-      sets: item.sets,
-      reps: item.reps,
-      restTime: 90,
-      setType: 'normal' as any,
-      order: i,
-    }));
-    const resolved = resolveWorkoutDayExercises({
-      dayExercises,
-      allExercises,
-      userEquipment: equipment,
-      barWeight,
-      dumbbellWeight,
-      recentExerciseIds,
-      varietySeed: 0,
-      varietyLevel: 'low',
-    });
-    startWorkout('Smart Workout', `${selectedMuscles.slice(0, 2).join(' + ').toUpperCase()} Session`, resolved);
-    onClose();
-  };
-
-  const handleSaveAsPlan = async () => {
-    const name = saveName.trim() || `Smart ${selectedMuscles.slice(0, 2).join('/')} Plan`;
-    const planId = await db.workoutPlans.add({
-      name,
-      description: `Balanced smart plan for ${equipment.slice(0, 3).join(', ')} (${selectedMuscles.join(', ')})`,
-      category: 'Custom',
-      difficulty: 'intermediate',
-      daysPerWeek: 3,
-      isCustom: true,
-      isActive: false,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    } as any);
-
-    await db.workoutDays.add({
-      planId,
-      dayNumber: 1,
-      name: 'Balanced Session',
-      exercises: generatedList.map((ex, i) => ({
-        exerciseId: 0,
-        exerciseName: ex.name,
-        sets: ex.sets,
-        reps: ex.reps,
-        restTime: 90,
-        setType: 'normal',
-        order: i,
-      })),
-    } as any);
-    onClose();
-  };
-
-  return (
-    <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
-      <motion.div
-        className="modal-content"
-        initial={{ y: '100%' }}
-        animate={{ y: 0 }}
-        exit={{ y: '100%' }}
-        drag="y"
-        dragConstraints={{ top: 0, bottom: 0 }}
-        dragElastic={{ top: 0, bottom: 0.6 }}
-        onDragEnd={(_, info) => {
-          if (info.offset.y > 100 || info.velocity.y > 450) onClose();
-        }}
-        transition={{ type: 'spring', damping: 26, stiffness: 300 }}
-        onClick={e => e.stopPropagation()}
-        style={{ maxHeight: '92dvh' }}
-      >
-        <div className="modal-handle" />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h2 className="font-display" style={{ fontSize: 20, fontWeight: 800 }}>✨ Smart Balanced Generator</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}><X size={18} /></button>
-        </div>
-        <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>
-          Balances compound &amp; isolation movements across target muscles using GIF-backed exercises for your {equipment.length} selected equipment items.
-        </p>
-
-        <div className="section-label" style={{ marginBottom: 6 }}>Balanced Split Presets</div>
-        <div className="chip-scroll" style={{ marginBottom: 12 }}>
-          {SPLIT_PRESETS.map(p => (
-            <button
-              key={p.label}
-              onClick={() => setSelectedMuscles(p.muscles)}
-              className="filter-chip"
-              style={{ fontSize: 10, padding: '5px 10px' }}
-            >
-              <Scale size={11} /> {p.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="section-label" style={{ marginBottom: 8 }}>Target Muscles</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
-          {MUSCLE_CHOICES.map(m => (
-            <button key={m} className={`filter-chip ${selectedMuscles.includes(m) ? 'active' : ''}`}
-              onClick={() => toggleMuscle(m)} style={{ fontSize: 11, padding: '6px 12px', textTransform: 'capitalize' }}>
-              {m}
-            </button>
-          ))}
-        </div>
-
-        {/* Styled Chip Selectors Instead of Unstyled OS Select Dropdowns */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14 }}>
-          <div>
-            <div className="section-label" style={{ marginBottom: 4 }}>Exercises</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-              {[4, 5, 6, 8].map(n => (
-                <button
-                  key={n}
-                  onClick={() => setExerciseCount(n)}
-                  style={{
-                    flex: 1, padding: '7px 4px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                    background: exerciseCount === n ? 'var(--gradient-fire)' : 'var(--bg-input)',
-                    border: exerciseCount === n ? 'none' : '1px solid var(--border-subtle)',
-                    color: exerciseCount === n ? 'var(--on-accent-text)' : 'var(--text-secondary)',
-                  }}
-                >
-                  {n}
-                </button>
-              ))}
+      {/* Smart Balanced Plan Generator Modal */}
+      {showSmartModal && (
+        <div className="modal-overlay" onClick={() => setShowSmartModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Wand2 size={18} color="var(--accent-primary)" />
+                <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Smart Balanced Generator</h2>
+              </div>
+              <button onClick={() => setShowSmartModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer' }}><X size={20} /></button>
             </div>
-          </div>
-          <div>
-            <div className="section-label" style={{ marginBottom: 4 }}>Sets</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-              {[2, 3, 4, 5].map(n => (
-                <button
-                  key={n}
-                  onClick={() => setSetsCount(n)}
-                  style={{
-                    flex: 1, padding: '7px 4px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                    background: setsCount === n ? 'var(--gradient-ocean)' : 'var(--bg-input)',
-                    border: setsCount === n ? 'none' : '1px solid var(--border-subtle)',
-                    color: setsCount === n ? '#ffffff' : 'var(--text-secondary)',
-                  }}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <div className="section-label" style={{ marginBottom: 4 }}>Reps</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-              {[5, 8, 10, 12, 15].map(n => (
-                <button
-                  key={n}
-                  onClick={() => setRepsCount(n)}
-                  style={{
-                    flex: 1, padding: '7px 3px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                    background: repsCount === n ? 'var(--gradient-mint)' : 'var(--bg-input)',
-                    border: repsCount === n ? 'none' : '1px solid var(--border-subtle)',
-                    color: repsCount === n ? '#ffffff' : 'var(--text-secondary)',
-                  }}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <span className="section-label">Generated Lineup</span>
-          <button onClick={() => setSeed(Date.now() + Math.floor(Math.random() * 10000))} className="btn-ghost" style={{ fontSize: 11, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--accent-purple)' }}>
-            <Shuffle size={12} /> Reroll Exercises
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '25vh', overflowY: 'auto', marginBottom: 14 }}>
-          {generatedList.map((item, idx) => (
-            <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--bg-glass)', borderRadius: 10, border: '1px solid var(--border-subtle)' }}>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: 14, lineHeight: 1.45 }}>
+              Automatically builds a balanced weekly program across Chest, Back, Shoulders, Quads, Hamstrings/Glutes, Biceps, Triceps, and Core using only exercises with verified GIF demonstrations and your chosen equipment.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <input className="input" placeholder="Plan Name" value={smartName} onChange={(e) => setSmartName(e.target.value)} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <select className="input" value={smartFocus} onChange={(e) => setSmartFocus(e.target.value as PlanCategory)}>
+                  {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <select className="input" value={smartDiff} onChange={(e) => setSmartDiff(e.target.value as Difficulty)}>
+                  {DIFFICULTIES.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'capitalize' }}>{item.name}</div>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{item.equipment} • {item.primaryMuscle}</div>
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: 6, display: 'block', fontWeight: 600 }}>
+                  Days per week: {smartDaysCount}
+                </label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {[2, 3, 4, 5, 6].map((n) => (
+                    <button key={n} className={`chip ${smartDaysCount === n ? 'active' : ''}`} onClick={() => setSmartDaysCount(n)}>{n}d</button>
+                  ))}
+                </div>
               </div>
-              <div className="font-mono" style={{ fontSize: 12, color: 'var(--accent-green)', fontWeight: 700 }}>{item.sets}×{item.reps}</div>
+              <div>
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: 6, display: 'block', fontWeight: 600 }}>
+                  Equipment to Include
+                </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {EQUIPMENT_FILTERS.map((eq) => (
+                    <button
+                      key={eq.id}
+                      type="button"
+                      className={`chip ${smartEquipment.includes(eq.id) ? 'active' : ''}`}
+                      onClick={() => toggleSmartEquipment(eq.id)}
+                    >
+                      {eq.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button className="btn-primary" onClick={handleCreateSmartPlan} style={{ width: '100%', padding: 14, marginTop: 6 }}>
+                <Sparkles size={16} /> Generate & Activate Plan
+              </button>
             </div>
-          ))}
+          </div>
         </div>
+      )}
 
-        <input
-          value={saveName}
-          onChange={e => setSaveName(e.target.value)}
-          placeholder="Optional: plan name to save..."
-          style={{ width: '100%', padding: '10px 14px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 13, marginBottom: 10, outline: 'none' }}
-        />
-
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={handleSaveAsPlan} className="btn-secondary" style={{ flex: 1, minHeight: 48, borderRadius: 14 }}>
-            Save as Plan
-          </button>
-          <button onClick={handleStartNow} className="btn-primary" style={{ flex: 1, minHeight: 48, borderRadius: 14 }}>
-            <Play size={15} fill="currentColor" /> Start Workout
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-/* ===== CUSTOM PLAN BUILDER ===== */
-function CustomPlanBuilder({ onClose, equipment }: { onClose: () => void; equipment: string[] }) {
-  const [planName, setPlanName] = useState('');
-  const [days, setDays] = useState<{ name: string; exercises: { name: string; sets: number; reps: number; restTime: number }[] }[]>([{ name: 'Day 1', exercises: [] }]);
-  const [currentDayIdx, setCurrentDayIdx] = useState(0);
-  const [showExercisePicker, setShowExercisePicker] = useState(false);
-  const [search, setSearch] = useState('');
-  const [allExercises, setAllExercises] = useState<Exercise[]>([]);
-
-  useEffect(() => {
-    db.exercises.toArray().then(setAllExercises);
-  }, []);
-
-  const filteredExercises = useMemo(() => {
-    let filtered = allExercises.filter(e => matchesUserEquipment(e, equipment));
-    if (search) {
-      const q = search.toLowerCase();
-      filtered = filtered.filter(e =>
-        e.name.toLowerCase().includes(q) ||
-        e.primaryMuscles?.some(m => m.toLowerCase().includes(q))
-      );
-    }
-    return filtered.slice(0, 80);
-  }, [allExercises, equipment, search]);
-
-  const addExercise = (exercise: Exercise) => {
-    setDays(prev => {
-      const updated = [...prev];
-      updated[currentDayIdx] = {
-        ...updated[currentDayIdx],
-        exercises: [...updated[currentDayIdx].exercises, { name: exercise.name, sets: 3, reps: 10, restTime: 90 }],
-      };
-      return updated;
-    });
-    setShowExercisePicker(false);
-  };
-
-  const autoBalanceDay = () => {
-    const generated = generateSmartWorkout({
-      targetMuscles: ['quads', 'hamstrings', 'chest', 'back', 'shoulders', 'biceps', 'triceps', 'abs'],
-      exerciseCount: 6,
-      setsPerExercise: 3,
-      repsPerSet: 10,
-      allExercises,
-      userEquipment: equipment,
-      seed: Date.now(),
-    });
-    setDays(prev => {
-      const updated = [...prev];
-      updated[currentDayIdx] = {
-        ...updated[currentDayIdx],
-        exercises: generated.map(g => ({ name: g.name, sets: g.sets, reps: g.reps, restTime: 90 })),
-      };
-      return updated;
-    });
-  };
-
-  const updateExerciseField = (dayIdx: number, exIdx: number, field: 'sets' | 'reps' | 'restTime', val: number) => {
-    setDays(prev => {
-      const updated = [...prev];
-      const list = [...updated[dayIdx].exercises];
-      list[exIdx] = { ...list[exIdx], [field]: Math.max(1, val) };
-      updated[dayIdx] = { ...updated[dayIdx], exercises: list };
-      return updated;
-    });
-  };
-
-  const moveExercise = (dayIdx: number, exIdx: number, dir: -1 | 1) => {
-    setDays(prev => {
-      const updated = [...prev];
-      const list = [...updated[dayIdx].exercises];
-      const targetIdx = exIdx + dir;
-      if (targetIdx < 0 || targetIdx >= list.length) return prev;
-      const temp = list[exIdx];
-      list[exIdx] = list[targetIdx];
-      list[targetIdx] = temp;
-      updated[dayIdx] = { ...updated[dayIdx], exercises: list };
-      return updated;
-    });
-  };
-
-  const removeExercise = (dayIdx: number, exIdx: number) => {
-    setDays(prev => {
-      const updated = [...prev];
-      updated[dayIdx] = { ...updated[dayIdx], exercises: updated[dayIdx].exercises.filter((_, i) => i !== exIdx) };
-      return updated;
-    });
-  };
-
-  const addDay = () => {
-    setDays(prev => [...prev, { name: `Day ${prev.length + 1}`, exercises: [] }]);
-    setCurrentDayIdx(days.length);
-  };
-
-  const savePlan = async () => {
-    if (!planName.trim()) return;
-    const planId = await db.workoutPlans.add({
-      name: planName, description: 'Custom balanced workout plan', category: 'Custom',
-      difficulty: 'intermediate', daysPerWeek: days.length, isCustom: true,
-      isActive: false, createdAt: new Date(), updatedAt: new Date(),
-    } as any);
-    for (let i = 0; i < days.length; i++) {
-      const day = days[i];
-      await db.workoutDays.add({
-        planId, dayNumber: i + 1, name: day.name,
-        exercises: day.exercises.map((ex, idx) => ({
-          exerciseId: 0, exerciseName: ex.name, sets: ex.sets, reps: ex.reps,
-          restTime: ex.restTime || 90, setType: 'normal', order: idx,
-        })),
-      } as any);
-    }
-    onClose();
-  };
-
-  return (
-    <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
-      <motion.div
-        className="modal-content"
-        initial={{ y: '100%' }}
-        animate={{ y: 0 }}
-        exit={{ y: '100%' }}
-        transition={{ type: 'spring', damping: 26, stiffness: 300 }}
-        onClick={e => e.stopPropagation()}
-        style={{ maxHeight: '92dvh' }}
-      >
-        <div className="modal-handle" />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-          <h2 className="font-display" style={{ fontSize: 20, fontWeight: 800 }}>Create Custom Plan</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}><X size={18} /></button>
-        </div>
-
-        <input value={planName} onChange={e => setPlanName(e.target.value)} placeholder="Plan name (e.g. Hypertrophy Upper/Lower)..."
-          style={{ width: '100%', padding: '13px 16px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 14, color: 'var(--text-primary)', fontSize: 15, fontWeight: 600, outline: 'none', marginBottom: 14, fontFamily: 'inherit', minHeight: 46 }} />
-
-        <div className="tab-bar" style={{ marginBottom: 14 }}>
-          {days.map((day, i) => (
-            <button key={i} className={`tab-btn ${i === currentDayIdx ? 'active' : ''}`} onClick={() => setCurrentDayIdx(i)}>
-              {day.name}
-            </button>
-          ))}
-          <button onClick={addDay} className="tab-btn" style={{ minWidth: 40 }} title="Add workout day"><Plus size={14} /></button>
-        </div>
-
-        <input value={days[currentDayIdx]?.name || ''} onChange={e => {
-          setDays(prev => { const u = [...prev]; u[currentDayIdx] = { ...u[currentDayIdx], name: e.target.value }; return u; });
-        }} placeholder="Day name..." style={{ width: '100%', padding: '10px 14px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 13, outline: 'none', marginBottom: 12, fontFamily: 'inherit', minHeight: 42 }} />
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12, maxHeight: '32vh', overflowY: 'auto' }}>
-          {days[currentDayIdx]?.exercises.map((ex, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 10px', background: 'var(--bg-glass)', borderRadius: 12, border: '1px solid var(--border-subtle)', minHeight: 48 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <button
-                  onClick={() => moveExercise(currentDayIdx, i, -1)}
-                  disabled={i === 0}
-                  aria-label="Move exercise up"
-                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', opacity: i === 0 ? 0.25 : 1, padding: 1 }}
-                >
-                  <ArrowUp size={11} />
-                </button>
-                <button
-                  onClick={() => moveExercise(currentDayIdx, i, 1)}
-                  disabled={i === (days[currentDayIdx]?.exercises.length || 1) - 1}
-                  aria-label="Move exercise down"
-                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', opacity: i === (days[currentDayIdx]?.exercises.length || 1) - 1 ? 0.25 : 1, padding: 1 }}
-                >
-                  <ArrowDown size={11} />
-                </button>
-              </div>
-              <div style={{ flex: 1, fontSize: 12, fontWeight: 600, textTransform: 'capitalize', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {ex.name}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                <input
-                  type="number"
-                  min={1}
-                  max={15}
-                  value={ex.sets}
-                  onChange={e => updateExerciseField(currentDayIdx, i, 'sets', Number(e.target.value) || 3)}
-                  style={{ width: 38, padding: '4px', textAlign: 'center', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 6, color: 'var(--text-primary)', fontSize: 12, fontWeight: 700 }}
-                  title="Sets"
-                />
-                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>×</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={ex.reps}
-                  onChange={e => updateExerciseField(currentDayIdx, i, 'reps', Number(e.target.value) || 10)}
-                  style={{ width: 42, padding: '4px', textAlign: 'center', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 6, color: 'var(--text-primary)', fontSize: 12, fontWeight: 700 }}
-                  title="Reps"
-                />
-                <button
-                  onClick={() => {
-                    const options = [60, 90, 120, 180];
-                    const nextRest = options[(options.indexOf(ex.restTime || 90) + 1) % options.length];
-                    updateExerciseField(currentDayIdx, i, 'restTime', nextRest);
-                  }}
-                  title="Tap to cycle rest time"
-                  style={{ padding: '4px 6px', borderRadius: 6, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', color: 'var(--accent-cyan)', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}
-                >
-                  {ex.restTime || 90}s
-                </button>
-              </div>
-              <button onClick={() => removeExercise(currentDayIdx, i)} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: 4 }}><X size={15} /></button>
+      {/* Create Custom Plan Modal */}
+      {showCreateModal && (
+        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h2 style={{ fontSize: '1.15rem', fontWeight: 700 }}>Create Custom Plan</h2>
+              <button onClick={() => setShowCreateModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer' }}><X size={20} /></button>
             </div>
-          ))}
-        </div>
-
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <button onClick={() => setShowExercisePicker(true)} className="btn-secondary" style={{ flex: 1, minHeight: 46, borderRadius: 14, fontSize: 12 }}>
-            <Plus size={14} /> Add Exercise
-          </button>
-          <button onClick={autoBalanceDay} className="btn-secondary" style={{ flex: 1, minHeight: 46, borderRadius: 14, fontSize: 12, borderColor: 'var(--accent-purple)' }}>
-            <Sparkles size={14} color="var(--accent-purple)" /> Auto-Fill Balanced Day
-          </button>
-        </div>
-
-        <button onClick={savePlan} className="btn-primary" style={{ borderRadius: 14, minHeight: 50 }} disabled={!planName.trim() || days.every(d => d.exercises.length === 0)}>
-          Save Custom Plan
-        </button>
-
-        <AnimatePresence>
-          {showExercisePicker && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              style={{ position: 'absolute', inset: 0, background: 'var(--bg-sheet)', borderRadius: 'var(--r-2xl) var(--r-2xl) 0 0', padding: 20, zIndex: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <h3 style={{ fontSize: 16, fontWeight: 800 }}>Pick Exercise ({filteredExercises.length} match equipment)</h3>
-                <button onClick={() => setShowExercisePicker(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', minWidth: 36, minHeight: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={18} /></button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <input className="input" placeholder="Plan Name" value={newName} onChange={(e) => setNewName(e.target.value)} />
+              <input className="input" placeholder="Description (optional)" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <select className="input" value={newCat} onChange={(e) => setNewCat(e.target.value as PlanCategory)}>
+                  {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <select className="input" value={newDiff} onChange={(e) => setNewDiff(e.target.value as Difficulty)}>
+                  {DIFFICULTIES.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
               </div>
-              <div style={{ position: 'relative', marginBottom: 12 }}>
-                <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                <input className="search-bar" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or muscle..." style={{ paddingLeft: 36 }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>Days per week: {newDaysCount}</label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {[2, 3, 4, 5, 6].map((n) => (
+                      <button key={n} className={`chip ${newDaysCount === n ? 'active' : ''}`} onClick={() => handleDaysCountChange(n)}>{n}</button>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={handleAutoFillCustomDays}
+                  style={{ padding: '8px 10px', fontSize: '0.72rem' }}
+                >
+                  <RefreshCw size={12} /> Auto-Balance
+                </button>
               </div>
-              <div style={{ maxHeight: '50vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {filteredExercises.map(ex => (
-                  <button key={ex.id} onClick={() => addExercise(ex)} style={{
-                    display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-                    background: 'var(--bg-glass)', border: '1px solid var(--border-subtle)', borderRadius: 12,
-                    cursor: 'pointer', textAlign: 'left', width: '100%', color: 'var(--text-primary)', minHeight: 54,
-                  }}>
-                    <div style={{ width: 40, height: 40, borderRadius: 10, overflow: 'hidden', position: 'relative', background: 'var(--bg-media)', flexShrink: 0 }}>
-                      <ExerciseMedia
-                        gifUrl={ex.gifUrl}
-                        imageUrls={ex.imageUrls}
-                        images={ex.images}
-                        alt={ex.name}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      />
+              {newDays.map((day, dIdx) => (
+                <div key={dIdx} style={{ padding: 12, background: 'rgba(255,255,255,0.02)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-glass)' }}>
+                  <input className="input" style={{ marginBottom: 8 }} placeholder={`Day ${dIdx + 1} Name`} value={day.name}
+                    onChange={(e) => { const u = [...newDays]; u[dIdx].name = e.target.value; setNewDays(u); }} />
+                  {day.exercises.map((ex, eIdx) => (
+                    <div key={eIdx} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
+                      <input className="input" style={{ flex: 2 }} placeholder="Exercise name" list="ex-list" value={ex.name}
+                        onChange={(e) => { const u = [...newDays]; u[dIdx].exercises[eIdx].name = e.target.value; setNewDays(u); }} />
+                      <input className="input" style={{ width: 55, textAlign: 'center' }} type="number" placeholder="Sets" value={ex.sets}
+                        onChange={(e) => { const u = [...newDays]; u[dIdx].exercises[eIdx].sets = Number(e.target.value); setNewDays(u); }} />
+                      <span style={{ color: 'var(--text-tertiary)', fontSize: '0.75rem' }}>×</span>
+                      <input className="input" style={{ width: 55, textAlign: 'center' }} type="number" placeholder="Reps" value={ex.reps}
+                        onChange={(e) => { const u = [...newDays]; u[dIdx].exercises[eIdx].reps = Number(e.target.value); setNewDays(u); }} />
+                      {day.exercises.length > 1 && (
+                        <button onClick={() => { const u = [...newDays]; u[dIdx].exercises.splice(eIdx, 1); setNewDays(u); }}
+                          style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: 4 }}><X size={14} /></button>
+                      )}
                     </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, textTransform: 'capitalize' }}>{ex.name}</div>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{ex.equipment} • {ex.primaryMuscles.join(', ')}</div>
-                    </div>
+                  ))}
+                  <button onClick={() => { const u = [...newDays]; u[dIdx].exercises.push({ name: '', sets: 3, reps: 10 }); setNewDays(u); }}
+                    style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', fontSize: '0.75rem', cursor: 'pointer', marginTop: 4 }}>
+                    + Add Exercise
                   </button>
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
-    </motion.div>
+                </div>
+              ))}
+              <datalist id="ex-list">
+                {allExercises.map((name) => <option key={name} value={name} />)}
+              </datalist>
+              <button className="btn-primary" onClick={handleCreatePlan} style={{ width: '100%', padding: 14, marginTop: 8 }}>Save Plan</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

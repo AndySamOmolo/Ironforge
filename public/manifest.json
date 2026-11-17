@@ -1,11 +1,11 @@
 {
   "name": "IronForge",
   "short_name": "IronForge",
-  "description": "World-class workout tracker with 2,240+ exercises, 17 balanced programs, and 3D anatomical muscle mapping",
+  "description": "World-class workout tracker with 870+ exercises",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#070710",
-  "theme_color": "#070710",
+  "background_color": "#0A0A0F",
+  "theme_color": "#0A0A0F",
   "orientation": "portrait",
   "icons": [
     {

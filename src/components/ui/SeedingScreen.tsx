@@ -11,8 +11,7 @@ interface SeedingScreenProps {
 }
 
 export default function SeedingScreen({ onRetry, error }: SeedingScreenProps) {
-  const seedingProgress = useUIStore(s => s.seedingProgress);
-  const seedingMessage = useUIStore(s => s.seedingMessage);
+  const { seedingProgress, seedingMessage } = useUIStore();
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
@@ -80,13 +79,13 @@ export default function SeedingScreen({ onRetry, error }: SeedingScreenProps) {
               transition={{ delay: 0.3 }}
               onClick={onRetry}
               style={{
-                background: 'var(--gradient-fire)', border: 'none', color: 'var(--on-accent-text)',
+                background: 'var(--gradient-fire)', border: 'none', color: 'white',
                 padding: '14px 32px', borderRadius: 14, fontSize: 15, fontWeight: 700,
                 cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, marginTop: 8,
                 boxShadow: '0 4px 20px var(--glow-red)',
               }}
             >
-              <RefreshCw size={16} /> Reset &amp; Try Again
+              <RefreshCw size={16} /> Reset & Try Again
             </motion.button>
           )}
           <motion.p
@@ -150,7 +149,7 @@ export default function SeedingScreen({ onRetry, error }: SeedingScreenProps) {
                     fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
                   }}
                 >
-                  <RefreshCw size={14} /> Reset &amp; Retry
+                  <RefreshCw size={14} /> Reset & Retry
                 </button>
               )}
             </motion.div>
@@ -162,9 +161,9 @@ export default function SeedingScreen({ onRetry, error }: SeedingScreenProps) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 0.5 }}
         transition={{ delay: 1.2 }}
-        style={{ color: 'var(--text-muted)', fontSize: 11, position: 'absolute', bottom: 'max(32px, env(safe-area-inset-bottom))', fontWeight: 500, letterSpacing: 1 }}
+        style={{ color: 'var(--text-muted)', fontSize: 11, position: 'absolute', bottom: 40, fontWeight: 500, letterSpacing: 1 }}
       >
-        2,240+ EXERCISES • ANIMATED DEMOS • 17 PRO PROGRAMS
+        2,240+ EXERCISES • ANIMATED DEMOS • 16 PRO PROGRAMS
       </motion.p>
     </div>
   );

@@ -1,1600 +1,1252 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
-import {
-  User, Dumbbell, Scale, Calculator, Trash2, Download, Check, X, Plus,
-  Volume2, Type, RotateCcw, Vibrate, Smartphone, Timer,
-  ArrowUp, Database, Zap, Bell, Sparkles, Eye, LayoutGrid, Sliders, Shuffle, Clock,
-} from 'lucide-react';
-import { useReminderStore } from '@/lib/store/reminderStore';
-import { db } from '@/lib/db/schema';
+import { useState, useEffect, useCallback } from 'react';
+import { db } from '@/lib/db';
 import { useUserStore } from '@/lib/store/userStore';
-import type { BodyWeight, BodyMeasurement, WaterLog } from '@/lib/types';
-import { ALL_EQUIPMENT, EQUIPMENT_PRESETS } from '@/lib/utils/exerciseResolver';
-import { calculatePlates, getPlateColor } from '@/lib/utils/plateCalculator';
+import { BodyMetric, AccentColor, ThemeMode, FontScale, LayoutDensity } from '@/lib/types';
 import {
-  THEME_OPTIONS,
-  CUSTOM_ACCENT_OPTIONS,
-  FONT_OPTIONS,
+  ACCENT_PALETTES,
+  THEME_PALETTES,
+  FONT_FAMILY_OPTIONS,
+  CARD_STYLE_OPTIONS,
+  BORDER_RADIUS_OPTIONS,
+  NAV_STYLE_OPTIONS,
   DEFAULT_APPEARANCE,
-  applyAppearanceToDOM,
 } from '@/lib/utils/appearance';
+import {
+  User, Scale, Download, Upload, Trash2, Calculator, Droplets,
+  Moon, Bell, Volume2, Vibrate, Shield, Sparkles, Check, ChevronRight,
+  Palette, Sun, Smartphone, RotateCcw, Eye, Type, Layout, Sliders, Compass, Gauge, Accessibility,
+} from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
-const FONT_SIZE_OPTIONS = [
-  { id: 'xs', label: 'Tiny', sample: 11 },
-  { id: 'small', label: 'Small', sample: 13 },
-  { id: 'normal', label: 'Normal', sample: 15 },
-  { id: 'large', label: 'Large', sample: 18 },
-  { id: 'xlarge', label: 'X-Large', sample: 21 },
-];
+type SettingsSection = 'general' | 'appearance' | 'workout' | 'tools' | 'data';
+type AppearanceFilter = 'all' | 'theme' | 'typography' | 'cards' | 'widgets';
 
-const ACCENT_INTENSITY_OPTIONS = [
-  { id: 'subtle', label: 'Subtle', icon: '🌕' },
-  { id: 'normal', label: 'Normal', icon: '⭐' },
-  { id: 'vibrant', label: 'Vibrant', icon: '✨' },
-];
+const ACCENT_COLORS: { id: AccentColor; label: string; color: string; secondary: string }[] = (
+  Object.keys(ACCENT_PALETTES) as AccentColor[]
+).map((id) => ({
+  id,
+  label: ACCENT_PALETTES[id].label,
+  color: ACCENT_PALETTES[id].primary,
+  secondary: ACCENT_PALETTES[id].secondary,
+}));
 
-const COLOR_MODE_OPTIONS = [
-  { id: 'normal', label: 'Normal', icon: '👁️' },
-  { id: 'protanopia', label: 'Red-Blind', icon: '🔴' },
-  { id: 'deuteranopia', label: 'Green-Blind', icon: '🟢' },
-  { id: 'tritanopia', label: 'Blue-Blind', icon: '🔵' },
-  { id: 'monochrome', label: 'Mono', icon: '⚫' },
-];
-
-const CONTRAST_OPTIONS = [
-  { id: 'normal', label: 'Standard', icon: '🌓' },
-  { id: 'high', label: 'High', icon: '◼️' },
-  { id: 'max', label: 'Ultra AAA', icon: '⚡' },
-];
-
-function getLocalTodayKey(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
+const THEME_MODES: { id: ThemeMode; label: string; desc: string; preview: string }[] = (
+  Object.keys(THEME_PALETTES) as ThemeMode[]
+).map((id) => ({
+  id,
+  label: THEME_PALETTES[id].label,
+  desc: THEME_PALETTES[id].desc,
+  preview: THEME_PALETTES[id].preview,
+}));
 
 export default function ProfilePage() {
-  const store = useUserStore();
   const {
-    name, setName, unitSystem, setUnitSystem, barWeight, setBarWeight,
-    dumbbellWeight, setDumbbellWeight,
-    equipment, setEquipment, defaultRestTime, setDefaultRestTime,
-    restTimerEnabled, toggleRestTimer,
-    soundEnabled, toggleSound, hapticEnabled, toggleHaptic,
-    theme, customAccent, font, fontSize, numberFont, headerStyle,
-    density, gridColumns, buttonStyle, cardStyle, borderRadius,
-    animationLevel, navStyle, bgStyle, accentIntensity, glowIntensity,
-    borderThickness, glassOpacity, contrastMode, colorMode, textShadow,
-    weightIncrement, autoAdvance, autoStartRest, keepScreenOn,
-    showTimer, countdownSound, exerciseVariety,
-    showDailyQuote, showActivityHeatmap, showFeatureCards, showLastWorkout,
-    setField, loadFromProfile,
-  } = store;
+    profile, setName, setWeightUnit, setRestTimer, setWeeklyGoal, setExperienceLevel,
+    setThemeMode, setAccentColor, setFontScale, setLayoutDensity,
+    setAutoRestTimer, setRestTimerSound, setRestTimerVibrate, setKeepScreenAwake,
+    setShowWarmupSets, setDefaultWeightIncrement, setCompactCards, setAnimationsEnabled,
+    setAppearance, resetAppearance,
+  } = useUserStore();
 
-  const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'workout' | 'tools' | 'data'>('profile');
-  const [bodyWeights, setBodyWeights] = useState<BodyWeight[]>([]);
+  const [section, setSection] = useState<SettingsSection>('general');
+  const [appearanceFilter, setAppearanceFilter] = useState<AppearanceFilter>('all');
+  const [editName, setEditName] = useState(profile.name);
+  const [bodyMetrics, setBodyMetrics] = useState<BodyMetric[]>([]);
   const [newWeight, setNewWeight] = useState('');
-  const [oneRMWeight, setOneRMWeight] = useState('');
-  const [oneRMReps, setOneRMReps] = useState('');
-  const [dbStats, setDbStats] = useState({ exercises: 0, sessions: 0, plans: 0, size: '' });
-  const [measurements, setMeasurements] = useState<BodyMeasurement[]>([]);
-  const [measForm, setMeasForm] = useState({ bodyFat: '', waist: '', chest: '', arms: '', thighs: '' });
-  const [todayWater, setTodayWater] = useState<WaterLog | null>(null);
-  const [importStatus, setImportStatus] = useState<string | null>(null);
-  const [confirmClearHistory, setConfirmClearHistory] = useState(false);
-  const [confirmFactoryReset, setConfirmFactoryReset] = useState(false);
+  const [newBodyFat, setNewBodyFat] = useState('');
 
-  useEffect(() => {
-    void loadBodyWeights();
-    void loadMeasurements();
-    void loadTodayWater();
-    void loadDBStats();
+  // Tools
+  const [plateWeight, setPlateWeight] = useState('100');
+  const [orm1Weight, setOrm1Weight] = useState('100');
+  const [orm1Reps, setOrm1Reps] = useState('5');
+  const [waterGlasses, setWaterGlasses] = useState(0);
+
+  // Confirm modals & feedback
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [importStatus, setImportStatus] = useState<string>('');
+  const [exportStatus, setExportStatus] = useState<string>('');
+  const [workoutCount, setWorkoutCount] = useState(0);
+  const [prCount, setPrCount] = useState(0);
+
+  const loadMetrics = useCallback(async () => {
+    const m = await db.bodyMetrics.orderBy('recordedAt').reverse().limit(30).toArray();
+    setBodyMetrics(m.reverse());
+    const wc = await db.workoutSessions.count();
+    const pc = await db.personalRecords.count();
+    setWorkoutCount(wc);
+    setPrCount(pc);
   }, []);
 
-  const loadMeasurements = async () => {
-    try {
-      const list = await db.measurements.orderBy('date').reverse().limit(15).toArray();
-      setMeasurements(list);
-    } catch {}
-  };
+  useEffect(() => {
+    loadMetrics();
+    const saved = localStorage.getItem(`ironforge-water-${new Date().toISOString().split('T')[0]}`);
+    if (saved) setWaterGlasses(Number(saved));
+  }, [loadMetrics]);
 
-  const addMeasurement = async () => {
-    const bf = parseFloat(measForm.bodyFat);
-    const waist = parseFloat(measForm.waist);
-    const chest = parseFloat(measForm.chest);
-    const arms = parseFloat(measForm.arms);
-    const thighs = parseFloat(measForm.thighs);
-    if ([bf, waist, chest, arms, thighs].every(v => isNaN(v) || v <= 0)) return;
-    await db.measurements.add({
-      date: new Date(),
-      bodyFat: !isNaN(bf) && bf > 0 ? bf : undefined,
-      waist: !isNaN(waist) && waist > 0 ? waist : undefined,
-      chest: !isNaN(chest) && chest > 0 ? chest : undefined,
-      arms: !isNaN(arms) && arms > 0 ? arms : undefined,
-      thighs: !isNaN(thighs) && thighs > 0 ? thighs : undefined,
-    });
-    setMeasForm({ bodyFat: '', waist: '', chest: '', arms: '', thighs: '' });
-    void loadMeasurements();
-  };
+  // Apply appearance settings live to document
+  useEffect(() => {
+    const root = document.documentElement;
+    const accent = ACCENT_COLORS.find((a) => a.id === profile.accentColor) || ACCENT_COLORS[0];
+    root.style.setProperty('--accent-primary', accent.color);
+    root.style.setProperty('--accent-secondary', accent.secondary);
+    root.style.setProperty('--accent-gradient', `linear-gradient(135deg, ${accent.color} 0%, ${accent.secondary} 100%)`);
 
-  const deleteMeasurement = async (id?: number) => {
-    if (!id) return;
-    await db.measurements.delete(id);
-    void loadMeasurements();
-  };
+    const scales: Record<FontScale, string> = { sm: '14px', md: '16px', lg: '17.5px', xl: '19px' };
+    root.style.fontSize = scales[profile.fontScale || 'md'];
 
-  const loadTodayWater = async () => {
-    try {
-      const todayKey = getLocalTodayKey();
-      const existing = await db.waterLogs.where('date').equals(todayKey).first();
-      if (existing) {
-        setTodayWater(existing);
-      } else {
-        setTodayWater({ date: todayKey, glasses: 0, targetGlasses: 8 });
-      }
-    } catch {}
-  };
-
-  const updateWater = async (delta: number) => {
-    const todayKey = getLocalTodayKey();
-    const current = todayWater || { date: todayKey, glasses: 0, targetGlasses: 8 };
-    const nextGlasses = Math.max(0, current.glasses + delta);
-    const existing = await db.waterLogs.where('date').equals(todayKey).first();
-    if (existing?.id) {
-      await db.waterLogs.update(existing.id, { glasses: nextGlasses });
-      setTodayWater({ ...existing, glasses: nextGlasses });
+    if (profile.themeMode === 'amoled') {
+      root.style.setProperty('--bg-primary', '#000000');
+      root.style.setProperty('--bg-secondary', '#07070c');
+      root.style.setProperty('--bg-card', '#0a0a12');
+    } else if (profile.themeMode === 'midnight') {
+      root.style.setProperty('--bg-primary', '#070b16');
+      root.style.setProperty('--bg-secondary', '#0d1324');
+      root.style.setProperty('--bg-card', '#11192e');
+    } else if (profile.themeMode === 'slate') {
+      root.style.setProperty('--bg-primary', '#0f111a');
+      root.style.setProperty('--bg-secondary', '#161926');
+      root.style.setProperty('--bg-card', '#1c2030');
     } else {
-      const id = await db.waterLogs.add({ date: todayKey, glasses: nextGlasses, targetGlasses: current.targetGlasses || 8 });
-      setTodayWater({ id, date: todayKey, glasses: nextGlasses, targetGlasses: current.targetGlasses || 8 });
+      root.style.setProperty('--bg-primary', '#09090f');
+      root.style.setProperty('--bg-secondary', '#111119');
+      root.style.setProperty('--bg-card', '#151520');
     }
+  }, [profile.accentColor, profile.fontScale, profile.themeMode]);
+
+  const handleSaveName = () => {
+    if (editName.trim()) setName(editName.trim());
   };
 
-  const loadBodyWeights = async () => {
-    try {
-      const weights = await db.bodyWeight.orderBy('date').reverse().limit(30).toArray();
-      setBodyWeights(weights);
-    } catch {}
-  };
-
-  const deleteBodyWeight = async (id?: number) => {
-    if (!id) return;
-    await db.bodyWeight.delete(id);
-    void loadBodyWeights();
-  };
-
-  const loadDBStats = async () => {
-    try {
-      const [exercises, sessions, plans] = await Promise.all([
-        db.exercises.count(),
-        db.workoutSessions.count(),
-        db.workoutPlans.count(),
-      ]);
-      const estimate = await navigator?.storage?.estimate?.();
-      const usageKB = estimate?.usage ? Math.round(estimate.usage / 1024) : 0;
-      const sizeStr = usageKB > 1024 ? `${(usageKB / 1024).toFixed(1)} MB` : `${usageKB} KB`;
-      setDbStats({ exercises, sessions, plans, size: sizeStr });
-    } catch {}
-  };
-
-  const saveProfileFields = async (updates: Record<string, any>) => {
-    try {
-      const profiles = await db.userProfile.toArray();
-      if (profiles[0]?.id) {
-        await db.userProfile.update(profiles[0].id, updates);
-      }
-    } catch {}
-  };
-
-  const updateAppearance = (updates: Partial<typeof DEFAULT_APPEARANCE>) => {
-    const nextAppearance = {
-      theme,
-      customAccent,
-      font,
-      fontSize,
-      numberFont,
-      headerStyle,
-      density,
-      compactMode: (updates.density ?? density) === 'compact',
-      gridColumns,
-      buttonStyle,
-      cardStyle,
-      borderRadius,
-      animationLevel,
-      navStyle,
-      bgStyle,
-      accentIntensity,
-      glowIntensity,
-      borderThickness,
-      glassOpacity,
-      contrastMode,
-      colorMode,
-      textShadow,
-      ...updates,
-    };
-    if (updates.density !== undefined) {
-      nextAppearance.compactMode = updates.density === 'compact';
-    }
-    loadFromProfile(nextAppearance);
-    applyAppearanceToDOM(nextAppearance);
-    void saveProfileFields(nextAppearance);
-  };
-
-  const resetAppearance = () => {
-    loadFromProfile(DEFAULT_APPEARANCE);
-    applyAppearanceToDOM(DEFAULT_APPEARANCE);
-    void saveProfileFields(DEFAULT_APPEARANCE);
-  };
-
-  const updateWorkoutSetting = <K extends keyof typeof store>(key: K, value: (typeof store)[K]) => {
-    setField(key, value);
-    void saveProfileFields({ [key]: value });
-  };
-
-  const addBodyWeight = async () => {
-    const w = parseFloat(newWeight);
-    if (isNaN(w) || w <= 0) return;
-    await db.bodyWeight.add({ date: new Date(), weight: w, unit: unitSystem === 'metric' ? 'kg' : 'lbs' });
-    setNewWeight('');
-    void loadBodyWeights();
-  };
-
-  const calcOneRM = useMemo(() => {
-    const w = parseFloat(oneRMWeight);
-    const r = parseInt(oneRMReps);
-    if (isNaN(w) || isNaN(r) || w <= 0 || r <= 0) return null;
-    return {
-      epley: Math.round(w * (1 + r / 30)),
-      brzycki: Math.round(w * (36 / (37 - Math.min(36, r)))),
-      lombardi: Math.round(w * Math.pow(r, 0.1)),
-    };
-  }, [oneRMWeight, oneRMReps]);
-
-  const toggleEquipment = (eq: string) => {
-    const next = equipment.includes(eq) ? equipment.filter(e => e !== eq) : [...equipment, eq];
-    const safeNext = next.length > 0 ? next : ['body weight'];
-    setEquipment(safeNext);
-    void saveProfileFields({ equipment: safeNext });
-  };
-
-  const applyEquipmentPreset = (items: string[]) => {
-    setEquipment(items);
-    void saveProfileFields({ equipment: items });
-  };
-
-  const executeFactoryReset = async () => {
-    await db.delete();
-    window.location.reload();
-  };
-
-  const executeClearHistory = async () => {
-    await db.transaction('rw', [db.workoutSessions, db.sets, db.sessionExercises, db.personalRecords], async () => {
-      await db.workoutSessions.clear();
-      await db.sets.clear();
-      await db.sessionExercises.clear();
-      await db.personalRecords.clear();
+  const handleAddMetric = async () => {
+    if (!newWeight && !newBodyFat) return;
+    await db.bodyMetrics.add({
+      weight: newWeight ? Number(newWeight) : undefined,
+      bodyFat: newBodyFat ? Number(newBodyFat) : undefined,
+      recordedAt: new Date(),
     });
-    setConfirmClearHistory(false);
-    void loadDBStats();
+    setNewWeight('');
+    setNewBodyFat('');
+    loadMetrics();
   };
 
+  const handleWater = (delta: number) => {
+    const next = Math.max(0, Math.min(20, waterGlasses + delta));
+    setWaterGlasses(next);
+    localStorage.setItem(`ironforge-water-${new Date().toISOString().split('T')[0]}`, String(next));
+  };
+
+  // Plate calculator
+  const calculatePlates = () => {
+    const target = Number(plateWeight) || 0;
+    const barWeight = profile.weightUnit === 'kg' ? 20 : 45;
+    let remaining = (target - barWeight) / 2;
+    if (remaining <= 0) return [];
+    const available = profile.weightUnit === 'kg' ? [25, 20, 15, 10, 5, 2.5, 1.25] : [45, 35, 25, 10, 5, 2.5];
+    const result: { plate: number; count: number }[] = [];
+    for (const p of available) {
+      const count = Math.floor(remaining / p);
+      if (count > 0) {
+        result.push({ plate: p, count });
+        remaining -= count * p;
+      }
+    }
+    return result;
+  };
+
+  // 1RM Epley & Brzycki
+  const w1rm = Number(orm1Weight) || 0;
+  const r1rm = Number(orm1Reps) || 1;
+  const epley1RM = r1rm === 1 ? w1rm : Math.round(w1rm * (1 + r1rm / 30));
+  const brzycki1RM = r1rm === 1 ? w1rm : Math.round(w1rm * (36 / (37 - Math.min(36, r1rm))));
+  const avg1RM = Math.round((epley1RM + brzycki1RM) / 2);
+
+  // Data export with Android Native Bridge + Web Share + Download fallback
   const exportData = async () => {
     try {
       const data = {
-        version: 3,
+        version: '5.2.0',
         exportedAt: new Date().toISOString(),
+        profile,
         sessions: await db.workoutSessions.toArray(),
-        sessionExercises: await db.sessionExercises.toArray(),
-        sets: await db.sets.toArray(),
-        bodyWeight: await db.bodyWeight.toArray(),
-        measurements: await db.measurements.toArray(),
-        waterLogs: await db.waterLogs.toArray(),
-        profile: await db.userProfile.toArray(),
+        plans: await db.workoutPlans.toArray(),
+        days: await db.workoutDays.toArray(),
         prs: await db.personalRecords.toArray(),
-        customPlans: (await db.workoutPlans.toArray()).filter(p => p.isCustom),
-        workoutDays: await db.workoutDays.toArray(),
-        swaps: await db.exerciseSwaps.toArray(),
-        reminders: await db.workoutReminders.toArray(),
+        metrics: await db.bodyMetrics.toArray(),
       };
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const filename = `ironforge-backup-${new Date().toISOString().split('T')[0]}.json`;
+      const jsonStr = JSON.stringify(data, null, 2);
+
+      // 1. Try Android Native Bridge first (reliable inside Android WebView APK)
+      const w = window as unknown as {
+        IronForgeNative?: { exportBackupJson?: (name: string, content: string) => boolean };
+      };
+      if (w.IronForgeNative?.exportBackupJson) {
+        const ok = w.IronForgeNative.exportBackupJson(filename, jsonStr);
+        if (ok) {
+          setExportStatus(`✓ Ready to share or save ${filename}`);
+          setTimeout(() => setExportStatus(''), 4000);
+          return;
+        }
+      }
+
+      // 2. Standard browser Blob download fallback
+      const blob = new Blob([jsonStr], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `ironforge-backup-${getLocalTodayKey()}.json`;
+      a.download = filename;
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
-    } catch {}
-  };
-
-  const handleImportData = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const data = JSON.parse(text);
-      if (Array.isArray(data.sessions) && data.sessions.length > 0) {
-        const normalized = data.sessions.map((s: any) => ({
-          ...s,
-          startedAt: new Date(s.startedAt || s.startTime || Date.now()),
-          completedAt: (s.completedAt || s.endTime) ? new Date(s.completedAt || s.endTime) : undefined,
-        }));
-        await db.workoutSessions.bulkPut(normalized);
-      }
-      if (Array.isArray(data.sessionExercises) && data.sessionExercises.length > 0) {
-        await db.sessionExercises.bulkPut(data.sessionExercises);
-      }
-      if (Array.isArray(data.sets) && data.sets.length > 0) {
-        const normalizedSets = data.sets.map((s: any) => ({
-          ...s,
-          completedAt: s.completedAt ? new Date(s.completedAt) : undefined,
-        }));
-        await db.sets.bulkPut(normalizedSets);
-      }
-      if (Array.isArray(data.bodyWeight) && data.bodyWeight.length > 0) {
-        await db.bodyWeight.bulkPut(data.bodyWeight.map((b: any) => ({ ...b, date: new Date(b.date) })));
-      }
-      if (Array.isArray(data.measurements) && data.measurements.length > 0) {
-        await db.measurements.bulkPut(data.measurements.map((m: any) => ({ ...m, date: new Date(m.date) })));
-      }
-      if (Array.isArray(data.waterLogs) && data.waterLogs.length > 0) {
-        await db.waterLogs.bulkPut(data.waterLogs);
-      }
-      if (Array.isArray(data.prs) && data.prs.length > 0) {
-        await db.personalRecords.bulkPut(data.prs.map((p: any) => ({ ...p, date: new Date(p.date || p.achievedAt || Date.now()) })));
-      }
-      if (Array.isArray(data.customPlans) && data.customPlans.length > 0) {
-        await db.workoutPlans.bulkPut(
-          data.customPlans.map((p: any) => ({
-            ...p,
-            createdAt: new Date(p.createdAt || Date.now()),
-            updatedAt: new Date(p.updatedAt || Date.now()),
-          }))
-        );
-      }
-      if (Array.isArray(data.workoutDays) && data.workoutDays.length > 0) {
-        await db.workoutDays.bulkPut(data.workoutDays);
-      }
-      if (Array.isArray(data.swaps) && data.swaps.length > 0) {
-        await db.exerciseSwaps.bulkPut(
-          data.swaps.map((sw: any) => ({ ...sw, swappedAt: new Date(sw.swappedAt || Date.now()) }))
-        );
-      }
-      if (Array.isArray(data.reminders) && data.reminders.length > 0) {
-        await db.workoutReminders.bulkPut(
-          data.reminders.map((r: any) => ({
-            ...r,
-            createdAt: new Date(r.createdAt || Date.now()),
-            lastFiredAt: r.lastFiredAt ? new Date(r.lastFiredAt) : undefined,
-          }))
-        );
-      }
-      if (Array.isArray(data.profile) && data.profile[0]) {
-        const restoredProfile = data.profile[0];
-        await db.userProfile.put(restoredProfile);
-        loadFromProfile(restoredProfile);
-        applyAppearanceToDOM(restoredProfile);
-      }
-      void loadBodyWeights();
-      void loadMeasurements();
-      void loadTodayWater();
-      void loadDBStats();
-      setImportStatus('✅ Full backup restored successfully!');
-      setTimeout(() => setImportStatus(null), 4000);
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      setExportStatus(`✓ Backup exported (${filename})`);
+      setTimeout(() => setExportStatus(''), 4000);
     } catch {
-      setImportStatus('❌ Invalid backup file');
-      setTimeout(() => setImportStatus(null), 4000);
+      setExportStatus('✗ Export failed. Please try again.');
+      setTimeout(() => setExportStatus(''), 4000);
     }
-    e.target.value = '';
   };
 
-  const weightChartPoints = useMemo(() => {
-    if (bodyWeights.length < 2) return '';
-    const sorted = [...bodyWeights].reverse();
-    const min = Math.min(...sorted.map(w => w.weight));
-    const max = Math.max(...sorted.map(w => w.weight));
-    const range = max - min || 1;
-    return sorted.map((w, i) => {
-      const x = (i / (sorted.length - 1)) * 280 + 10;
-      const y = 70 - ((w.weight - min) / range) * 60;
-      return `${x},${y}`;
-    }).join(' ');
-  }, [bodyWeights]);
+  // Data import
+  const importData = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        if (data.sessions) { await db.workoutSessions.clear(); await db.workoutSessions.bulkAdd(data.sessions); }
+        if (data.prs) { await db.personalRecords.clear(); await db.personalRecords.bulkAdd(data.prs); }
+        if (data.metrics) { await db.bodyMetrics.clear(); await db.bodyMetrics.bulkAdd(data.metrics); }
+        if (data.plans) { await db.workoutPlans.clear(); await db.workoutPlans.bulkAdd(data.plans); }
+        if (data.days) { await db.workoutDays.clear(); await db.workoutDays.bulkAdd(data.days); }
+        setImportStatus('✓ Backup restored successfully!');
+        loadMetrics();
+        setTimeout(() => setImportStatus(''), 3500);
+      } catch {
+        setImportStatus('✗ Invalid backup file');
+        setTimeout(() => setImportStatus(''), 3500);
+      }
+    };
+    input.click();
+  };
 
-  const Toggle = ({ enabled, onToggle, label }: { enabled: boolean; onToggle: () => void; label?: string }) => (
+  // Clear workout history only
+  const clearWorkoutHistory = async () => {
+    await db.workoutSessions.clear();
+    await db.personalRecords.clear();
+    await db.bodyMetrics.clear();
+    setConfirmClear(false);
+    loadMetrics();
+  };
+
+  // Full factory reset
+  const factoryReset = async () => {
+    await db.delete();
+    localStorage.clear();
+    window.location.reload();
+  };
+
+  const Toggle = ({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label?: string }) => (
     <button
-      onClick={onToggle}
-      role="switch"
-      aria-checked={enabled}
+      onClick={() => onChange(!checked)}
       aria-label={label || 'Toggle setting'}
       style={{
-        width: 48, height: 26, borderRadius: 13, border: 'none',
-        background: enabled ? 'var(--accent-green)' : 'var(--bg-input)',
-        cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+        width: 44, height: 24, borderRadius: 12, padding: 2, cursor: 'pointer',
+        background: checked ? 'var(--accent-gradient)' : 'rgba(255,255,255,0.08)',
+        border: checked ? 'none' : '1px solid rgba(255,255,255,0.1)',
+        display: 'flex', alignItems: 'center',
+        justifyContent: checked ? 'flex-end' : 'flex-start',
+        transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)', flexShrink: 0,
       }}
     >
-      <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'white', position: 'absolute', top: 3, left: enabled ? 25 : 3, transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+      <div style={{
+        width: 20, height: 20, borderRadius: '50%', background: 'white',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
+      }} />
     </button>
   );
 
-  const SettingRow = ({ icon: Icon, iconColor, label, description, children }: { icon: any; iconColor: string; label: string; description?: string; children: React.ReactNode }) => (
-    <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+  const SettingRow = ({
+    icon: Icon, iconColor = 'var(--accent-primary)', title, desc, children, stacked = false,
+  }: {
+    icon: React.ElementType; iconColor?: string; title: string; desc?: string; children: React.ReactNode; stacked?: boolean;
+  }) => (
+    <div style={{
+      display: 'flex',
+      flexDirection: stacked ? 'column' : 'row',
+      alignItems: stacked ? 'stretch' : 'center',
+      justifyContent: 'space-between',
+      gap: stacked ? 10 : 12,
+      padding: '13px 0',
+      borderBottom: '1px solid var(--border-subtle)',
+    }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
-        <div style={{ width: 36, height: 36, borderRadius: 10, background: `${iconColor}12`, border: `1px solid ${iconColor}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <div style={{
+          width: 34, height: 34, borderRadius: 'var(--radius-md)',
+          background: `${iconColor}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}>
           <Icon size={16} color={iconColor} />
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>{label}</div>
-          {description && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{description}</div>}
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 600, fontSize: '0.82rem', color: 'var(--text-primary)' }}>{title}</div>
+          {desc && <div style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', marginTop: 1, lineHeight: 1.35 }}>{desc}</div>}
         </div>
       </div>
-      {children}
+      <div style={{ flexShrink: 0, width: stacked ? '100%' : 'auto' }}>
+        {children}
+      </div>
     </div>
   );
+
+  const showThemeSection = appearanceFilter === 'all' || appearanceFilter === 'theme';
+  const showTypographySection = appearanceFilter === 'all' || appearanceFilter === 'typography';
+  const showCardsSection = appearanceFilter === 'all' || appearanceFilter === 'cards';
+  const showWidgetsSection = appearanceFilter === 'all' || appearanceFilter === 'widgets';
 
   return (
     <div className="page-container">
-      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 20 }}>
-        <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em' }}>
-          <span className="gradient-text">Settings</span>
-        </h1>
-        <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>Customize your equipment, appearance &amp; workout engine</p>
-      </motion.div>
-
-      {/* Tab Bar */}
-      <div className="chip-scroll" style={{ marginBottom: 20, paddingBottom: 4 }}>
-        {([
-          { id: 'profile' as const, label: '👤 Profile & Gear' },
-          { id: 'appearance' as const, label: '🎨 Appearance' },
-          { id: 'workout' as const, label: '💪 Workout' },
-          { id: 'tools' as const, label: '🧮 Tools' },
-          { id: 'data' as const, label: '💾 Data' },
-        ]).map(tab => (
-          <button key={tab.id} className={`filter-chip ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}>
-            {tab.label}
-          </button>
-        ))}
+      {/* Header Summary Card */}
+      <div className="card-Featured animate-in" style={{ marginBottom: 16, padding: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, position: 'relative', zIndex: 1 }}>
+          <div style={{
+            width: 52, height: 52, borderRadius: 'var(--radius-lg)',
+            background: 'var(--accent-gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 4px 16px rgba(99, 102, 241, 0.35)', flexShrink: 0,
+          }}>
+            <User size={24} color="white" />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: '1.1rem', letterSpacing: '-0.02em' }}>{profile.name}</div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', textTransform: 'capitalize', marginTop: 2 }}>
+              {profile.experienceLevel} • {profile.weeklyGoal}d/week goal • {profile.weightUnit.toUpperCase()}
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div className="num" style={{ fontSize: '1.1rem', color: 'var(--accent-secondary)' }}>{workoutCount}</div>
+            <div style={{ fontSize: '0.6rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase' }}>Sessions</div>
+          </div>
+        </div>
       </div>
 
-      {/* ======== PROFILE TAB ======== */}
-      {activeTab === 'profile' && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <SettingRow icon={User} iconColor="var(--accent-purple)" label="Name">
-            <input
-              value={name}
-              onChange={e => { setName(e.target.value); void saveProfileFields({ name: e.target.value }); }}
-              style={{ width: 150, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 14, fontWeight: 600, outline: 'none', fontFamily: 'inherit', padding: '7px 10px', textAlign: 'right' }}
-            />
-          </SettingRow>
+      {/* Section Navigation */}
+      <div className="chip-scroll" style={{ marginBottom: 18 }}>
+        {([
+          { id: 'general', label: 'General', icon: User },
+          { id: 'appearance', label: 'Appearance', icon: Palette },
+          { id: 'workout', label: 'Workout', icon: Sliders },
+          { id: 'tools', label: 'Tools', icon: Calculator },
+          { id: 'data', label: 'Data', icon: Shield },
+        ] as const).map((tab) => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              className={`chip ${section === tab.id ? 'active' : ''}`}
+              onClick={() => setSection(tab.id)}
+              style={{ display: 'flex', alignItems: 'center', gap: 5 }}
+            >
+              <Icon size={12} /> {tab.label}
+            </button>
+          );
+        })}
+      </div>
 
-          <SettingRow icon={Scale} iconColor="var(--accent-green)" label="Units" description="Weight & measurement system">
-            <div style={{ display: 'flex', gap: 4, background: 'var(--bg-input)', borderRadius: 10, padding: 3 }}>
-              {(['metric', 'imperial'] as const).map(sys => (
-                <button key={sys} onClick={() => { setUnitSystem(sys); void saveProfileFields({ unitSystem: sys }); }}
-                  style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: unitSystem === sys ? 'var(--gradient-fire)' : 'transparent', color: unitSystem === sys ? 'var(--on-accent-text)' : 'var(--text-muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer', textTransform: 'capitalize' }}>
-                  {sys}
-                </button>
-              ))}
-            </div>
-          </SettingRow>
-
-          <SettingRow icon={Dumbbell} iconColor="var(--accent-orange)" label="Bar Weight" description="Standard barbell weight">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
-              <input
-                type="number"
-                min={0}
-                step={unitSystem === 'metric' ? 2.5 : 5}
-                value={barWeight}
-                onChange={e => {
-                  const next = Number.parseFloat(e.target.value);
-                  if (Number.isFinite(next)) {
-                    const normalized = Math.max(0, Math.round(next * 2) / 2);
-                    setBarWeight(normalized);
-                    void saveProfileFields({ barWeight: normalized });
-                  }
-                }}
-                style={{ width: 86, textAlign: 'right', padding: '8px 10px', borderRadius: 10, border: '1px solid var(--border-bright)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14, fontWeight: 700 }}
-              />
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)', minWidth: 26 }}>{unitSystem === 'metric' ? 'kg' : 'lb'}</span>
-            </div>
-          </SettingRow>
-
-          <SettingRow icon={Dumbbell} iconColor="var(--accent-cyan)" label="Dumbbell Default" description="Per-dumbbell starting weight">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
-              <input
-                type="number"
-                min={0}
-                step={unitSystem === 'metric' ? 2.5 : 5}
-                value={dumbbellWeight}
-                onChange={e => {
-                  const next = Number.parseFloat(e.target.value);
-                  if (Number.isFinite(next)) {
-                    const normalized = Math.max(0, Math.round(next * 2) / 2);
-                    setDumbbellWeight(normalized);
-                    void saveProfileFields({ dumbbellWeight: normalized });
-                  }
-                }}
-                style={{ width: 86, textAlign: 'right', padding: '8px 10px', borderRadius: 10, border: '1px solid var(--border-bright)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14, fontWeight: 700 }}
-              />
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)', minWidth: 26 }}>{unitSystem === 'metric' ? 'kg' : 'lb'}</span>
-            </div>
-          </SettingRow>
-
-          {/* Equipment Presets */}
-          <div className="section-label" style={{ marginTop: 10 }}>Quick Equipment Presets</div>
-          <div className="chip-scroll" style={{ marginBottom: 4 }}>
-            {EQUIPMENT_PRESETS.map(preset => (
-              <button
-                key={preset.id}
-                className="filter-chip"
-                onClick={() => applyEquipmentPreset(preset.items)}
-                style={{ fontSize: 11, padding: '6px 12px' }}
-              >
-                <span>{preset.icon}</span> {preset.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Equipment */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-            <div className="section-label">My Equipment ({equipment.length} selected)</div>
-            <div style={{ fontSize: 10, color: 'var(--accent-green)', fontWeight: 700 }}>Strict Workout Filter Active</div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-            {ALL_EQUIPMENT.map(eq => (
-              <button key={eq} className={`equipment-check ${equipment.includes(eq) ? 'selected' : ''}`} onClick={() => toggleEquipment(eq)}>
-                <div className="equipment-check-box">
-                  {equipment.includes(eq) && <Check size={12} color="white" />}
-                </div>
-                <span style={{ fontSize: 13, fontWeight: 600, textTransform: 'capitalize' }}>{eq}</span>
-              </button>
-            ))}
-          </div>
-        </motion.div>
-      )}
-
-      {/* ======== APPEARANCE TAB ======== */}
-      {activeTab === 'appearance' && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-          {/* Sticky Live Preview Banner so changes are visible while scrolling */}
-          <div
-            className="card hero-gradient"
-            style={{
-              padding: 14,
-              position: 'sticky',
-              top: 'max(8px, env(safe-area-inset-top))',
-              zIndex: 30,
-              background: 'color-mix(in srgb, var(--bg-sheet) 92%, transparent)',
-              backdropFilter: 'blur(24px)',
-              WebkitBackdropFilter: 'blur(24px)',
-              border: '1px solid var(--border-bright)',
-              boxShadow: '0 10px 28px rgba(0,0,0,0.38)',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <span className="badge" style={{ background: 'rgba(16,232,154,0.12)', color: 'var(--accent-green)', border: '1px solid rgba(16,232,154,0.25)', fontSize: 10 }}>
-                <Sparkles size={10} /> Live Preview (Pinned)
-              </span>
-              <button onClick={resetAppearance} className="btn-ghost" style={{ fontSize: 11, padding: '4px 10px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <RotateCcw size={12} /> Reset Defaults
-              </button>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <div>
-                <h3 className="font-display" style={{ fontSize: 17, fontWeight: 800 }}>
-                  <span className="gradient-text">IronForge Studio</span>
-                </h3>
-                <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-                  Theme: <strong style={{ textTransform: 'capitalize' }}>{theme}</strong> • Card: <strong style={{ textTransform: 'capitalize' }}>{cardStyle}</strong> • Button: <strong style={{ textTransform: 'capitalize' }}>{buttonStyle}</strong>
-                </p>
-              </div>
-              <div className="font-mono" style={{ fontSize: 19, fontWeight: 800, color: 'var(--accent-green)' }}>100kg</div>
-            </div>
-          </div>
-
-          {/* Theme Selector (24 Themes) */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Theme ({THEME_OPTIONS.length} Options — Dark, OLED &amp; Light)</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(62px, 1fr))', gap: 8 }}>
-              {THEME_OPTIONS.map(t => {
-                const isActive = theme === t.id;
-                return (
-                  <button key={t.id} onClick={() => updateAppearance({ theme: t.id })} style={{
-                    padding: '10px 4px', borderRadius: 'var(--r-md)', border: isActive ? `2px solid ${t.colors[0]}` : '1px solid var(--border-subtle)',
-                    background: t.colors[2], cursor: 'pointer', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 6,
-                    boxShadow: isActive ? `0 0 12px ${t.colors[0]}40` : 'none', minHeight: 62, transition: 'all 0.2s',
-                  }} title={t.label}>
-                    <div style={{ display: 'flex', gap: 3 }}>
-                      <div style={{ width: 12, height: 12, borderRadius: '50%', background: t.colors[0], border: '1px solid rgba(0,0,0,0.2)' }} />
-                      <div style={{ width: 12, height: 12, borderRadius: '50%', background: t.colors[1], border: '1px solid rgba(0,0,0,0.2)' }} />
-                    </div>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: isActive ? t.colors[0] : (t.id === 'daylight' || t.id === 'sand' ? '#334155' : '#94a3b8'), letterSpacing: 0.4 }}>{t.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Custom Primary Accent Override */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Primary Accent Color Override</div>
-            <div className="responsive-pills-grid">
-              {CUSTOM_ACCENT_OPTIONS.map(acc => {
-                const isActive = customAccent === acc.id;
-                return (
-                  <button key={acc.id} onClick={() => updateAppearance({ customAccent: acc.id })} style={{
-                    padding: '10px 4px', borderRadius: 10, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
-                    background: isActive ? 'var(--bg-elevated)' : 'var(--bg-glass)',
-                    border: isActive ? `2px solid ${acc.color || 'var(--accent-red)'}` : '1px solid var(--border-subtle)',
-                  }}>
-                    <div style={{
-                      width: 18, height: 18, borderRadius: '50%',
-                      background: acc.color ? `linear-gradient(135deg, ${acc.color}, ${acc.secondary})` : 'var(--gradient-fire)',
-                    }} />
-                    <span style={{ fontSize: 9, fontWeight: 700, color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{acc.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Font Selector (10 Options) */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>UI Typography ({FONT_OPTIONS.length} Fonts)</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
-              {FONT_OPTIONS.map(f => (
-                <button key={f.id} onClick={() => updateAppearance({ font: f.id })} className="card"
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer',
-                    width: '100%', textAlign: 'left',
-                    border: font === f.id ? '2px solid var(--accent-red)' : '1px solid var(--border-subtle)',
-                    boxShadow: font === f.id ? '0 0 12px var(--glow-red)' : 'none',
-                    padding: '12px 14px',
-                  }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, fontFamily: f.cssVar }}>{f.label}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: f.cssVar }}>{f.preview}</div>
-                  </div>
-                  {font === f.id && (
-                    <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--gradient-fire)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <Check size={11} color="var(--on-accent-text)" />
-                    </div>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Font Size (5 Options) */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Text &amp; UI Scale</div>
-            <div className="responsive-pills-grid">
-              {FONT_SIZE_OPTIONS.map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ fontSize: opt.id })}
-                  style={{
-                    padding: '12px 4px', borderRadius: 12, cursor: 'pointer', textAlign: 'center',
-                    background: fontSize === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
-                    border: fontSize === opt.id ? 'none' : '1px solid var(--border-subtle)',
-                    color: fontSize === opt.id ? 'var(--on-accent-text)' : 'var(--text-secondary)',
-                  }}>
-                  <div style={{ fontSize: opt.sample, fontWeight: 800, marginBottom: 4 }}>Aa</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Number / Metrics Font */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Numbers &amp; Metrics Font</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-              {[
-                { id: 'mono', label: 'Monospace', sample: '125.5 kg', ff: 'var(--font-jetbrains), monospace' },
-                { id: 'display', label: 'Athletic', sample: '125.5 kg', ff: 'var(--font-space-grotesk), sans-serif' },
-                { id: 'sans', label: 'Match UI', sample: '125.5 kg', ff: 'inherit' },
-              ].map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ numberFont: opt.id })}
-                  style={{
-                    padding: '12px 6px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                    background: numberFont === opt.id ? 'var(--gradient-ocean)' : 'var(--bg-glass)',
-                    border: numberFont === opt.id ? 'none' : '1px solid var(--border-subtle)',
-                    color: numberFont === opt.id ? 'white' : 'var(--text-secondary)',
-                  }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, fontFamily: opt.ff, marginBottom: 4 }}>{opt.sample}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Header Style */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Heading Style</div>
-            <div className="responsive-pills-grid">
-              {[
-                { id: 'gradient', label: 'Gradient', icon: '🌈' },
-                { id: 'solid', label: 'Clean', icon: '✒️' },
-                { id: 'glow', label: 'Neon', icon: '⚡' },
-                { id: 'uppercase', label: 'Tactical', icon: '🔠' },
-              ].map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ headerStyle: opt.id })}
-                  style={{
-                    padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                    background: headerStyle === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
-                    border: headerStyle === opt.id ? 'none' : '1px solid var(--border-subtle)',
-                    color: headerStyle === opt.id ? 'var(--on-accent-text)' : 'var(--text-secondary)',
-                  }}>
-                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Layout Density */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Layout Density</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-              {[
-                { id: 'compact', label: 'Compact', icon: '📐' },
-                { id: 'normal', label: 'Comfortable', icon: '✨' },
-                { id: 'spacious', label: 'Spacious', icon: '🌿' },
-              ].map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ density: opt.id })}
-                  style={{
-                    padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                    background: density === opt.id ? 'var(--gradient-mint)' : 'var(--bg-glass)',
-                    border: density === opt.id ? 'none' : '1px solid var(--border-subtle)',
-                    color: density === opt.id ? 'white' : 'var(--text-secondary)',
-                  }}>
-                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Exercise Grid Columns */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Exercise Library Grid</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-              {[
-                { id: '1', label: '1 Col (List)', icon: '📋' },
-                { id: '2', label: '2 Col (Cards)', icon: '🔲' },
-                { id: '3', label: '3 Col (Dense)', icon: '🎛️' },
-              ].map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ gridColumns: opt.id })}
-                  style={{
-                    padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                    background: gridColumns === opt.id ? 'var(--gradient-ocean)' : 'var(--bg-glass)',
-                    border: gridColumns === opt.id ? 'none' : '1px solid var(--border-subtle)',
-                    color: gridColumns === opt.id ? 'white' : 'var(--text-secondary)',
-                  }}>
-                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Button Style (7 Options) */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Button Style (7 Variants)</div>
-            <div className="responsive-pills-grid">
-              {[
-                { id: 'default', label: 'Default', preview: '⬛' },
-                { id: 'pill', label: 'Pill', preview: '💊' },
-                { id: 'sharp', label: 'Sharp', preview: '🔲' },
-                { id: 'outline', label: 'Outline', preview: '⬜' },
-                { id: 'neon', label: 'Neon', preview: '✨' },
-                { id: 'glass', label: 'Glass', preview: '🫧' },
-                { id: '3d', label: '3D Tactile', preview: '🕹️' },
-              ].map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ buttonStyle: opt.id })} style={{
-                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: buttonStyle === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
-                  border: buttonStyle === opt.id ? 'none' : '1px solid var(--border-subtle)',
-                  color: buttonStyle === opt.id ? 'var(--on-accent-text)' : 'var(--text-secondary)',
-                }}>
-                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.preview}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Card Style (7 Options) */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Card Style (7 Variants)</div>
-            <div className="responsive-pills-grid">
-              {[
-                { id: 'glass', label: 'Glass', preview: '🪟' },
-                { id: 'solid', label: 'Solid', preview: '🧱' },
-                { id: 'outline', label: 'Outline', preview: '📐' },
-                { id: 'flat', label: 'Flat', preview: '📄' },
-                { id: 'neon', label: 'Neon', preview: '💡' },
-                { id: 'elevated', label: 'Elevated', preview: '🏔️' },
-                { id: 'gradient', label: 'Gradient', preview: '🌌' },
-              ].map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ cardStyle: opt.id })} style={{
-                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: cardStyle === opt.id ? 'var(--gradient-ocean)' : 'var(--bg-glass)',
-                  border: cardStyle === opt.id ? 'none' : '1px solid var(--border-subtle)',
-                  color: cardStyle === opt.id ? 'white' : 'var(--text-secondary)',
-                }}>
-                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.preview}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Corner Radius (5 Options) */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Corner Radius</div>
-            <div className="responsive-pills-grid">
-              {[
-                { id: 'none', label: 'Square', icon: '⬜' },
-                { id: 'small', label: 'Subtle', icon: '🔳' },
-                { id: 'default', label: 'Default', icon: '⬛' },
-                { id: 'large', label: 'Round', icon: '🔵' },
-                { id: 'pill', label: 'Capsule', icon: '💊' },
-              ].map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ borderRadius: opt.id })} style={{
-                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: borderRadius === opt.id ? 'var(--gradient-mint)' : 'var(--bg-glass)',
-                  border: borderRadius === opt.id ? 'none' : '1px solid var(--border-subtle)',
-                  color: borderRadius === opt.id ? 'white' : 'var(--text-secondary)',
-                }}>
-                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Background Pattern */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Background Pattern</div>
-            <div className="responsive-pills-grid">
-              {[
-                { id: 'mesh', label: 'Mesh', icon: '🌌' },
-                { id: 'grid', label: 'Grid', icon: '🕸️' },
-                { id: 'dots', label: 'Dots', icon: '⠿' },
-                { id: 'aurora', label: 'Aurora', icon: '🌅' },
-                { id: 'clean', label: 'Clean', icon: '🌑' },
-              ].map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ bgStyle: opt.id })} style={{
-                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: bgStyle === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
-                  border: bgStyle === opt.id ? 'none' : '1px solid var(--border-subtle)',
-                  color: bgStyle === opt.id ? 'var(--on-accent-text)' : 'var(--text-secondary)',
-                }}>
-                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Bottom Nav Style (6 Options) */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Navigation Bar (6 Styles)</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-              {[
-                { id: 'default', label: 'Blur Dock', icon: '🫧' },
-                { id: 'floating', label: 'Floating Island', icon: '🛸' },
-                { id: 'minimal', label: 'Minimal Icons', icon: '➖' },
-                { id: 'solid', label: 'Solid Bar', icon: '🧱' },
-                { id: 'pill', label: 'Center Pill', icon: '💊' },
-                { id: 'bordered', label: 'Neon Top Line', icon: '⚡' },
-              ].map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ navStyle: opt.id })} style={{
-                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: navStyle === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
-                  border: navStyle === opt.id ? 'none' : '1px solid var(--border-subtle)',
-                  color: navStyle === opt.id ? 'var(--on-accent-text)' : 'var(--text-secondary)',
-                }}>
-                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Animation Level */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Animations &amp; Transitions</div>
-            <div className="responsive-pills-grid">
-              {[
-                { id: 'none', label: 'None', icon: '⏹️' },
-                { id: 'subtle', label: 'Subtle', icon: '🌊' },
-                { id: 'normal', label: 'Normal', icon: '💨' },
-                { id: 'full', label: 'Max', icon: '🚀' },
-              ].map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ animationLevel: opt.id })} style={{
-                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: animationLevel === opt.id ? 'var(--gradient-sunset)' : 'var(--bg-glass)',
-                  border: animationLevel === opt.id ? 'none' : '1px solid var(--border-subtle)',
-                  color: animationLevel === opt.id ? 'white' : 'var(--text-secondary)',
-                }}>
-                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Accent Intensity */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Accent Saturation</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-              {ACCENT_INTENSITY_OPTIONS.map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ accentIntensity: opt.id })} style={{
-                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: accentIntensity === opt.id ? 'var(--gradient-hero)' : 'var(--bg-glass)',
-                  border: accentIntensity === opt.id ? 'none' : '1px solid var(--border-subtle)',
-                  color: accentIntensity === opt.id ? 'var(--on-accent-text)' : 'var(--text-secondary)',
-                }}>
-                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Glow Intensity (4 Options) */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Glow Intensity</div>
-            <div className="responsive-pills-grid">
-              {[
-                { id: 'none', label: 'Off', icon: '🌑' },
-                { id: 'low', label: 'Subtle', icon: '💫' },
-                { id: 'normal', label: 'Normal', icon: '✨' },
-                { id: 'high', label: 'Intense', icon: '⚡' },
-              ].map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ glowIntensity: opt.id })} style={{
-                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: glowIntensity === opt.id ? 'var(--gradient-mint)' : 'var(--bg-glass)',
-                  border: glowIntensity === opt.id ? 'none' : '1px solid var(--border-subtle)',
-                  color: glowIntensity === opt.id ? 'white' : 'var(--text-secondary)',
-                }}>
-                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Border Thickness (4 Options) */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Border Thickness</div>
-            <div className="responsive-pills-grid">
-              {[
-                { id: 'none', label: 'None', icon: '⭕' },
-                { id: 'thin', label: 'Thin', icon: '📏' },
-                { id: 'normal', label: 'Normal', icon: '📐' },
-                { id: 'thick', label: 'Thick', icon: '📊' },
-              ].map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ borderThickness: opt.id })} style={{
-                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: borderThickness === opt.id ? 'var(--gradient-ocean)' : 'var(--bg-glass)',
-                  border: borderThickness === opt.id ? 'none' : '1px solid var(--border-subtle)',
-                  color: borderThickness === opt.id ? 'white' : 'var(--text-secondary)',
-                }}>
-                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Glass Opacity (4 Options) */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Surface Opacity &amp; Blur</div>
-            <div className="responsive-pills-grid">
-              {[
-                { id: 'clear', label: 'Crystal', icon: '💎' },
-                { id: 'light', label: 'Light', icon: '☁️' },
-                { id: 'medium', label: 'Medium', icon: '🌫️' },
-                { id: 'heavy', label: 'Frosted', icon: '🧊' },
-              ].map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ glassOpacity: opt.id })} style={{
-                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: glassOpacity === opt.id ? 'var(--gradient-mint)' : 'var(--bg-glass)',
-                  border: glassOpacity === opt.id ? 'none' : '1px solid var(--border-subtle)',
-                  color: glassOpacity === opt.id ? 'white' : 'var(--text-secondary)',
-                }}>
-                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Contrast Mode (3 Options) */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Contrast Level</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-              {CONTRAST_OPTIONS.map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ contrastMode: opt.id })} style={{
-                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: contrastMode === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
-                  border: contrastMode === opt.id ? 'none' : '1px solid var(--border-subtle)',
-                  color: contrastMode === opt.id ? 'var(--on-accent-text)' : 'var(--text-secondary)',
-                }}>
-                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Color Vision Mode (5 Options) */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Color Vision Accessibility</div>
-            <div className="responsive-pills-grid">
-              {COLOR_MODE_OPTIONS.map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ colorMode: opt.id })} style={{
-                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: colorMode === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
-                  border: colorMode === opt.id ? 'none' : '1px solid var(--border-subtle)',
-                  color: colorMode === opt.id ? 'var(--on-accent-text)' : 'var(--text-secondary)',
-                }}>
-                  <div style={{ fontSize: 16 }}>{opt.icon}</div>
-                  <div style={{ fontSize: 8, fontWeight: 700, marginTop: 2 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Text Shadow Toggle */}
-          <SettingRow icon={Type} iconColor="var(--accent-pink)" label="Text Shadow" description="Add crisp depth to headings & numbers">
-            <Toggle enabled={textShadow} onToggle={() => updateAppearance({ textShadow: !textShadow })} label="Text Shadow" />
-          </SettingRow>
-
-          {/* Home Dashboard Widgets Customization */}
-          <div className="section-label" style={{ marginTop: 8 }}>Home Dashboard Widgets</div>
-          <SettingRow icon={Eye} iconColor="var(--accent-purple)" label="Daily Motivational Quote" description="Show quote card on Home tab">
-            <Toggle enabled={showDailyQuote} onToggle={() => updateWorkoutSetting('showDailyQuote', !showDailyQuote)} label="Daily Quote" />
-          </SettingRow>
-          <SettingRow icon={Clock} iconColor="var(--accent-green)" label="Last Workout Summary" description="Show previous workout stats card">
-            <Toggle enabled={showLastWorkout} onToggle={() => updateWorkoutSetting('showLastWorkout', !showLastWorkout)} label="Last Workout Summary" />
-          </SettingRow>
-          <SettingRow icon={LayoutGrid} iconColor="var(--accent-cyan)" label="16-Week Activity Heatmap" description="Show consistency grid on Home tab">
-            <Toggle enabled={showActivityHeatmap} onToggle={() => updateWorkoutSetting('showActivityHeatmap', !showActivityHeatmap)} label="Activity Heatmap" />
-          </SettingRow>
-          <SettingRow icon={Sliders} iconColor="var(--accent-yellow)" label="Quick Navigation Cards" description="Show feature shortcut tiles on Home tab">
-            <Toggle enabled={showFeatureCards} onToggle={() => updateWorkoutSetting('showFeatureCards', !showFeatureCards)} label="Quick Navigation Cards" />
-          </SettingRow>
-
-        </motion.div>
-      )}
-
-      {/* ======== WORKOUT TAB ======== */}
-      {activeTab === 'workout' && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-
-          <SettingRow icon={Shuffle} iconColor="var(--accent-purple)" label="Exercise Variety" description="Rotate exercises across workouts">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              {([
-                { id: 'low' as const, label: 'Low' },
-                { id: 'medium' as const, label: 'Balanced' },
-                { id: 'high' as const, label: 'High' },
-              ]).map(v => (
-                <button key={v.id} onClick={() => updateWorkoutSetting('exerciseVariety', v.id)}
-                  style={{ padding: '6px 10px', borderRadius: 8, border: exerciseVariety === v.id ? 'none' : '1px solid var(--border-subtle)', background: exerciseVariety === v.id ? 'var(--gradient-fire)' : 'transparent', color: exerciseVariety === v.id ? 'var(--on-accent-text)' : 'var(--text-muted)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
-                  {v.label}
-                </button>
-              ))}
-            </div>
-          </SettingRow>
-
-          <SettingRow icon={Timer} iconColor="var(--accent-cyan)" label="Default Rest" description="Auto-start rest timer duration">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              {[30, 60, 90, 120, 180, 300].map(t => (
-                <button key={t} onClick={() => { setDefaultRestTime(t); void saveProfileFields({ defaultRestTime: t }); }}
-                  style={{ padding: '6px 9px', borderRadius: 8, border: defaultRestTime === t ? 'none' : '1px solid var(--border-subtle)', background: defaultRestTime === t ? 'var(--gradient-fire)' : 'transparent', color: defaultRestTime === t ? 'var(--on-accent-text)' : 'var(--text-muted)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
-                  {t >= 60 ? `${t / 60}m` : `${t}s`}
-                </button>
-              ))}
-            </div>
-          </SettingRow>
-
-          <SettingRow icon={ArrowUp} iconColor="var(--accent-orange)" label="Weight Increment" description="Step for +/- weight buttons in workout">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              {[0.5, 1, 1.25, 2.5, 5, 10].map(inc => (
-                <button key={inc} onClick={() => updateWorkoutSetting('weightIncrement', inc)}
-                  style={{ padding: '6px 9px', borderRadius: 8, border: weightIncrement === inc ? 'none' : '1px solid var(--border-subtle)', background: weightIncrement === inc ? 'var(--gradient-ocean)' : 'transparent', color: weightIncrement === inc ? 'white' : 'var(--text-muted)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
-                  {inc}
-                </button>
-              ))}
-            </div>
-          </SettingRow>
-
-          <SettingRow icon={Timer} iconColor="var(--accent-green)" label="Enable Rest Timer" description="Master toggle for rest timer overlay">
-            <Toggle enabled={restTimerEnabled} onToggle={() => { toggleRestTimer(); void saveProfileFields({ restTimerEnabled: !restTimerEnabled }); }} label="Enable Rest Timer" />
-          </SettingRow>
-
-          <SettingRow icon={Timer} iconColor="var(--accent-blue)" label="Auto-start Rest" description="Start rest timer after completing a set">
-            <Toggle enabled={autoStartRest} onToggle={() => updateWorkoutSetting('autoStartRest', !autoStartRest)} label="Auto-start Rest" />
-          </SettingRow>
-
-          <SettingRow icon={Zap} iconColor="var(--accent-green)" label="Auto-advance Exercises" description="Jump to next exercise when all sets done">
-            <Toggle enabled={autoAdvance} onToggle={() => updateWorkoutSetting('autoAdvance', !autoAdvance)} label="Auto-advance Exercises" />
-          </SettingRow>
-
-          <SettingRow icon={Clock} iconColor="var(--accent-orange)" label="Show Workout Stopwatch" description="Display elapsed time in workout header">
-            <Toggle enabled={showTimer} onToggle={() => updateWorkoutSetting('showTimer', !showTimer)} label="Show Workout Stopwatch" />
-          </SettingRow>
-
-          <SettingRow icon={Volume2} iconColor="var(--accent-yellow)" label="Sound Effects" description="Set & rest timer completion sounds">
-            <Toggle enabled={soundEnabled} onToggle={() => { toggleSound(); void saveProfileFields({ soundEnabled: !soundEnabled }); }} label="Sound Effects" />
-          </SettingRow>
-
-          <SettingRow icon={Bell} iconColor="var(--accent-cyan)" label="Countdown Beeps (3-2-1)" description="Audio ticks on final 3 seconds of rest">
-            <Toggle enabled={countdownSound} onToggle={() => updateWorkoutSetting('countdownSound', !countdownSound)} label="Countdown Beeps" />
-          </SettingRow>
-
-          <SettingRow icon={Vibrate} iconColor="var(--accent-pink)" label="Haptic Feedback" description="Vibrate on set & workout completion">
-            <Toggle enabled={hapticEnabled} onToggle={() => { toggleHaptic(); void saveProfileFields({ hapticEnabled: !hapticEnabled }); }} label="Haptic Feedback" />
-          </SettingRow>
-
-          <SettingRow icon={Smartphone} iconColor="var(--accent-purple)" label="Keep Screen On" description="Prevent screen sleep during workouts">
-            <Toggle enabled={keepScreenOn} onToggle={() => updateWorkoutSetting('keepScreenOn', !keepScreenOn)} label="Keep Screen On" />
-          </SettingRow>
-
-          {/* Workout Reminders */}
-          <ReminderSection />
-        </motion.div>
-      )}
-
-      {/* ======== TOOLS TAB ======== */}
-      {activeTab === 'tools' && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div className="card" style={{ padding: 16 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Scale size={16} color="var(--accent-green)" /> Body Weight
+      {/* ═══════════════ GENERAL SETTINGS ═══════════════ */}
+      {section === 'general' && (
+        <div className="animate-in">
+          <div className="card" style={{ marginBottom: 16 }}>
+            <h3 style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 10 }}>
+              Athlete Profile
             </h3>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-              <input value={newWeight} onChange={e => setNewWeight(e.target.value)} placeholder={`Weight (${unitSystem === 'metric' ? 'kg' : 'lbs'})`} type="number" step="0.1"
-                style={{ flex: 1, padding: '12px 14px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', fontFamily: 'inherit', minHeight: 46 }} />
-              <button onClick={addBodyWeight} style={{ padding: '12px 18px', background: 'var(--gradient-mint)', border: 'none', borderRadius: 12, color: 'white', fontWeight: 700, cursor: 'pointer', minHeight: 46 }}>
-                <Plus size={16} />
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+              <input
+                className="input"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Your Name"
+              />
+              <button className="btn-primary" onClick={handleSaveName} style={{ padding: '10px 16px', flexShrink: 0, fontSize: '0.78rem' }}>
+                Save
               </button>
             </div>
-            {bodyWeights.length > 1 && (
-              <svg width="100%" viewBox="0 0 300 80" style={{ marginBottom: 8 }}>
-                <polyline fill="none" stroke="var(--accent-green)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" points={weightChartPoints} />
-                <polyline fill="url(#weightGrad)" stroke="none" points={`10,70 ${weightChartPoints} 290,70`} />
-                <defs><linearGradient id="weightGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="rgba(16,232,154,0.18)" /><stop offset="100%" stopColor="rgba(16,232,154,0)" /></linearGradient></defs>
-              </svg>
-            )}
-            {bodyWeights.slice(0, 6).map(bw => (
-              <div key={bw.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 13 }}>
-                <span style={{ color: 'var(--text-secondary)' }}>{new Date(bw.date).toLocaleDateString()}</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span className="font-mono" style={{ fontWeight: 700 }}>{bw.weight} {bw.unit}</span>
-                  <button onClick={() => void deleteBodyWeight(bw.id)} aria-label="Delete weight entry" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 2 }}>
-                    <X size={13} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
 
-          <div className="card" style={{ padding: 16 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Calculator size={16} color="var(--accent-purple)" /> 1RM Calculator
-            </h3>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-              <input value={oneRMWeight} onChange={e => setOneRMWeight(e.target.value)} placeholder="Weight" type="number"
-                style={{ flex: 1, padding: '12px 14px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', fontFamily: 'inherit', minHeight: 46 }} />
-              <input value={oneRMReps} onChange={e => setOneRMReps(e.target.value)} placeholder="Reps" type="number"
-                style={{ width: 88, padding: '12px 14px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', fontFamily: 'inherit', minHeight: 46 }} />
-            </div>
-            {calcOneRM && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                {[
-                  { label: 'Epley', value: calcOneRM.epley, color: 'var(--accent-red)' },
-                  { label: 'Brzycki', value: calcOneRM.brzycki, color: 'var(--accent-purple)' },
-                  { label: 'Lombardi', value: calcOneRM.lombardi, color: 'var(--accent-green)' },
-                ].map(est => (
-                  <div key={est.label} style={{ padding: 12, borderRadius: 12, background: 'var(--bg-glass)', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
-                    <div className="font-mono" style={{ fontSize: 20, fontWeight: 800, color: est.color }}>{est.value}</div>
-                    <div className="section-label" style={{ marginTop: 2 }}>{est.label}</div>
-                  </div>
+            <SettingRow icon={Scale} title="Weight Unit" desc="Used across all exercises, logs & calculators">
+              <div style={{ display: 'flex', gap: 4 }}>
+                {(['kg', 'lbs'] as const).map((u) => (
+                  <button key={u} className={`chip ${profile.weightUnit === u ? 'active' : ''}`}
+                    onClick={() => setWeightUnit(u)} style={{ padding: '5px 12px' }}>
+                    {u.toUpperCase()}
+                  </button>
                 ))}
               </div>
-            )}
+            </SettingRow>
 
-            {calcOneRM && (
-              <div style={{ marginTop: 12 }}>
-                <div className="section-label" style={{ marginBottom: 6 }}>Training Percentages (Epley)</div>
-                <div className="responsive-stats-4">
-                  {[95, 90, 85, 80, 75, 70, 65, 60].map(pct => (
-                    <div key={pct} style={{ padding: '8px 4px', borderRadius: 8, background: 'var(--bg-glass)', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{pct}%</div>
-                      <div className="font-mono" style={{ fontSize: 13, fontWeight: 700 }}>{Math.round(calcOneRM.epley * pct / 100)}</div>
-                    </div>
+            <SettingRow icon={Sparkles} iconColor="#a855f7" title="Experience Level" desc="Tailors plan recommendations">
+              <div style={{ display: 'flex', gap: 4 }}>
+                {(['beginner', 'intermediate', 'expert'] as const).map((lvl) => (
+                  <button key={lvl} className={`chip ${profile.experienceLevel === lvl ? 'active' : ''}`}
+                    onClick={() => setExperienceLevel(lvl)}
+                    style={{ textTransform: 'capitalize', padding: '5px 9px', fontSize: '0.68rem' }}>
+                    {lvl === 'intermediate' ? 'Interm.' : lvl}
+                  </button>
+                ))}
+              </div>
+            </SettingRow>
+
+            <SettingRow icon={Bell} iconColor="#f59e0b" title="Weekly Goal" desc="Target training days per week">
+              <div style={{ display: 'flex', gap: 4 }}>
+                {[2, 3, 4, 5, 6].map((g) => (
+                  <button key={g} className={`chip ${profile.weeklyGoal === g ? 'active' : ''}`}
+                    onClick={() => setWeeklyGoal(g)} style={{ padding: '5px 9px', fontSize: '0.72rem' }}>
+                    {g}d
+                  </button>
+                ))}
+              </div>
+            </SettingRow>
+          </div>
+
+          {/* Body Metrics Tracker */}
+          <div className="card">
+            <h3 style={{ fontSize: '0.82rem', fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Scale size={14} color="var(--accent-primary)" /> Body Metrics Log
+            </h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, marginBottom: 14 }}>
+              <input className="input" type="number" placeholder={`Weight (${profile.weightUnit})`} value={newWeight} onChange={(e) => setNewWeight(e.target.value)} style={{ minWidth: 0 }} />
+              <input className="input" type="number" placeholder="Body Fat %" value={newBodyFat} onChange={(e) => setNewBodyFat(e.target.value)} style={{ minWidth: 0 }} />
+              <button className="btn-primary" onClick={handleAddMetric} style={{ padding: '10px 14px', flexShrink: 0, fontSize: '0.78rem' }}>Log</button>
+            </div>
+            {bodyMetrics.length > 1 && (
+              <ResponsiveContainer width="100%" height={130}>
+                <AreaChart data={bodyMetrics.map((m) => ({
+                  date: new Date(m.recordedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                  weight: m.weight,
+                }))}>
+                  <defs>
+                    <linearGradient id="wGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="date" tick={{ fill: '#55556a', fontSize: 9 }} axisLine={false} tickLine={false} />
+                  <YAxis domain={['auto', 'auto']} tick={{ fill: '#55556a', fontSize: 9 }} axisLine={false} tickLine={false} width={32} />
+                  <Tooltip contentStyle={{ background: '#161622', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, fontSize: '0.75rem' }} />
+                  <Area type="monotone" dataKey="weight" stroke="#10b981" strokeWidth={2} fill="url(#wGrad)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════ APPEARANCE SETTINGS (22 OPTIONS + CATEGORY FILTER) ═══════════════ */}
+      {section === 'appearance' && (
+        <div className="animate-in">
+          {/* Pinned Live Preview Card with Solid Safe-Area Backdrop so Content Never Bleeds Behind Status Bar */}
+          <div style={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 40,
+            background: 'var(--bg-primary)',
+            paddingTop: 'calc(max(env(safe-area-inset-top, 18px), 18px) + 4px)',
+            paddingBottom: 10,
+            marginTop: -6,
+            marginBottom: 10,
+          }}>
+            <div
+              className="card"
+              style={{
+                padding: 13,
+                border: '1px solid var(--accent-primary)',
+                background: 'var(--bg-secondary)',
+                boxShadow: '0 10px 28px rgba(0,0,0,0.55)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <Eye size={12} color="var(--accent-primary)" /> Live Preview (Pinned)
+                </span>
+                <button
+                  onClick={resetAppearance}
+                  style={{
+                    background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-full)', padding: '3px 9px', fontSize: '0.64rem',
+                    color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
+                  }}
+                >
+                  <RotateCcw size={10} /> Reset All 22
+                </button>
+              </div>
+              <div style={{
+                padding: 11, borderRadius: 'var(--radius-md)', background: 'var(--bg-card)',
+                border: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.84rem' }}>Incline Barbell Press</div>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: 2 }}>4 sets × 8–10 reps • 90s rest</div>
+                </div>
+                <span className="badge badge-accent">Active</span>
+              </div>
+            </div>
+
+            {/* Category Jump Filter to Eliminate 22-Card Scroll Fatigue */}
+            <div className="chip-scroll" style={{ marginTop: 8 }}>
+              {([
+                { id: 'all', label: 'All (22)' },
+                { id: 'theme', label: 'Theme & Color' },
+                { id: 'typography', label: 'Text & Layout' },
+                { id: 'cards', label: 'Cards & Nav' },
+                { id: 'widgets', label: 'Widgets & A11y' },
+              ] as const).map((f) => (
+                <button
+                  key={f.id}
+                  className={`chip ${appearanceFilter === f.id ? 'active' : ''}`}
+                  onClick={() => setAppearanceFilter(f.id)}
+                  style={{ padding: '5px 11px', fontSize: '0.68rem' }}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {showThemeSection && (
+            <>
+              {/* 1. Theme Surface Mode (12 themes) */}
+              <div className="card" style={{ marginBottom: 14 }}>
+                <h3 style={{ fontSize: '0.82rem', fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Moon size={14} color="var(--accent-primary)" /> 1. Surface Theme ({THEME_MODES.length} Presets)
+                </h3>
+                <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginBottom: 12 }}>
+                  Choose your dark, pitch-black OLED, tinted, or daylight surface palette
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+                  {THEME_MODES.map((t) => {
+                    const active = profile.themeMode === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        onClick={() => setThemeMode(t.id)}
+                        style={{
+                          padding: 10, borderRadius: 'var(--radius-md)', cursor: 'pointer', textAlign: 'left',
+                          background: active ? 'rgba(99, 102, 241, 0.12)' : 'rgba(255,255,255,0.02)',
+                          border: active ? '1.5px solid var(--accent-primary)' : '1px solid var(--border-subtle)',
+                          display: 'flex', alignItems: 'center', gap: 9,
+                        }}
+                      >
+                        <div style={{
+                          width: 24, height: 24, borderRadius: 6, background: t.preview,
+                          border: '1px solid rgba(255,255,255,0.18)', flexShrink: 0,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          {active && <Check size={12} color="var(--accent-primary)" />}
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: '0.74rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</div>
+                          <div style={{ fontSize: '0.6rem', color: 'var(--text-tertiary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.desc}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 2. Accent Color Palette (16 accents) */}
+              <div className="card" style={{ marginBottom: 14 }}>
+                <h3 style={{ fontSize: '0.82rem', fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Palette size={14} color="var(--accent-primary)" /> 2. Primary Accent Color ({ACCENT_COLORS.length} Swatches)
+                </h3>
+                <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginBottom: 12 }}>
+                  Highlights buttons, badges, charts & active indicators
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                  {ACCENT_COLORS.map((c) => {
+                    const active = profile.accentColor === c.id;
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => setAccentColor(c.id)}
+                        style={{
+                          padding: '9px 6px', borderRadius: 'var(--radius-md)', cursor: 'pointer',
+                          background: active ? `${c.color}20` : 'rgba(255,255,255,0.02)',
+                          border: active ? `1.5px solid ${c.color}` : '1px solid var(--border-subtle)',
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                        }}
+                      >
+                        <div style={{
+                          width: 22, height: 22, borderRadius: '50%',
+                          background: `linear-gradient(135deg, ${c.color}, ${c.secondary})`,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          boxShadow: active ? `0 0 12px ${c.color}80` : 'none',
+                        }}>
+                          {active && <Check size={12} color="white" />}
+                        </div>
+                        <span style={{ fontSize: '0.63rem', fontWeight: 600, color: active ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
+                          {c.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 3. Secondary Gradient End Color */}
+              <div className="card" style={{ marginBottom: 14 }}>
+                <h3 style={{ fontSize: '0.82rem', fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Sparkles size={14} color="var(--accent-secondary)" /> 3. Secondary Gradient Accent
+                </h3>
+                <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginBottom: 10 }}>
+                  Blend a second color into buttons, rings, and featured banners (or keep Auto)
+                </p>
+                <div className="chip-scroll">
+                  <button
+                    className={`chip ${(profile.secondaryAccentColor || 'auto') === 'auto' ? 'active' : ''}`}
+                    onClick={() => setAppearance({ secondaryAccentColor: 'auto' })}
+                  >
+                    Auto Match
+                  </button>
+                  {ACCENT_COLORS.map((c) => (
+                    <button
+                      key={c.id}
+                      className={`chip ${profile.secondaryAccentColor === c.id ? 'active' : ''}`}
+                      onClick={() => setAppearance({ secondaryAccentColor: c.id })}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                    >
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: c.color }} />
+                      {c.label}
+                    </button>
                   ))}
                 </div>
               </div>
-            )}
-          </div>
+            </>
+          )}
 
-          <PlateCalculator barWeight={barWeight} unit={unitSystem} />
-
-          {/* Daily Hydration Tracker */}
-          <div className="card" style={{ padding: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-                💧 Daily Hydration
+          {showTypographySection && (
+            <div className="card" style={{ marginBottom: 14 }}>
+              <h3 style={{ fontSize: '0.82rem', fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Type size={14} color="#06b6d4" /> 4–9. Typography & Layout Spacing
               </h3>
-              <span className="font-mono" style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent-cyan)' }}>
-                {todayWater?.glasses || 0} / {todayWater?.targetGlasses || 8} glasses ({((todayWater?.glasses || 0) * 0.25).toFixed(2)}L)
-              </span>
-            </div>
-            <div className="progress-bar" style={{ height: 8, marginBottom: 12 }}>
-              <div
-                className="progress-bar-fill"
-                style={{
-                  width: `${Math.min(100, ((todayWater?.glasses || 0) / (todayWater?.targetGlasses || 8)) * 100)}%`,
-                  background: 'var(--gradient-ocean)',
-                }}
-              />
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={() => void updateWater(-1)}
-                className="btn-secondary"
-                style={{ flex: 1, minHeight: 42, borderRadius: 10, fontSize: 13, fontWeight: 700 }}
-              >
-                - 1 Glass
-              </button>
-              <button
-                onClick={() => void updateWater(1)}
-                className="btn-primary"
-                style={{ flex: 2, minHeight: 42, borderRadius: 10, fontSize: 13, fontWeight: 700, background: 'var(--gradient-ocean)', color: '#fff' }}
-              >
-                + Add Glass (250ml)
-              </button>
-            </div>
-          </div>
 
-          {/* Body Measurements Tracker */}
-          <div className="card" style={{ padding: 16 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-              📏 Body Measurements ({unitSystem === 'metric' ? 'cm' : 'in'})
-            </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 10 }}>
-              <input value={measForm.bodyFat} onChange={e => setMeasForm({ ...measForm, bodyFat: e.target.value })} placeholder="Body Fat %" type="number" step="0.1"
-                style={{ padding: '10px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 12, outline: 'none' }} />
-              <input value={measForm.chest} onChange={e => setMeasForm({ ...measForm, chest: e.target.value })} placeholder="Chest" type="number" step="0.1"
-                style={{ padding: '10px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 12, outline: 'none' }} />
-              <input value={measForm.waist} onChange={e => setMeasForm({ ...measForm, waist: e.target.value })} placeholder="Waist" type="number" step="0.1"
-                style={{ padding: '10px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 12, outline: 'none' }} />
-              <input value={measForm.arms} onChange={e => setMeasForm({ ...measForm, arms: e.target.value })} placeholder="Arms" type="number" step="0.1"
-                style={{ padding: '10px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 12, outline: 'none' }} />
-              <input value={measForm.thighs} onChange={e => setMeasForm({ ...measForm, thighs: e.target.value })} placeholder="Thighs" type="number" step="0.1"
-                style={{ padding: '10px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 12, outline: 'none' }} />
-              <button onClick={() => void addMeasurement()} className="btn-primary" style={{ minHeight: 40, borderRadius: 10, fontSize: 12, fontWeight: 700 }}>
-                <Plus size={14} /> Log
-              </button>
-            </div>
-            {measurements.slice(0, 5).map((m, idx) => (
-              <div key={m.id || idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 11 }}>
-                <span style={{ color: 'var(--text-secondary)' }}>{new Date(m.date).toLocaleDateString()}</span>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                  {m.bodyFat && <span className="font-mono" style={{ color: 'var(--accent-yellow)' }}>{m.bodyFat}% BF</span>}
-                  {m.chest && <span className="font-mono">C: {m.chest}</span>}
-                  {m.waist && <span className="font-mono">W: {m.waist}</span>}
-                  {m.arms && <span className="font-mono">A: {m.arms}</span>}
-                  {m.thighs && <span className="font-mono">T: {m.thighs}</span>}
-                  <button onClick={() => void deleteMeasurement(m.id)} aria-label="Delete measurement" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 2 }}>
-                    <X size={12} />
-                  </button>
+              <SettingRow icon={Type} iconColor="#06b6d4" title="4. Font Family" desc="Primary interface typeface">
+                <select
+                  className="input"
+                  style={{ width: 155, padding: '6px 10px', fontSize: '0.74rem' }}
+                  value={profile.fontFamily || DEFAULT_APPEARANCE.fontFamily}
+                  onChange={(e) => setAppearance({ fontFamily: e.target.value as typeof profile.fontFamily })}
+                >
+                  {FONT_FAMILY_OPTIONS.map((f) => (
+                    <option key={f.id} value={f.id}>{f.label} — {f.desc}</option>
+                  ))}
+                </select>
+              </SettingRow>
+
+              <SettingRow icon={Type} iconColor="#38bdf8" title="5. Text Scale" desc="Global interface font size">
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {(['sm', 'md', 'lg', 'xl'] as FontScale[]).map((sz) => (
+                    <button key={sz} className={`chip ${(profile.fontScale || 'md') === sz ? 'active' : ''}`}
+                      onClick={() => setFontScale(sz)} style={{ padding: '4px 9px', fontSize: '0.68rem', textTransform: 'uppercase' }}>
+                      {sz}
+                    </button>
+                  ))}
                 </div>
-              </div>
-            ))}
-          </div>
-        </motion.div>
-      )}
+              </SettingRow>
 
-      {/* ======== DATA TAB ======== */}
-      {activeTab === 'data' && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-
-          <div className="card" style={{ padding: 16 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Database size={16} color="var(--accent-blue)" /> Database Info
-            </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-              {[
-                { label: 'Exercises', value: dbStats.exercises.toLocaleString(), color: 'var(--accent-green)' },
-                { label: 'Sessions', value: dbStats.sessions.toLocaleString(), color: 'var(--accent-purple)' },
-                { label: 'Plans', value: dbStats.plans.toLocaleString(), color: 'var(--accent-orange)' },
-                { label: 'Storage', value: dbStats.size || 'N/A', color: 'var(--accent-cyan)' },
-              ].map(stat => (
-                <div key={stat.label} style={{ padding: 12, borderRadius: 12, background: 'var(--bg-glass)', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
-                  <div className="font-mono" style={{ fontSize: 18, fontWeight: 800, color: stat.color }}>{stat.value}</div>
-                  <div className="section-label" style={{ marginTop: 4 }}>{stat.label}</div>
+              <SettingRow icon={Type} iconColor="#818cf8" title="6. Heading Weight" desc="Title & stat boldness">
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {([
+                    { id: 'semibold', label: '600' },
+                    { id: 'bold', label: '700' },
+                    { id: 'extrabold', label: '800' },
+                    { id: 'black', label: '900' },
+                  ] as const).map((w) => (
+                    <button key={w.id} className={`chip ${(profile.headingWeight || 'extrabold') === w.id ? 'active' : ''}`}
+                      onClick={() => setAppearance({ headingWeight: w.id })} style={{ padding: '4px 8px', fontSize: '0.68rem' }}>
+                      {w.label}
+                    </button>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+              </SettingRow>
 
-          <button className="card" onClick={exportData} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', width: '100%', textAlign: 'left', border: '1px solid rgba(16,232,154,0.2)' }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(16,232,154,0.1)', border: '1px solid rgba(16,232,154,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Download size={16} color="var(--accent-green)" />
-            </div>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-green)' }}>Export Full Backup</div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Download sessions, sets, PRs, measurements, reminders &amp; custom plans as JSON</div>
-            </div>
-          </button>
+              <SettingRow icon={Gauge} iconColor="#22d3ee" title="7. Monospace Numbers" desc="Tabular alignment for weights, timers & reps">
+                <Toggle checked={profile.tabularNumbers ?? true} onChange={(v) => setAppearance({ tabularNumbers: v })} label="Monospace numbers" />
+              </SettingRow>
 
-          <label className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', width: '100%', textAlign: 'left', border: '1px solid rgba(56,189,248,0.2)' }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <ArrowUp size={16} color="var(--accent-cyan)" />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-cyan)' }}>Import Backup (Restore JSON)</div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{importStatus || 'Restore workouts, custom plans, PRs & appearance from a backup file'}</div>
-            </div>
-            <input type="file" accept=".json,application/json" onChange={handleImportData} style={{ display: 'none' }} />
-          </label>
-
-          {/* In-App Confirmation for Clearing Workout History */}
-          <div className="card" style={{ border: '1px solid rgba(251,191,36,0.2)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <RotateCcw size={16} color="var(--accent-yellow)" />
+              <SettingRow icon={Layout} iconColor="#10b981" title="8. Layout Density" desc="Spacing between cards and lists">
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {(['compact', 'comfortable', 'spacious'] as LayoutDensity[]).map((d) => (
+                    <button key={d} className={`chip ${(profile.layoutDensity || 'comfortable') === d ? 'active' : ''}`}
+                      onClick={() => setLayoutDensity(d)} style={{ padding: '4px 8px', fontSize: '0.66rem', textTransform: 'capitalize' }}>
+                      {d === 'comfortable' ? 'Default' : d}
+                    </button>
+                  ))}
                 </div>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-yellow)' }}>Clear Workout History</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Remove all logged sessions &amp; PRs while keeping exercises &amp; plans</div>
-                </div>
-              </div>
-              {!confirmClearHistory && (
-                <button onClick={() => setConfirmClearHistory(true)} className="btn-secondary" style={{ padding: '8px 12px', fontSize: 11, borderRadius: 10, flexShrink: 0 }}>
-                  Clear
-                </button>
-              )}
+              </SettingRow>
+
+              <SettingRow icon={Smartphone} iconColor="#f59e0b" title="9. Compact Cards" desc="Tighter padding on exercise & plan cards">
+                <Toggle checked={profile.compactCards ?? false} onChange={setCompactCards} label="Compact cards" />
+              </SettingRow>
             </div>
-            {confirmClearHistory && (
-              <div style={{ display: 'flex', gap: 8, marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--border-subtle)', justifyContent: 'flex-end' }}>
-                <button onClick={() => setConfirmClearHistory(false)} className="btn-secondary" style={{ padding: '8px 14px', fontSize: 12 }}>Cancel</button>
-                <button onClick={() => void executeClearHistory()} className="btn-cancel" style={{ padding: '8px 14px', fontSize: 12 }}>Confirm Clear History</button>
-              </div>
-            )}
-          </div>
+          )}
 
-          {/* In-App Confirmation for Factory Reset */}
-          <div className="card" style={{ border: '1px solid rgba(255,61,90,0.2)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,61,90,0.1)', border: '1px solid rgba(255,61,90,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Trash2 size={16} color="var(--accent-red)" />
-                </div>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-red)' }}>Factory Reset</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Delete ALL data and re-initialize fresh. Cannot be undone.</div>
-                </div>
-              </div>
-              {!confirmFactoryReset && (
-                <button onClick={() => setConfirmFactoryReset(true)} className="btn-cancel" style={{ padding: '8px 12px', fontSize: 11, borderRadius: 10, flexShrink: 0 }}>
-                  Reset
-                </button>
-              )}
-            </div>
-            {confirmFactoryReset && (
-              <div style={{ display: 'flex', gap: 8, marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--border-subtle)', justifyContent: 'flex-end' }}>
-                <button onClick={() => setConfirmFactoryReset(false)} className="btn-secondary" style={{ padding: '8px 14px', fontSize: 12 }}>Cancel</button>
-                <button onClick={() => void executeFactoryReset()} className="btn-cancel" style={{ padding: '8px 14px', fontSize: 12, background: 'var(--accent-red)', color: 'white' }}>Wipe Everything</button>
-              </div>
-            )}
-          </div>
+          {showCardsSection && (
+            <>
+              {/* 10–15. Card Surface, Glass, Borders & Shadows */}
+              <div className="card" style={{ marginBottom: 14 }}>
+                <h3 style={{ fontSize: '0.82rem', fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Layout size={14} color="#a855f7" /> 10–15. Card Architecture & Glassmorphism
+                </h3>
 
-          <div style={{ textAlign: 'center', marginTop: 16, padding: 16 }}>
-            <div className="font-display gradient-text" style={{ fontSize: 18, fontWeight: 800, letterSpacing: 2, marginBottom: 4 }}>IRONFORGE</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>v5.1.0 • Precision Engineered</div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
-              {(dbStats.exercises || 2243).toLocaleString()} Exercises • {dbStats.plans || 17} Programs • {THEME_OPTIONS.length} Themes
-            </div>
-          </div>
-        </motion.div>
-      )}
-    </div>
-  );
-}
-
-/* ===== REMINDER SECTION ===== */
-function ReminderSection() {
-  const { reminders, loadReminders, addReminder, deleteReminder, toggleReminder, requestPermission, permissionGranted, startBackgroundCheck } = useReminderStore();
-  const [showAdd, setShowAdd] = useState(false);
-  const [newDay, setNewDay] = useState(1);
-  const [newHour, setNewHour] = useState(8);
-  const [newMinute, setNewMinute] = useState(0);
-  const [newLabel, setNewLabel] = useState('Workout time!');
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-  useEffect(() => { void loadReminders(); }, [loadReminders]);
-  useEffect(() => { if (permissionGranted && reminders.some(r => r.isEnabled)) startBackgroundCheck(); }, [permissionGranted, reminders, startBackgroundCheck]);
-
-  const handleAdd = async () => {
-    if (!permissionGranted) {
-      const granted = await requestPermission();
-      if (!granted) return;
-    }
-    await addReminder({ dayOfWeek: newDay, timeHour: newHour, timeMinute: newMinute, isEnabled: true, label: newLabel });
-    setShowAdd(false);
-    startBackgroundCheck();
-  };
-
-  return (
-    <div style={{ marginTop: 12 }}>
-      <div className="section-label" style={{ marginBottom: 10 }}>🔔 Workout Reminders</div>
-      {!permissionGranted && (
-        <div className="card" style={{ padding: 12, marginBottom: 10, border: '1px dashed rgba(251,191,36,0.35)' }}>
-          <div style={{ fontSize: 12, color: 'var(--accent-yellow)', fontWeight: 600, marginBottom: 6 }}>Notifications not enabled</div>
-          <button onClick={requestPermission} className="btn-primary" style={{ fontSize: 11, padding: '6px 14px', minHeight: 32, borderRadius: 8, width: 'auto' }}>
-            <Bell size={12} /> Enable Notifications
-          </button>
-        </div>
-      )}
-
-      {reminders.length === 0 && (
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10, padding: '12px 0' }}>
-          No reminders set. Add one to get notified before your workouts.
-        </div>
-      )}
-
-      {reminders.map(r => (
-        <div key={r.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, opacity: r.isEnabled ? 1 : 0.55 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: r.isEnabled ? 'rgba(16,232,154,0.1)' : 'var(--bg-glass)', border: `1px solid ${r.isEnabled ? 'rgba(16,232,154,0.2)' : 'var(--border-subtle)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Bell size={14} color={r.isEnabled ? 'var(--accent-green)' : 'var(--text-muted)'} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 700 }}>{dayNames[r.dayOfWeek]} at {String(r.timeHour).padStart(2, '0')}:{String(r.timeMinute).padStart(2, '0')}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{r.label}</div>
-          </div>
-          <button onClick={() => r.id && void toggleReminder(r.id)}
-            style={{ width: 48, height: 26, borderRadius: 13, border: 'none', background: r.isEnabled ? 'var(--accent-green)' : 'var(--bg-input)', cursor: 'pointer', position: 'relative' as const, flexShrink: 0 }}>
-            <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'white', position: 'absolute' as const, top: 3, left: r.isEnabled ? 25 : 3, transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
-          </button>
-          <button onClick={() => r.id && void deleteReminder(r.id)} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: 4 }}>
-            <X size={14} />
-          </button>
-        </div>
-      ))}
-
-      {showAdd ? (
-        <div className="card" style={{ padding: 14, marginTop: 8, border: '1px solid var(--accent-purple)' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>New Reminder</div>
-          <div style={{ marginBottom: 10 }}>
-            <div className="section-label" style={{ marginBottom: 6 }}>Day</div>
-            <div style={{ display: 'flex', gap: 4 }}>
-              {dayNames.map((d, i) => (
-                <button key={i} onClick={() => setNewDay(i)} style={{
-                  flex: 1, padding: '8px 2px', borderRadius: 8, border: newDay === i ? 'none' : '1px solid var(--border-subtle)',
-                  background: newDay === i ? 'var(--gradient-fire)' : 'transparent', color: newDay === i ? 'var(--on-accent-text)' : 'var(--text-muted)',
-                  fontSize: 10, fontWeight: 700, cursor: 'pointer',
-                }}>{d}</button>
-              ))}
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-            <div style={{ flex: 1 }}>
-              <div className="section-label" style={{ marginBottom: 4 }}>Hour</div>
-              <select value={newHour} onChange={e => setNewHour(parseInt(e.target.value))} style={{ width: '100%', padding: 8, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 13, outline: 'none' }}>
-                {Array.from({ length: 24 }, (_, i) => <option key={i} value={i}>{String(i).padStart(2, '0')}</option>)}
-              </select>
-            </div>
-            <div style={{ flex: 1 }}>
-              <div className="section-label" style={{ marginBottom: 4 }}>Minute</div>
-              <select value={newMinute} onChange={e => setNewMinute(parseInt(e.target.value))} style={{ width: '100%', padding: 8, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 13, outline: 'none' }}>
-                {[0, 15, 30, 45].map(m => <option key={m} value={m}>{String(m).padStart(2, '0')}</option>)}
-              </select>
-            </div>
-          </div>
-          <div style={{ marginBottom: 10 }}>
-            <div className="section-label" style={{ marginBottom: 4 }}>Label</div>
-            <input value={newLabel} onChange={e => setNewLabel(e.target.value)} style={{ width: '100%', padding: 8, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 13, outline: 'none' }} />
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={handleAdd} className="btn-primary" style={{ flex: 1, minHeight: 40, borderRadius: 10, fontSize: 12, fontWeight: 700 }}>Save</button>
-            <button onClick={() => setShowAdd(false)} className="btn-secondary" style={{ flex: 1, minHeight: 40, borderRadius: 10, fontSize: 12 }}>Cancel</button>
-          </div>
-        </div>
-      ) : (
-        <button onClick={() => setShowAdd(true)} className="btn-secondary" style={{ width: '100%', minHeight: 44, borderRadius: 12, fontSize: 13, fontWeight: 700, marginTop: 8 }}>
-          <Plus size={14} /> Add Reminder
-        </button>
-      )}
-    </div>
-  );
-}
-
-/* ===== PLATE CALCULATOR ===== */
-function PlateCalculator({ barWeight, unit }: { barWeight: number; unit: 'metric' | 'imperial' }) {
-  const [targetWeight, setTargetWeight] = useState('');
-  const unitLabel = unit === 'metric' ? 'kg' : 'lbs';
-
-  const result = useMemo(() => {
-    const target = parseFloat(targetWeight);
-    if (isNaN(target) || target <= barWeight) return null;
-    return calculatePlates(target, barWeight, unit);
-  }, [targetWeight, barWeight, unit]);
-
-  return (
-    <div className="card" style={{ padding: 16 }}>
-      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Dumbbell size={16} color="var(--accent-red)" /> Plate Calculator
-      </h3>
-      <input
-        value={targetWeight}
-        onChange={e => setTargetWeight(e.target.value)}
-        placeholder={`Target weight (${unitLabel})`}
-        type="number"
-        style={{ width: '100%', padding: '12px 14px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', fontFamily: 'inherit', marginBottom: 12, minHeight: 46 }}
-      />
-      {result && result.perSide.length > 0 && (
-        <div>
-          <div className="section-label" style={{ marginBottom: 8 }}>
-            Each side ({((parseFloat(targetWeight) - barWeight) / 2).toFixed(1)} {unitLabel}/side)
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '12px 0', overflowX: 'auto' }}>
-            <div style={{ height: 8, width: 52, background: '#64748B', borderRadius: 2, flexShrink: 0 }} />
-            {result.perSide.flatMap((p, idx) =>
-              Array.from({ length: p.count }, (_, cIdx) => {
-                const color = getPlateColor(p.weight, unit);
-                return (
-                  <div
-                    key={`${idx}-${cIdx}`}
-                    style={{
-                      height: Math.max(26, 22 + p.weight * (unit === 'metric' ? 1.2 : 0.7)),
-                      width: Math.max(12, 8 + p.weight * 0.25),
-                      background: color,
-                      borderRadius: 3,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 7,
-                      fontWeight: 800,
-                      color: p.weight === 10 && unit === 'imperial' || p.weight === 5 && unit === 'metric' ? '#0F172A' : '#FFFFFF',
-                      writingMode: 'vertical-lr',
-                      textOrientation: 'mixed',
-                      flexShrink: 0,
-                    }}
+                <SettingRow icon={Layout} iconColor="#a855f7" title="10. Card Surface Material" desc="Visual finish of cards & modals">
+                  <select
+                    className="input"
+                    style={{ width: 150, padding: '6px 10px', fontSize: '0.74rem' }}
+                    value={profile.cardStyle || 'glass'}
+                    onChange={(e) => setAppearance({ cardStyle: e.target.value as typeof profile.cardStyle })}
                   >
-                    {p.weight}
+                    {CARD_STYLE_OPTIONS.map((cs) => (
+                      <option key={cs.id} value={cs.id}>{cs.label}</option>
+                    ))}
+                  </select>
+                </SettingRow>
+
+                <SettingRow icon={Compass} iconColor="#ec4899" title="11. Corner Radius" desc="Roundness of cards, inputs & buttons">
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {BORDER_RADIUS_OPTIONS.map((br) => (
+                      <button key={br.id} className={`chip ${(profile.borderRadiusScale || 'rounded') === br.id ? 'active' : ''}`}
+                        onClick={() => setAppearance({ borderRadiusScale: br.id })} style={{ padding: '4px 8px', fontSize: '0.66rem' }}>
+                        {br.label}
+                      </button>
+                    ))}
                   </div>
-                );
-              })
-            )}
-          </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {result.perSide.map((p, i) => {
-              const color = getPlateColor(p.weight, unit);
-              return (
-                <span key={i} className="badge" style={{ background: `${color}18`, color, border: `1px solid ${color}38`, fontSize: 12, fontWeight: 700 }}>
-                  {p.weight}{unitLabel} ×{p.count}
-                </span>
-              );
-            })}
-          </div>
-          {!result.isExact && (
-            <div style={{ fontSize: 11, color: 'var(--accent-yellow)', marginTop: 8 }}>
-              Nearest loadable weight with standard plates: {result.totalWeight}{unitLabel}
+                </SettingRow>
+
+                <SettingRow icon={Sun} iconColor="#38bdf8" title="12. Glass Blur Intensity" desc="Backdrop frost depth on panels">
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {(['off', 'subtle', 'medium', 'heavy'] as const).map((b) => (
+                      <button key={b} className={`chip ${(profile.glassBlur || 'medium') === b ? 'active' : ''}`}
+                        onClick={() => setAppearance({ glassBlur: b })} style={{ padding: '4px 8px', fontSize: '0.66rem', textTransform: 'capitalize' }}>
+                        {b}
+                      </button>
+                    ))}
+                  </div>
+                </SettingRow>
+
+                <SettingRow icon={Sliders} iconColor="#f97316" title="13. Border Contrast" desc="Card & input outline strength">
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {(['minimal', 'normal', 'high', 'neon'] as const).map((bc) => (
+                      <button key={bc} className={`chip ${(profile.borderContrast || 'normal') === bc ? 'active' : ''}`}
+                        onClick={() => setAppearance({ borderContrast: bc })} style={{ padding: '4px 8px', fontSize: '0.66rem', textTransform: 'capitalize' }}>
+                        {bc}
+                      </button>
+                    ))}
+                  </div>
+                </SettingRow>
+
+                <SettingRow icon={Moon} iconColor="#64748b" title="14. Card Elevation Shadow" desc="Drop shadow depth under cards">
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {(['flat', 'soft', 'deep', 'dramatic'] as const).map((sh) => (
+                      <button key={sh} className={`chip ${(profile.shadowDepth || 'soft') === sh ? 'active' : ''}`}
+                        onClick={() => setAppearance({ shadowDepth: sh })} style={{ padding: '4px 8px', fontSize: '0.66rem', textTransform: 'capitalize' }}>
+                        {sh}
+                      </button>
+                    ))}
+                  </div>
+                </SettingRow>
+
+                <SettingRow icon={Sparkles} iconColor="#c084fc" title="15. Ambient Background Glow" desc="Top radial accent aura behind pages">
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {(['off', 'subtle', 'vibrant', 'aurora'] as const).map((g) => (
+                      <button key={g} className={`chip ${(profile.ambientGlow || 'subtle') === g ? 'active' : ''}`}
+                        onClick={() => setAppearance({ ambientGlow: g })} style={{ padding: '4px 8px', fontSize: '0.66rem', textTransform: 'capitalize' }}>
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                </SettingRow>
+              </div>
+
+              {/* 16–18. Navigation & Motion */}
+              <div className="card" style={{ marginBottom: 14 }}>
+                <h3 style={{ fontSize: '0.82rem', fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Compass size={14} color="#10b981" /> 16–18. Navigation Dock & Motion
+                </h3>
+
+                <SettingRow icon={Compass} iconColor="#10b981" title="16. Bottom Navigation Style" desc="Dock shape and layout">
+                  <select
+                    className="input"
+                    style={{ width: 150, padding: '6px 10px', fontSize: '0.74rem' }}
+                    value={profile.navStyle || 'floating'}
+                    onChange={(e) => setAppearance({ navStyle: e.target.value as typeof profile.navStyle })}
+                  >
+                    {NAV_STYLE_OPTIONS.map((ns) => (
+                      <option key={ns.id} value={ns.id}>{ns.label}</option>
+                    ))}
+                  </select>
+                </SettingRow>
+
+                <SettingRow icon={Eye} iconColor="#14b8a6" title="17. Navigation Labels" desc="Show text labels below dock icons">
+                  <Toggle checked={profile.showNavLabels ?? true} onChange={(v) => setAppearance({ showNavLabels: v })} label="Navigation labels" />
+                </SettingRow>
+
+                <SettingRow icon={Sparkles} iconColor="#a855f7" title="18. Animation Speed" desc="Page transitions & micro-interactions">
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {(['off', 'snappy', 'normal', 'relaxed'] as const).map((sp) => (
+                      <button
+                        key={sp}
+                        className={`chip ${(profile.animationSpeed || (profile.animationsEnabled === false ? 'off' : 'normal')) === sp ? 'active' : ''}`}
+                        onClick={() => {
+                          setAppearance({ animationSpeed: sp });
+                          setAnimationsEnabled(sp !== 'off');
+                        }}
+                        style={{ padding: '4px 8px', fontSize: '0.66rem', textTransform: 'capitalize' }}
+                      >
+                        {sp}
+                      </button>
+                    ))}
+                  </div>
+                </SettingRow>
+              </div>
+            </>
+          )}
+
+          {showWidgetsSection && (
+            <div className="card">
+              <h3 style={{ fontSize: '0.82rem', fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Accessibility size={14} color="#f59e0b" /> 19–22. Widgets, Media & Accessibility
+              </h3>
+
+              <SettingRow icon={Sun} iconColor="#f59e0b" title="19. Progress Bar Style" desc="Workout & muscle progress fill look">
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {(['solid', 'gradient', 'striped', 'glow'] as const).map((pb) => (
+                    <button key={pb} className={`chip ${(profile.progressBarStyle || 'gradient') === pb ? 'active' : ''}`}
+                      onClick={() => setAppearance({ progressBarStyle: pb })} style={{ padding: '4px 8px', fontSize: '0.66rem', textTransform: 'capitalize' }}>
+                      {pb}
+                    </button>
+                  ))}
+                </div>
+              </SettingRow>
+
+              <SettingRow icon={Gauge} iconColor="#ec4899" title="20. Set Row Density" desc="Height of weight/rep rows during workouts">
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {(['compact', 'regular', 'tall'] as const).map((sr) => (
+                    <button key={sr} className={`chip ${(profile.setRowStyle || 'regular') === sr ? 'active' : ''}`}
+                      onClick={() => setAppearance({ setRowStyle: sr })} style={{ padding: '4px 8px', fontSize: '0.66rem', textTransform: 'capitalize' }}>
+                      {sr}
+                    </button>
+                  ))}
+                </div>
+              </SettingRow>
+
+              <SettingRow icon={Smartphone} iconColor="#6366f1" title="21. Exercise Media Preview Size" desc="Height of GIF & frame demonstrations">
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {(['compact', 'standard', 'large', 'hidden'] as const).map((ms) => (
+                    <button key={ms} className={`chip ${(profile.exerciseMediaSize || 'standard') === ms ? 'active' : ''}`}
+                      onClick={() => setAppearance({ exerciseMediaSize: ms })} style={{ padding: '4px 8px', fontSize: '0.66rem', textTransform: 'capitalize' }}>
+                      {ms}
+                    </button>
+                  ))}
+                </div>
+              </SettingRow>
+
+              <SettingRow icon={Accessibility} iconColor="#10b981" title="22. High Contrast Text" desc="Boost secondary text legibility in bright gyms">
+                <Toggle checked={profile.highContrastText ?? false} onChange={(v) => setAppearance({ highContrastText: v })} label="High contrast text" />
+              </SettingRow>
             </div>
           )}
         </div>
       )}
+
+      {/* ═══════════════ WORKOUT PREFERENCES ═══════════════ */}
+      {section === 'workout' && (
+        <div className="animate-in">
+          <div className="card" style={{ marginBottom: 14 }}>
+            <h3 style={{ fontSize: '0.82rem', fontWeight: 700, marginBottom: 8 }}>
+              Active Workout Behavior
+            </h3>
+
+            <SettingRow
+              icon={Sparkles}
+              iconColor="#a855f7"
+              title="Exercise Variety"
+              desc="Keep exercises consistent week-to-week or rotate balanced alternatives"
+              stacked
+            >
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                {([
+                  { id: 'consistent', label: 'Consistent' },
+                  { id: 'balanced', label: 'Balanced' },
+                  { id: 'high', label: 'Rotate' },
+                ] as const).map((v) => (
+                  <button
+                    key={v.id}
+                    className={`chip ${(profile.exerciseVariety || 'balanced') === v.id ? 'active' : ''}`}
+                    onClick={() => setAppearance({ exerciseVariety: v.id })}
+                    style={{ padding: '7px 8px', fontSize: '0.72rem', justifyContent: 'center' }}
+                  >
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+            </SettingRow>
+
+            <SettingRow
+              icon={Bell}
+              iconColor="var(--accent-primary)"
+              title="Default Rest Duration"
+              desc="Auto-start rest timer duration after completing a set"
+              stacked
+            >
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6 }}>
+                {[30, 60, 90, 120, 180, 300].map((t) => (
+                  <button
+                    key={t}
+                    className={`chip ${profile.restTimerDefault === t ? 'active' : ''}`}
+                    onClick={() => setRestTimer(t)}
+                    style={{ padding: '7px 4px', fontSize: '0.72rem', justifyContent: 'center' }}
+                  >
+                    {t < 60 ? `${t}s` : `${t / 60}m`}
+                  </button>
+                ))}
+              </div>
+            </SettingRow>
+
+            <SettingRow icon={Sliders} iconColor="#10b981" title="Auto-Start Rest Timer" desc="Start countdown immediately when a set is checked">
+              <Toggle checked={profile.autoRestTimer ?? true} onChange={setAutoRestTimer} label="Auto-start rest timer" />
+            </SettingRow>
+
+            <SettingRow icon={Volume2} iconColor="#06b6d4" title="Rest Timer Sound" desc="Play audio chime when rest period ends">
+              <Toggle checked={profile.restTimerSound ?? true} onChange={setRestTimerSound} label="Rest timer sound" />
+            </SettingRow>
+
+            <SettingRow icon={Vibrate} iconColor="#f59e0b" title="Haptic Vibration" desc="Vibrate on set completion & timer finish">
+              <Toggle checked={profile.restTimerVibrate ?? true} onChange={setRestTimerVibrate} label="Haptic vibration" />
+            </SettingRow>
+
+            <SettingRow icon={Sun} iconColor="#eab308" title="Keep Screen Awake" desc="Prevent phone screen from dimming mid-workout">
+              <Toggle checked={profile.keepScreenAwake ?? true} onChange={setKeepScreenAwake} label="Keep screen awake" />
+            </SettingRow>
+
+            <SettingRow icon={Sparkles} iconColor="#ec4899" title="Show Warmup Sets" desc="Include warmup set suggestions on compound lifts">
+              <Toggle checked={profile.showWarmupSets ?? false} onChange={setShowWarmupSets} label="Show warmup sets" />
+            </SettingRow>
+
+            <SettingRow
+              icon={Scale}
+              iconColor="#8b5cf6"
+              title={`Weight Increment (${profile.weightUnit})`}
+              desc="Step size when tapping +/- weight buttons"
+              stacked
+            >
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6 }}>
+                {[0.5, 1, 1.25, 2.5, 5, 10].map((inc) => (
+                  <button
+                    key={inc}
+                    className={`chip ${(profile.defaultWeightIncrement || 2.5) === inc ? 'active' : ''}`}
+                    onClick={() => setDefaultWeightIncrement(inc)}
+                    style={{ padding: '7px 4px', fontSize: '0.72rem', justifyContent: 'center' }}
+                  >
+                    {inc}
+                  </button>
+                ))}
+              </div>
+            </SettingRow>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════ GYM TOOLS ═══════════════ */}
+      {section === 'tools' && (
+        <div className="animate-in">
+          {/* 1RM Calculator (Responsive 2-Column Grid so Reps Never Clips Off-Screen) */}
+          <div className="card" style={{ marginBottom: 14 }}>
+            <h3 style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Calculator size={15} color="var(--accent-primary)" /> One-Rep Max (1RM) Estimator
+            </h3>
+            <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginBottom: 12 }}>
+              Uses averaged Epley & Brzycki strength formulas
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+              <div>
+                <label style={{ fontSize: '0.66rem', color: 'var(--text-tertiary)', fontWeight: 600, display: 'block', marginBottom: 4 }}>
+                  Weight Lifted ({profile.weightUnit})
+                </label>
+                <input
+                  className="input"
+                  type="number"
+                  inputMode="decimal"
+                  placeholder={`Weight (${profile.weightUnit})`}
+                  value={orm1Weight}
+                  onChange={(e) => setOrm1Weight(e.target.value)}
+                  style={{ width: '100%', minWidth: 0 }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.66rem', color: 'var(--text-tertiary)', fontWeight: 600, display: 'block', marginBottom: 4 }}>
+                  Reps Completed
+                </label>
+                <input
+                  className="input"
+                  type="number"
+                  inputMode="numeric"
+                  placeholder="Reps"
+                  value={orm1Reps}
+                  onChange={(e) => setOrm1Reps(e.target.value)}
+                  style={{ width: '100%', minWidth: 0 }}
+                />
+              </div>
+            </div>
+            {avg1RM > 0 && (
+              <>
+                <div style={{
+                  padding: 12, borderRadius: 'var(--radius-md)',
+                  background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(99, 102, 241, 0.2)',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10,
+                }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Estimated 1RM</span>
+                  <span className="num" style={{ fontSize: '1.35rem', color: 'var(--accent-secondary)' }}>
+                    {avg1RM} {profile.weightUnit}
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+                  {[90, 85, 75, 65].map((pct) => (
+                    <div key={pct} style={{
+                      padding: '8px 6px', borderRadius: 'var(--radius-sm)',
+                      background: 'rgba(255,255,255,0.03)', textAlign: 'center',
+                    }}>
+                      <div style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)', fontWeight: 600 }}>{pct}%</div>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 700, marginTop: 2 }}>{Math.round(avg1RM * (pct / 100))}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Plate Calculator */}
+          <div className="card" style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <h3 style={{ fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Calculator size={15} color="#a855f7" /> Barbell Plate Loader
+              </h3>
+              <span className="badge" style={{ background: 'rgba(168,85,247,0.14)', color: '#c084fc', fontSize: '0.62rem' }}>
+                Bar: {profile.weightUnit === 'kg' ? '20 kg' : '45 lbs'}
+              </span>
+            </div>
+            <p style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', marginBottom: 10 }}>
+              Calculates exact plates needed per side of a standard Olympic bar
+            </p>
+            <input
+              className="input"
+              type="number"
+              inputMode="decimal"
+              placeholder={`Target weight (${profile.weightUnit})`}
+              value={plateWeight}
+              onChange={(e) => setPlateWeight(e.target.value)}
+              style={{ marginBottom: 8 }}
+            />
+            <div className="chip-scroll" style={{ marginBottom: 10 }}>
+              {(profile.weightUnit === 'kg' ? [60, 80, 100, 120, 140, 180] : [135, 185, 225, 275, 315, 405]).map((preset) => (
+                <button
+                  key={preset}
+                  className={`chip ${Number(plateWeight) === preset ? 'active' : ''}`}
+                  onClick={() => setPlateWeight(String(preset))}
+                  style={{ padding: '4px 10px', fontSize: '0.68rem' }}
+                >
+                  {preset} {profile.weightUnit}
+                </button>
+              ))}
+            </div>
+            {Number(plateWeight) > 0 && (
+              <div>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginBottom: 8 }}>
+                  Per side (excluding {profile.weightUnit === 'kg' ? '20kg' : '45lb'} bar):
+                </p>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {calculatePlates().length === 0 ? (
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>Just the empty bar!</span>
+                  ) : (
+                    calculatePlates().map((p, i) => (
+                      <span key={i} className="badge badge-accent" style={{ fontSize: '0.75rem', padding: '5px 11px' }}>
+                        {p.count}× {p.plate}{profile.weightUnit}
+                      </span>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Hydration Tracker */}
+          <div className="card">
+            <h3 style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Droplets size={15} color="#06b6d4" /> Daily Hydration ({waterGlasses} / 8 glasses)
+            </h3>
+            <div style={{ display: 'flex', gap: 5, marginBottom: 12, flexWrap: 'wrap' }}>
+              {Array.from({ length: 8 }, (_, i) => (
+                <div
+                  key={i}
+                  onClick={() => handleWater(i < waterGlasses ? -1 : 1)}
+                  style={{
+                    width: 30, height: 36, borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+                    background: i < waterGlasses ? 'linear-gradient(180deg, #06b6d4, #0284c7)' : 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.08)', transition: 'all 0.2s',
+                  }}
+                />
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn-secondary" onClick={() => handleWater(1)} style={{ flex: 1, padding: 9, fontSize: '0.78rem' }}>+ 1 Glass (250ml)</button>
+              <button className="btn-secondary" onClick={() => handleWater(-1)} style={{ padding: '9px 14px', fontSize: '0.78rem' }}>−</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════ DATA & PRIVACY ═══════════════ */}
+      {section === 'data' && (
+        <div className="animate-in">
+          <div className="card" style={{ marginBottom: 14 }}>
+            <h3 style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: 4 }}>Local Database Summary</h3>
+            <p style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginBottom: 12 }}>
+              100% offline-first storage on your device — no cloud account required.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              <div style={{ background: 'rgba(255,255,255,0.03)', padding: 10, borderRadius: 'var(--radius-md)', textAlign: 'center' }}>
+                <div style={{ fontWeight: 800, fontSize: '1.05rem' }}>{workoutCount}</div>
+                <div style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)' }}>Sessions</div>
+              </div>
+              <div style={{ background: 'rgba(255,255,255,0.03)', padding: 10, borderRadius: 'var(--radius-md)', textAlign: 'center' }}>
+                <div style={{ fontWeight: 800, fontSize: '1.05rem' }}>{prCount}</div>
+                <div style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)' }}>Records</div>
+              </div>
+              <div style={{ background: 'rgba(255,255,255,0.03)', padding: 10, borderRadius: 'var(--radius-md)', textAlign: 'center' }}>
+                <div style={{ fontWeight: 800, fontSize: '1.05rem' }}>{bodyMetrics.length}</div>
+                <div style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)' }}>Metrics</div>
+              </div>
+            </div>
+          </div>
+
+          {exportStatus && (
+            <div className="card" style={{ marginBottom: 12, padding: 12, borderColor: 'var(--accent-primary)', color: 'var(--accent-secondary)', fontSize: '0.8rem', fontWeight: 600 }}>
+              {exportStatus}
+            </div>
+          )}
+
+          {importStatus && (
+            <div className="card" style={{ marginBottom: 12, padding: 12, borderColor: 'var(--success)', color: 'var(--success)', fontSize: '0.8rem', fontWeight: 600 }}>
+              {importStatus}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button className="card" onClick={exportData} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 14, width: '100%', textAlign: 'left' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 'var(--radius-md)', background: 'rgba(99,102,241,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Download size={16} color="var(--accent-primary)" />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.84rem' }}>Export Full Backup</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Save or share all workouts, plans & PRs as JSON</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className="badge badge-accent" style={{ fontSize: '0.64rem' }}>Export</span>
+                <ChevronRight size={15} color="var(--text-tertiary)" />
+              </div>
+            </button>
+
+            <button className="card" onClick={importData} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 14, width: '100%', textAlign: 'left' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 'var(--radius-md)', background: 'rgba(16,185,129,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Upload size={16} color="var(--success)" />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.84rem' }}>Restore from Backup</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Import a previously exported IronForge JSON file</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className="badge badge-success" style={{ fontSize: '0.64rem' }}>Restore</span>
+                <ChevronRight size={15} color="var(--text-tertiary)" />
+              </div>
+            </button>
+
+            <button className="card" onClick={() => setConfirmClear(true)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 14, width: '100%', textAlign: 'left' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 'var(--radius-md)', background: 'rgba(245,158,11,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <RotateCcw size={16} color="var(--warning)" />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.84rem', color: 'var(--warning)' }}>Clear Workout History</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Reset logged sessions & PRs while keeping plans</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className="badge badge-warning" style={{ fontSize: '0.64rem' }}>Clear</span>
+                <ChevronRight size={15} color="var(--text-tertiary)" />
+              </div>
+            </button>
+
+            <button className="card" onClick={() => setConfirmReset(true)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 14, width: '100%', textAlign: 'left', borderColor: 'rgba(239,68,68,0.2)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 'var(--radius-md)', background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Trash2 size={16} color="var(--danger)" />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.84rem', color: 'var(--danger)' }}>Factory Reset App</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Erase all data and re-seed default database</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className="badge badge-danger" style={{ fontSize: '0.64rem' }}>Reset</span>
+                <ChevronRight size={15} color="var(--text-tertiary)" />
+              </div>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Clear History Confirmation Modal */}
+      {confirmClear && (
+        <div className="modal-overlay" onClick={() => setConfirmClear(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center', padding: 24 }}>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: 8 }}>Clear Workout History?</h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: 20 }}>
+              This will delete your logged workouts, personal records, and body metrics. Your workout plans and settings will be kept.
+            </p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn-secondary" onClick={() => setConfirmClear(false)} style={{ flex: 1 }}>Cancel</button>
+              <button className="btn-danger" onClick={clearWorkoutHistory} style={{ flex: 1 }}>Clear History</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Factory Reset Confirmation Modal */}
+      {confirmReset && (
+        <div className="modal-overlay" onClick={() => setConfirmReset(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center', padding: 24 }}>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: 8 }}>Factory Reset IronForge?</h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: 20 }}>
+              This will permanently erase all custom plans, workout history, PRs, and preferences.
+            </p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn-secondary" onClick={() => setConfirmReset(false)} style={{ flex: 1 }}>Cancel</button>
+              <button className="btn-danger" onClick={factoryReset} style={{ flex: 1 }}>Erase Everything</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ textAlign: 'center', padding: '24px 0 8px', color: 'var(--text-tertiary)', fontSize: '0.68rem' }}>
+        IronForge Workout Tracker v5.2.0 • Precision Engineered
+      </div>
     </div>
   );
 }

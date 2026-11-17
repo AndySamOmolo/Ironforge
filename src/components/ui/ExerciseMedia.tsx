@@ -59,7 +59,6 @@ export default function ExerciseMedia({
 
   const [groupIndex, setGroupIndex] = useState(0);
   const [frameIndex, setFrameIndex] = useState(0);
-  const [isLoaded, setIsLoaded] = useState(false);
   const [isExhausted, setIsExhausted] = useState(groups.length === 0);
   const failedUrlsRef = useRef<Set<string>>(new Set());
 
@@ -67,7 +66,6 @@ export default function ExerciseMedia({
     failedUrlsRef.current.clear();
     setGroupIndex(0);
     setFrameIndex(0);
-    setIsLoaded(false);
     setIsExhausted(groups.length === 0);
   }, [mediaKey, groups.length]);
 
@@ -134,7 +132,6 @@ export default function ExerciseMedia({
     if (groupIndex < groups.length - 1) {
       setGroupIndex((prev) => prev + 1);
       setFrameIndex(0);
-      setIsLoaded(false);
       return;
     }
 
@@ -147,34 +144,15 @@ export default function ExerciseMedia({
   }
 
   return (
-    <>
-      {!isLoaded && (
-        <div
-          className="skeleton"
-          style={{
-            position: 'absolute',
-            inset: 0,
-            borderRadius: 'inherit',
-            pointerEvents: 'none',
-            zIndex: 0,
-          }}
-        />
-      )}
-      <img
-        key={`${groupIndex}-${src}`}
-        src={src}
-        alt={alt}
-        className={className}
-        style={{
-          ...style,
-          opacity: isLoaded ? 1 : 0,
-          transition: 'opacity 0.22s ease, transform 0.35s ease',
-        }}
-        loading={loading}
-        decoding="async"
-        onLoad={() => setIsLoaded(true)}
-        onError={handleError}
-      />
-    </>
+    <img
+      key={`${groupIndex}-${src}`}
+      src={src}
+      alt={alt}
+      className={className}
+      style={style}
+      loading={loading}
+      decoding="async"
+      onError={handleError}
+    />
   );
 }

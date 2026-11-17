@@ -21,7 +21,15 @@ interface ExerciseDBEntry {
   imageUrls?: string[];
 }
 
-export const EXERCISE_CATALOG_VERSION = 6;
+export const EXERCISE_CATALOG_VERSION = 7;
+
+export function cleanExerciseDisplayName(rawName: string): string {
+  return (rawName || 'Unknown')
+    .replace(/в°/g, '°')
+    .replace(/\ball fours squad stretch\b/gi, 'all fours quad stretch')
+    .replace(/\s*\((?:male|female)\)\s*$/i, '')
+    .trim();
+}
 
 function mapRawExercise(raw: ExerciseDBEntry, fallbackIndex: number): Omit<Exercise, 'id'> {
   const exerciseId = raw.exerciseId || `ex_${fallbackIndex}`;
@@ -33,7 +41,7 @@ function mapRawExercise(raw: ExerciseDBEntry, fallbackIndex: number): Omit<Exerc
 
   return {
     externalId: exerciseId,
-    name: (raw.name || 'Unknown').replace(/в°/g, '°'),
+    name: cleanExerciseDisplayName(raw.name || 'Unknown'),
     force: raw.force ?? null,
     level: raw.level || 'intermediate',
     mechanic: raw.mechanic ?? null,
@@ -512,6 +520,63 @@ export async function ensureWorkoutPrograms(forceUpdateBuiltIn = false): Promise
         { dayNumber: 3, name: 'Back & Shoulders Hypertrophy', exercises: buildDay(['lat pulldown', 'seated cable row', 'dumbbell row', 'dumbbell shoulder press', 'lateral raise', 'face pull', 'barbell shrug'], [4, 4, 3, 4, 4, 3, 3], [10, 10, 12, 10, 15, 15, 12]) },
         { dayNumber: 4, name: 'Lower Body Hypertrophy', exercises: buildDay(['leg press', 'romanian deadlift', 'walking lunge', 'leg extension', 'leg curl', 'seated calf raise', 'hanging leg raise'], [4, 4, 3, 3, 3, 4, 3], [12, 10, 12, 15, 12, 15, 12]) },
         { dayNumber: 5, name: 'Chest & Arms Hypertrophy', exercises: buildDay(['incline dumbbell press', 'dumbbell bench press', 'cable fly', 'barbell curl', 'tricep pushdown', 'incline curl', 'overhead tricep extension'], [4, 3, 3, 4, 4, 3, 3], [10, 10, 12, 10, 12, 12, 12]) },
+      ],
+    },
+    {
+      plan: {
+        name: 'Kettlebell & Functional Full Body',
+        description: 'Three-day athletic kettlebell and bodyweight conditioning program targeting posterior chain power, shoulder stability, and core endurance.',
+        category: 'Athletic',
+        difficulty: 'intermediate',
+        daysPerWeek: 3,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      days: [
+        { dayNumber: 1, name: 'KB Power & Push', exercises: buildDay(['kettlebell swing', 'goblet squat', 'push up', 'dumbbell shoulder press', 'dumbbell row', 'plank'], [4, 4, 3, 3, 3, 3], [15, 12, 15, 10, 12, 60]) },
+        { dayNumber: 2, name: 'Posterior Chain & Pull', exercises: buildDay(['romanian deadlift', 'pull up', 'walking lunge', 'lateral raise', 'hammer curl', 'hanging leg raise'], [4, 4, 3, 3, 3, 3], [10, 8, 12, 15, 12, 12]) },
+        { dayNumber: 3, name: 'Athletic Conditioning', exercises: buildDay(['front squat', 'incline dumbbell press', 'seated cable row', 'dips', 'face pull', 'calf raise'], [4, 4, 4, 3, 3, 4], [10, 10, 12, 12, 15, 15]) },
+      ],
+    },
+    {
+      plan: {
+        name: 'Glute & Lower Body Focus',
+        description: 'Four-day balanced split emphasizing glutes, hamstrings, and quads while maintaining sculpted upper-body posture and core strength.',
+        category: 'Hypertrophy',
+        difficulty: 'intermediate',
+        daysPerWeek: 4,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      days: [
+        { dayNumber: 1, name: 'Glutes & Hamstrings Heavy', exercises: buildDay(['hip thrust', 'romanian deadlift', 'bulgarian split squat', 'leg curl', 'calf raise', 'plank'], [4, 4, 3, 3, 4, 3], [8, 10, 10, 12, 15, 60]) },
+        { dayNumber: 2, name: 'Upper Body Sculpt', exercises: buildDay(['incline dumbbell press', 'lat pulldown', 'dumbbell shoulder press', 'seated cable row', 'lateral raise', 'tricep pushdown', 'dumbbell curl'], [3, 4, 3, 3, 4, 3, 3], [10, 10, 10, 12, 15, 12, 12]) },
+        { dayNumber: 3, name: 'Quads & Glutes Volume', exercises: buildDay(['barbell squat', 'leg press', 'walking lunge', 'leg extension', 'seated calf raise', 'hanging leg raise'], [4, 4, 3, 3, 4, 3], [8, 12, 12, 15, 15, 12]) },
+        { dayNumber: 4, name: 'Back, Delts & Glute Pump', exercises: buildDay(['hip thrust', 'dumbbell row', 'face pull', 'cable fly', 'hammer curl', 'overhead tricep extension'], [4, 4, 3, 3, 3, 3], [12, 10, 15, 12, 12, 12]) },
+      ],
+    },
+    {
+      plan: {
+        name: 'Upper Body V-Taper Specialization',
+        description: 'Five-day hypertrophy block prioritizing wide lats, capped delts, upper chest, and arms with dedicated lower-body maintenance.',
+        category: 'Hypertrophy',
+        difficulty: 'expert',
+        daysPerWeek: 5,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      days: [
+        { dayNumber: 1, name: 'Chest & Lateral Delts', exercises: buildDay(['incline barbell bench press', 'dumbbell bench press', 'cable fly', 'lateral raise', 'dips', 'tricep pushdown'], [4, 4, 3, 5, 3, 3], [8, 10, 12, 15, 10, 12]) },
+        { dayNumber: 2, name: 'Back Width & Rear Delts', exercises: buildDay(['pull up', 'lat pulldown', 'barbell row', 'seated cable row', 'face pull', 'barbell curl'], [4, 4, 4, 3, 4, 3], [8, 10, 8, 12, 15, 10]) },
+        { dayNumber: 3, name: 'Complete Lower Body', exercises: buildDay(['barbell squat', 'romanian deadlift', 'leg press', 'leg curl', 'calf raise', 'hanging leg raise'], [4, 4, 3, 3, 4, 3], [6, 8, 12, 12, 15, 12]) },
+        { dayNumber: 4, name: 'Shoulders & Arms Specialization', exercises: buildDay(['overhead press', 'dumbbell shoulder press', 'lateral raise', 'incline curl', 'skull crusher', 'hammer curl', 'overhead tricep extension'], [4, 3, 4, 4, 4, 3, 3], [6, 10, 15, 10, 10, 12, 12]) },
+        { dayNumber: 5, name: 'Upper Pump & Core', exercises: buildDay(['incline dumbbell press', 'dumbbell row', 'cable lateral raise', 'preacher curl', 'rope pushdown', 'plank'], [4, 4, 4, 3, 3, 3], [10, 10, 15, 12, 12, 60]) },
       ],
     },
   ];
