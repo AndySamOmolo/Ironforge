@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Home, ClipboardList, Play, BarChart3, User, Zap, Shuffle, Dumbbell, X, Sparkles } from 'lucide-react';
+import { Home, ClipboardList, Play, BarChart3, User, Zap, Shuffle, Dumbbell, X } from 'lucide-react';
 import { useUIStore } from '@/lib/store/uiStore';
 import { useUserStore } from '@/lib/store/userStore';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
@@ -9,7 +9,7 @@ import { db } from '@/lib/db/schema';
 import { ALL_EQUIPMENT, resolveWorkoutDayExercises, generateSmartWorkout, matchesUserEquipment } from '@/lib/utils/exerciseResolver';
 import { getWorkoutStartingWeight } from '@/lib/utils/workoutDefaults';
 import { getPrimaryExerciseImage, getExerciseImageFrames, getExerciseGifUrl, hasGifExerciseMedia } from '@/lib/utils/exerciseMedia';
-import { SetType, type WorkoutPlan } from '@/lib/types';
+import { SetType } from '@/lib/types';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const tabs = [
@@ -24,13 +24,15 @@ const tabs = [
 export default function BottomNav() {
   const { activeTab, setActiveTab } = useUIStore();
   const { equipment: userEquipment, barWeight, dumbbellWeight, exerciseVariety, defaultRestTime } = useUserStore();
-  const { isActive: workoutActive, isMinimized: workoutMinimized, resumeWorkout, startWorkout } = useWorkoutStore();
+  const { startWorkout, isActive: workoutActive, isMinimized: workoutMinimized, resumeWorkout } = useWorkoutStore();
   const [showQuickLaunch, setShowQuickLaunch] = useState(false);
-  const [activePlan, setActivePlan] = useState<WorkoutPlan | null>(null);
+  const [activePlanName, setActivePlanName] = useState<string | null>(null);
 
   useEffect(() => {
     if (!showQuickLaunch) return;
-    db.workoutPlans.filter(p => !!p.isActive).first().then(p => setActivePlan(p || null)).catch(() => setActivePlan(null));
+    db.workoutPlans.filter(p => !!p.isActive).first().then(p => {
+      setActivePlanName(p?.name || null);
+    }).catch(() => setActivePlanName(null));
   }, [showQuickLaunch]);
 
   const handleTabClick = (tabId: string) => {
@@ -47,13 +49,13 @@ export default function BottomNav() {
 
   const handleStartActivePlanDay = async () => {
     try {
-      const plan = await db.workoutPlans.filter(p => !!p.isActive).first();
-      if (!plan?.id) {
+      const activePlan = await db.workoutPlans.filter(p => !!p.isActive).first();
+      if (!activePlan?.id) {
         setShowQuickLaunch(false);
         setActiveTab('plans');
         return;
       }
-      const days = await db.workoutDays.where('planId').equals(plan.id).sortBy('dayNumber');
+      const days = await db.workoutDays.where('planId').equals(activePlan.id).sortBy('dayNumber');
       if (days.length === 0) {
         setShowQuickLaunch(false);
         setActiveTab('plans');
@@ -73,7 +75,7 @@ export default function BottomNav() {
         varietyLevel: exerciseVariety || 'medium',
       });
       setShowQuickLaunch(false);
-      startWorkout(plan.name, nextDay.name, resolved);
+      startWorkout(activePlan.name, nextDay.name, resolved);
     } catch {
       setShowQuickLaunch(false);
       setActiveTab('plans');
@@ -166,10 +168,15 @@ export default function BottomNav() {
                 key={tab.id}
                 className="nav-start-btn"
                 onClick={() => handleTabClick(tab.id)}
-                aria-label={workoutActive && workoutMinimized ? 'Resume active workout' : 'Start workout'}
-                title={workoutActive && workoutMinimized ? 'Resume active workout' : 'Launch workout'}
+                aria-label="Start workout"
               >
-                <Play size={20} fill="white" />
+                <div style={{
+                  position: 'absolute', width: 64, height: 64, borderRadius: '50%',
+                  border: '2px solid rgba(255,61,90,0.25)',
+                  animation: 'pulse-dot 3s ease-in-out infinite',
+                  pointerEvents: 'none',
+                }} />
+                <Play size={24} fill="white" />
               </button>
             );
           }
@@ -181,14 +188,14 @@ export default function BottomNav() {
               onClick={() => handleTabClick(tab.id)}
               aria-label={tab.label}
             >
-              <tab.icon size={20} strokeWidth={isActive ? 2.5 : 1.6} />
+              <tab.icon size={22} strokeWidth={isActive ? 2.5 : 1.5} />
               <span className="nav-label" style={{ fontWeight: isActive ? 700 : 500 }}>{tab.label}</span>
               {isActive && (
                 <motion.div
                   layoutId="nav-indicator"
                   style={{
-                    width: 4,
-                    height: 4,
+                    width: 5,
+                    height: 5,
                     borderRadius: '50%',
                     background: 'var(--accent-red)',
                     boxShadow: '0 0 8px var(--glow-red)',
@@ -208,22 +215,16 @@ export default function BottomNav() {
               <div className="modal-handle" />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                 <h3 className="font-display" style={{ fontSize: 19, fontWeight: 800 }}>Launch Workout</h3>
-                <button onClick={() => setShowQuickLaunch(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}><X size={18} /></button>
+                <button onClick={() => setShowQuickLaunch(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <button onClick={handleStartActivePlanDay} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', border: '1px solid rgba(255,61,90,0.3)' }}>
                   <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--gradient-fire)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    {activePlan ? <Play size={18} fill="white" color="white" /> : <Sparkles size={18} color="white" />}
+                    <Play size={18} fill="white" color="white" />
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 15, fontWeight: 800 }}>
-                      {activePlan ? `Next Day in ${activePlan.name}` : 'Choose an Active Workout Plan'}
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                      {activePlan
-                        ? 'Starts your next scheduled training day matched to your equipment'
-                        : 'No plan active yet — tap to browse balanced programs'}
-                    </div>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 800 }}>{activePlanName ? `Next Day in ${activePlanName}` : 'Choose an Active Plan'}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{activePlanName ? 'Automatically picks the next scheduled day for your equipment' : 'Browse 19 balanced workout programs to activate your split'}</div>
                   </div>
                 </button>
 
@@ -231,7 +232,7 @@ export default function BottomNav() {
                   <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--gradient-ocean)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Shuffle size={18} color="white" />
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div>
                     <div style={{ fontSize: 15, fontWeight: 800 }}>Smart Full-Body Mix</div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Generates 6 fresh GIF-backed exercises matching your equipment</div>
                   </div>
@@ -241,7 +242,7 @@ export default function BottomNav() {
                   <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--gradient-mint)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Zap size={18} color="white" />
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div>
                     <div style={{ fontSize: 15, fontWeight: 800 }}>Freestyle Open Session</div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Start immediately and add any exercises on the fly</div>
                   </div>
@@ -251,7 +252,7 @@ export default function BottomNav() {
                   <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Dumbbell size={18} color="var(--text-secondary)" />
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div>
                     <div style={{ fontSize: 15, fontWeight: 800 }}>Browse Exercise Library</div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Explore 2,240+ exercises with animated GIF demos</div>
                   </div>

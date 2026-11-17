@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { MotionConfig, motion, AnimatePresence } from 'framer-motion';
-import { Play, Pause } from 'lucide-react';
+import { MotionConfig } from 'framer-motion';
 import { seedDatabase, ensureWorkoutPrograms, migrateExerciseCatalog, EXERCISE_CATALOG_VERSION } from '@/lib/db/seed';
 import { db, resetDB } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
@@ -18,6 +17,7 @@ import WorkoutCompletePage from '@/components/pages/WorkoutCompletePage';
 import BottomNav from '@/components/ui/BottomNav';
 import SeedingScreen from '@/components/ui/SeedingScreen';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
+import { Play, Pause, Maximize2 } from 'lucide-react';
 
 export default function App() {
   const { activeTab, setActiveTab, showSeedingScreen, setShowSeedingScreen, setSeedingProgress } = useUIStore();
@@ -25,16 +25,18 @@ export default function App() {
   const {
     isActive: workoutActive,
     isMinimized: workoutMinimized,
-    isPaused: workoutPaused,
-    planName,
-    dayName,
-    exercises: workoutExercises,
+    planName: activePlanName,
+    dayName: activeDayName,
+    exercises: activeExercises,
     currentExerciseIndex,
     elapsedTime,
-    resumeWorkout,
-    minimizeWorkout,
+    isPaused,
+    restTimerActive,
     togglePause,
     tickTimer,
+    tickRestTimer,
+    minimizeWorkout,
+    resumeWorkout,
     endWorkout,
     restoreWorkoutIfAny,
   } = useWorkoutStore();
@@ -48,13 +50,6 @@ export default function App() {
   const exitHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const catalogToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navStateRef = useRef({ activeTab, workoutActive, workoutMinimized, showComplete });
-
-  // Keep workout timer ticking while workout is active and minimized in background
-  useEffect(() => {
-    if (!workoutActive || !workoutMinimized) return;
-    const id = setInterval(() => tickTimer(), 1000);
-    return () => clearInterval(id);
-  }, [workoutActive, workoutMinimized, tickTimer]);
 
   const doInit = useCallback(async (forceReset = false) => {
     const attempt = ++attemptRef.current;
@@ -193,6 +188,16 @@ export default function App() {
     navStateRef.current = { activeTab, workoutActive, workoutMinimized, showComplete };
   }, [activeTab, workoutActive, workoutMinimized, showComplete]);
 
+  // Keep workout & rest timers ticking while workout is minimized in the background
+  useEffect(() => {
+    if (!workoutActive || !workoutMinimized) return;
+    const id = setInterval(() => {
+      tickTimer();
+      if (restTimerActive) tickRestTimer();
+    }, 1000);
+    return () => clearInterval(id);
+  }, [workoutActive, workoutMinimized, restTimerActive, tickTimer, tickRestTimer]);
+
   useEffect(() => {
     if (!showCatalogUpdateToast) {
       return;
@@ -228,12 +233,14 @@ export default function App() {
       const current = navStateRef.current;
 
       if (current.showComplete) {
+        // Workout is already saved when entering WorkoutCompletePage.
+        // Going back from WorkoutCompletePage must clear workout state and return to dashboard,
+        // NEVER re-opening ActiveWorkoutPage where the workout could save a second time.
         endWorkout();
         setShowComplete(false);
         setActiveTab('home');
         pushSentinel();
       } else if (current.workoutActive && !current.workoutMinimized) {
-        // Minimize active workout on back press instead of abruptly discarding progress
         minimizeWorkout();
         pushSentinel();
       } else if (current.activeTab !== 'home') {
@@ -291,16 +298,7 @@ export default function App() {
     endWorkout();
     setShowComplete(false);
     setActiveTab('home');
-  }, [endWorkout, setActiveTab]);
-
-  const formatElapsed = (sec: number) => {
-    const h = Math.floor(sec / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    const s = sec % 60;
-    return h > 0
-      ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-      : `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  };
+  }, [endWorkout, minimizeWorkout, setActiveTab]);
 
   if ((showSeedingScreen || !isInitialized) && !initError) {
     return <SeedingScreen onRetry={() => doInit(true)} />;
@@ -321,8 +319,6 @@ export default function App() {
     }
   };
 
-  const currentWorkoutEx = workoutExercises[currentExerciseIndex];
-
   return (
     <MotionConfig reducedMotion={animationLevel === 'none' ? 'always' : 'never'}>
       {showComplete ? (
@@ -333,7 +329,7 @@ export default function App() {
         <>
           {initError && (
             <div style={{
-              position: 'fixed', top: 'env(safe-area-inset-top, 0px)', left: 0, right: 0, zIndex: 200,
+              position: 'fixed', top: 0, left: 0, right: 0, zIndex: 200,
               background: 'rgba(255,61,90,0.12)', backdropFilter: 'blur(8px)',
               padding: '12px 16px', display: 'flex', alignItems: 'center',
               justifyContent: 'space-between', borderBottom: '1px solid rgba(255,61,90,0.2)',
@@ -356,84 +352,61 @@ export default function App() {
             </div>
           )}
           {renderPage()}
-
-          {/* Minimized Workout Floating Mini-Player (positioned cleanly above BottomNav with zero collision) */}
-          <AnimatePresence>
-            {workoutActive && workoutMinimized && (
-              <motion.div
-                initial={{ y: 40, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: 40, opacity: 0 }}
-                style={{
-                  position: 'fixed',
-                  left: 12,
-                  right: 12,
-                  bottom: 'calc(82px + env(safe-area-inset-bottom, 0px))',
-                  maxWidth: 456,
-                  margin: '0 auto',
-                  zIndex: 95,
-                  background: 'rgba(12, 13, 24, 0.96)',
-                  backdropFilter: 'blur(20px)',
-                  border: '1px solid rgba(255, 61, 90, 0.38)',
-                  borderRadius: 16,
-                  padding: '10px 12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 10,
-                  boxShadow: '0 10px 28px rgba(0, 0, 0, 0.55)',
-                }}
-              >
-                <div
-                  onClick={() => resumeWorkout()}
-                  style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
-                >
-                  <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {dayName || planName || 'Active Workout'}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 1 }}>
-                    {currentWorkoutEx ? currentWorkoutEx.exerciseName : 'In progress'}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                  <button
-                    onClick={() => togglePause()}
-                    title={workoutPaused ? 'Resume timer' : 'Pause timer'}
-                    style={{
-                      width: 32, height: 32, borderRadius: 8,
-                      background: 'rgba(255,255,255,0.06)',
-                      border: '1px solid var(--border-bright)',
-                      color: workoutPaused ? 'var(--accent-yellow)' : 'var(--accent-red)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                    }}
-                  >
-                    {workoutPaused ? <Play size={13} fill="currentColor" /> : <Pause size={13} />}
-                  </button>
-                  <span className="font-mono" style={{ fontSize: 13, fontWeight: 800, color: workoutPaused ? 'var(--accent-yellow)' : 'var(--accent-red)', minWidth: 44, textAlign: 'center' }}>
-                    {formatElapsed(elapsedTime)}
+          {workoutActive && workoutMinimized && (
+            <div
+              style={{
+                position: 'fixed',
+                left: 12,
+                right: 12,
+                bottom: 'calc(76px + env(safe-area-inset-bottom, 0px))',
+                zIndex: 95,
+                maxWidth: 456,
+                margin: '0 auto',
+                background: 'rgba(14, 16, 28, 0.96)',
+                backdropFilter: 'blur(20px)',
+                border: '1px solid rgba(255, 61, 90, 0.4)',
+                borderRadius: 16,
+                padding: '10px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
+                boxShadow: '0 12px 32px rgba(0, 0, 0, 0.6)',
+              }}
+            >
+              <div onClick={resumeWorkout} style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: isPaused ? 'var(--accent-yellow)' : 'var(--accent-green)' }} />
+                  <span style={{ fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {activeDayName || activePlanName || 'Active Workout'}
                   </span>
-                  <button
-                    onClick={() => resumeWorkout()}
-                    className="btn-primary"
-                    style={{
-                      width: 'auto',
-                      minHeight: 36,
-                      padding: '8px 14px',
-                      borderRadius: 10,
-                      fontSize: 11,
-                      fontWeight: 800,
-                      color: '#fff',
-                      boxShadow: 'none',
-                      textShadow: 'none',
-                    }}
-                  >
-                    Resume
-                  </button>
                 </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textTransform: 'capitalize' }}>
+                  {activeExercises[currentExerciseIndex]?.exerciseName || 'In progress'} • {Math.floor(elapsedTime / 60)}:{String(elapsedTime % 60).padStart(2, '0')}
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                <button
+                  onClick={togglePause}
+                  style={{
+                    width: 34, height: 34, borderRadius: 10, border: '1px solid var(--border)',
+                    background: 'var(--bg-glass)', color: isPaused ? 'var(--accent-green)' : 'var(--text-secondary)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                  }}
+                  aria-label={isPaused ? 'Resume timer' : 'Pause timer'}
+                >
+                  {isPaused ? <Play size={14} fill="currentColor" /> : <Pause size={14} />}
+                </button>
+                <button
+                  onClick={resumeWorkout}
+                  className="btn-primary"
+                  style={{ width: 'auto', minHeight: 34, padding: '6px 12px', fontSize: 11, borderRadius: 10, display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                >
+                  <Maximize2 size={12} /> Resume
+                </button>
+              </div>
+            </div>
+          )}
           <BottomNav />
         </>
       )}

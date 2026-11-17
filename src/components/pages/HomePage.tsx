@@ -1,738 +1,1013 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { db } from '@/lib/db';
+import { useState, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Trophy, Dumbbell, Calendar, Target, ChevronRight, ChevronDown, Zap,
+  Star, BarChart3, Shuffle, Check, Activity, Timer, Play, Pause, RotateCcw,
+} from 'lucide-react';
+import { db } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
-import { useUIStore } from '@/lib/store/uiStore';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
-import { WorkoutPlan, WorkoutDay, WorkoutSession, PersonalRecord } from '@/lib/types';
-import { Play, Flame, Trophy, Calendar, Clock, ChevronRight, Dumbbell, Sparkles, Timer, RotateCcw, Pause, Scale, Droplets, Plus, Minus } from 'lucide-react';
-import { buildResolvedActiveExercises, ensureStarterPlan } from '@/lib/utils/exerciseResolver';
+import { useUIStore } from '@/lib/store/uiStore';
+import type { WorkoutSession, WorkoutPlan, WorkoutDay, Exercise } from '@/lib/types';
+import { resolveWorkoutDayExercises, generateSmartWorkout, ALL_EQUIPMENT } from '@/lib/utils/exerciseResolver';
+
+const FITNESS_QUOTES = [
+  { text: "The only bad workout is the one that didn't happen.", author: "Unknown" },
+  { text: "Strength does not come from physical capacity. It comes from an indomitable will.", author: "Gandhi" },
+  { text: "The iron never lies to you. Two hundred pounds is always two hundred pounds.", author: "Henry Rollins" },
+  { text: "No man has the right to be an amateur in the matter of physical training.", author: "Socrates" },
+  { text: "The resistance that you fight physically in the gym strengthens your character.", author: "Arnold Schwarzenegger" },
+  { text: "Your body can stand almost anything. It's your mind that you have to convince.", author: "Unknown" },
+  { text: "The last three or four reps is what makes the muscle grow.", author: "Arnold Schwarzenegger" },
+  { text: "Success isn't always about greatness. It's about consistency.", author: "Dwayne Johnson" },
+  { text: "The pain you feel today will be the strength you feel tomorrow.", author: "Arnold Schwarzenegger" },
+  { text: "If something stands between you and your success, move it.", author: "Dwayne Johnson" },
+  { text: "Discipline is choosing between what you want now and what you want most.", author: "Abraham Lincoln" },
+  { text: "The clock is ticking. Are you becoming the person you want to be?", author: "Greg Plitt" },
+  { text: "Don't count the days, make the days count.", author: "Muhammad Ali" },
+  { text: "What hurts today makes you stronger tomorrow.", author: "Jay Cutler" },
+  { text: "I don't stop when I'm tired. I stop when I'm done.", author: "David Goggins" },
+  { text: "Be stronger than your strongest excuse.", author: "Unknown" },
+  { text: "The only person you are destined to become is the person you decide to be.", author: "Ralph Waldo Emerson" },
+  { text: "Winners never quit, and quitters never win.", author: "Vince Lombardi" },
+  { text: "Motivation gets you started. Habit keeps you going.", author: "Jim Ryun" },
+  { text: "Hard work beats talent when talent doesn't work hard.", author: "Tim Notke" },
+];
+
+function toLocalDateKey(dateInput: Date | string | number): string {
+  const d = new Date(dateInput);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+type DayActivitySummary = {
+  dateKey: string;
+  count: number;
+  volume: number;
+  sets: number;
+  durationSec: number;
+  sessions: WorkoutSession[];
+};
 
 export default function HomePage() {
-  const { profile, streak, setStreak } = useUserStore();
-  const { setCurrentTab } = useUIStore();
-  const { startWorkout, isActive: workoutIsActive, isMinimized: workoutIsMinimized, resumeWorkout } = useWorkoutStore();
-  const [activePlan, setActivePlan] = useState<WorkoutPlan | null>(null);
-  const [planDays, setPlanDays] = useState<WorkoutDay[]>([]);
-  const [plansCount, setPlansCount] = useState<number>(19);
+  const {
+    name,
+    barWeight,
+    dumbbellWeight,
+    equipment: userEquipment,
+    exerciseVariety,
+    showDailyQuote,
+    showActivityHeatmap,
+    showFeatureCards,
+    showLastWorkout,
+    unitSystem,
+  } = useUserStore();
+  const { startWorkout } = useWorkoutStore();
+  const { setActiveTab } = useUIStore();
   const [recentSessions, setRecentSessions] = useState<WorkoutSession[]>([]);
-  const [allSessions, setAllSessions] = useState<WorkoutSession[]>([]);
-  const [prs, setPRs] = useState<PersonalRecord[]>([]);
-  const [nextDayIndex, setNextDayIndex] = useState(0);
-  const [weekWorkouts, setWeekWorkouts] = useState(0);
-  const [selectedActivityDay, setSelectedActivityDay] = useState<{ date: string; count: number; volume: number } | null>(null);
-
-  // Daily Check-in state (Body Weight & Hydration)
-  const [todayWeight, setTodayWeight] = useState<string>('');
-  const [weightSavedMsg, setWeightSavedMsg] = useState<string>('');
-  const [waterGlasses, setWaterGlasses] = useState<number>(0);
-
-  // Standalone Gym Timer & Stopwatch state
+  const [activePlan, setActivePlan] = useState<WorkoutPlan | null>(null);
+  const [activePlanDays, setActivePlanDays] = useState<WorkoutDay[]>([]);
+  const [stats, setStats] = useState({
+    totalWorkouts: 0,
+    weekWorkouts: 0,
+    streak: 0,
+    bestStreak: 0,
+    totalVolume: 0,
+    prsThisMonth: 0,
+    activeDays30d: 0,
+    weekDurationSec: 0,
+    weekSets: 0,
+    weekVolume: 0,
+  });
+  const [exerciseCount, setExerciseCount] = useState(0);
+  const [plansCount, setPlansCount] = useState(19);
   const [clockMode, setClockMode] = useState<'timer' | 'stopwatch'>('timer');
-  const [timerPreset, setTimerPreset] = useState<number>(90);
-  const [timerRemaining, setTimerRemaining] = useState<number>(90);
-  const [timerRunning, setTimerRunning] = useState<boolean>(false);
-  const [stopwatchElapsed, setStopwatchElapsed] = useState<number>(0);
-  const [stopwatchRunning, setStopwatchRunning] = useState<boolean>(false);
+  const [timerPreset, setTimerPreset] = useState(90);
+  const [timerRemaining, setTimerRemaining] = useState(90);
+  const [timerRunning, setTimerRunning] = useState(false);
+  const [stopwatchElapsed, setStopwatchElapsed] = useState(0);
+  const [stopwatchRunning, setStopwatchRunning] = useState(false);
 
   useEffect(() => {
     if (!timerRunning) return;
-    const interval = setInterval(() => {
-      setTimerRemaining((prev) => {
+    const id = setInterval(() => {
+      setTimerRemaining(prev => {
         if (prev <= 1) {
           setTimerRunning(false);
-          if (typeof navigator !== 'undefined' && navigator.vibrate) {
-            navigator.vibrate([180, 90, 180]);
-          }
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
-    return () => clearInterval(interval);
+    return () => clearInterval(id);
   }, [timerRunning]);
 
   useEffect(() => {
     if (!stopwatchRunning) return;
-    const interval = setInterval(() => {
-      setStopwatchElapsed((prev) => prev + 1);
-    }, 1000);
-    return () => clearInterval(interval);
+    const id = setInterval(() => setStopwatchElapsed(prev => prev + 1), 1000);
+    return () => clearInterval(id);
   }, [stopwatchRunning]);
+  const [activityByDate, setActivityByDate] = useState<Map<string, DayActivitySummary>>(new Map());
+  const [selectedDateKey, setSelectedDateKey] = useState<string>(() => toLocalDateKey(new Date()));
+  const [heatmapMetric, setHeatmapMetric] = useState<'workouts' | 'volume' | 'duration'>('workouts');
+  const [expandedSessionId, setExpandedSessionId] = useState<number | null>(null);
+  const [expandedSets, setExpandedSets] = useState<{ name: string; sets: { weight: number; reps: number; isPR?: boolean }[] }[]>([]);
+  const [lastWorkout, setLastWorkout] = useState<WorkoutSession | null>(null);
+  const [allExercises, setAllExercises] = useState<Exercise[]>([]);
+  const [recentExerciseIds, setRecentExerciseIds] = useState<Set<number>>(new Set());
 
-  const loadData = useCallback(async () => {
-    const totalPlans = await db.workoutPlans.count();
-    if (totalPlans > 0) setPlansCount(totalPlans);
+  const unitLabel = unitSystem === 'metric' ? 'kg' : 'lb';
 
-    const plans = await db.workoutPlans.toArray();
-    const active = plans.find((p) => p.isActive) || null;
-    setActivePlan(active);
-    if (active?.id) {
-      const days = await db.workoutDays.where('planId').equals(active.id).sortBy('dayNumber');
-      setPlanDays(days);
-      const lastSession = await db.workoutSessions.where('planId').equals(active.id).last();
-      if (lastSession && days.length > 0) {
-        const lastIdx = days.findIndex((d) => d.id === lastSession.dayId);
-        setNextDayIndex((lastIdx + 1) % days.length);
-      } else {
-        setNextDayIndex(0);
+  const todayQuote = useMemo(() => {
+    const day = Math.floor(Date.now() / 86400000) % FITNESS_QUOTES.length;
+    return FITNESS_QUOTES[day];
+  }, []);
+
+  useEffect(() => { loadDashboard(); }, []);
+
+  const loadDashboard = async () => {
+    try {
+      const allSessions = await db.workoutSessions.orderBy('startedAt').reverse().toArray();
+      const completedAll = allSessions.filter(s => s.isComplete);
+      setRecentSessions(completedAll.slice(0, 10));
+      if (completedAll.length > 0) setLastWorkout(completedAll[0]);
+
+      // Start of current week (Monday)
+      const now = new Date();
+      const dayOfWeek = (now.getDay() + 6) % 7; // 0 = Mon, 6 = Sun
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - dayOfWeek);
+      startOfWeek.setHours(0, 0, 0, 0);
+
+      const weekSessions = completedAll.filter(s => new Date(s.startedAt) >= startOfWeek);
+
+      // Daily Activity Map (local timezone keys)
+      const byDate = new Map<string, DayActivitySummary>();
+      for (const s of completedAll) {
+        const key = toLocalDateKey(s.startedAt);
+        const existing = byDate.get(key) || {
+          dateKey: key,
+          count: 0,
+          volume: 0,
+          sets: 0,
+          durationSec: 0,
+          sessions: [],
+        };
+        existing.count += 1;
+        existing.volume += s.totalVolume || 0;
+        existing.sets += s.totalSets || 0;
+        existing.durationSec += s.duration || 0;
+        existing.sessions.push(s);
+        byDate.set(key, existing);
       }
-    } else {
-      setPlanDays([]);
-    }
+      setActivityByDate(byDate);
 
-    const sessions = await db.workoutSessions.orderBy('startTime').reverse().limit(10).toArray();
-    setRecentSessions(sessions);
+      // Current & Best Streak
+      let streak = 0;
+      const cursor = new Date();
+      if (!byDate.has(toLocalDateKey(cursor))) {
+        cursor.setDate(cursor.getDate() - 1);
+      }
+      while (byDate.has(toLocalDateKey(cursor))) {
+        streak++;
+        cursor.setDate(cursor.getDate() - 1);
+      }
 
-    const allSess = await db.workoutSessions.toArray();
-    setAllSessions(allSess);
+      let bestStreak = 0;
+      let runStreak = 0;
+      const sortedDateKeys = Array.from(byDate.keys()).sort();
+      for (let i = 0; i < sortedDateKeys.length; i++) {
+        if (i === 0) {
+          runStreak = 1;
+        } else {
+          const prevDate = new Date(`${sortedDateKeys[i - 1]}T00:00:00`);
+          const currDate = new Date(`${sortedDateKeys[i]}T00:00:00`);
+          const diffDays = Math.round((currDate.getTime() - prevDate.getTime()) / 86400000);
+          runStreak = diffDays === 1 ? runStreak + 1 : 1;
+        }
+        bestStreak = Math.max(bestStreak, runStreak);
+      }
 
-    // Current week (Monday start)
-    const now = new Date();
-    const dayOfWeek = now.getDay();
-    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() + mondayOffset);
-    weekStart.setHours(0, 0, 0, 0);
-    const thisWeek = allSess.filter((s) => new Date(s.startTime) >= weekStart && s.completed);
-    setWeekWorkouts(thisWeek.length);
+      // Active days in last 30 days
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const activeDays30d = Array.from(byDate.keys()).filter(k => new Date(`${k}T12:00:00`) >= thirtyDaysAgo).length;
 
-    // Streak calculation
-    let currentStreak = 0;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    for (let i = 0; i < 365; i++) {
-      const checkDate = new Date(today);
-      checkDate.setDate(today.getDate() - i);
-      const nextDate = new Date(checkDate);
-      nextDate.setDate(checkDate.getDate() + 1);
-      const has = allSess.some((s) => {
-        const st = new Date(s.startTime);
-        return st >= checkDate && st < nextDate && s.completed;
+      const monthAgo = new Date();
+      monthAgo.setMonth(monthAgo.getMonth() - 1);
+      const monthPRs = await db.personalRecords.filter(pr => new Date(pr.date) >= monthAgo).count();
+
+      setStats({
+        totalWorkouts: completedAll.length,
+        weekWorkouts: weekSessions.length,
+        streak,
+        bestStreak,
+        totalVolume: completedAll.reduce((sum, s) => sum + (s.totalVolume || 0), 0),
+        prsThisMonth: monthPRs,
+        activeDays30d,
+        weekDurationSec: weekSessions.reduce((sum, s) => sum + (s.duration || 0), 0),
+        weekSets: weekSessions.reduce((sum, s) => sum + (s.totalSets || 0), 0),
+        weekVolume: weekSessions.reduce((sum, s) => sum + (s.totalVolume || 0), 0),
       });
-      if (has) currentStreak++;
-      else if (i > 0) break;
-    }
-    setStreak(currentStreak);
 
-    const records = await db.personalRecords.orderBy('achievedAt').reverse().limit(5).toArray();
-    setPRs(records);
+      const totalPlans = await db.workoutPlans.count();
+      if (totalPlans > 0) setPlansCount(totalPlans);
+      const plans = await db.workoutPlans.filter(p => !!p.isActive).first();
+      if (plans) {
+        setActivePlan(plans);
+        const days = await db.workoutDays.where('planId').equals(plans.id!).sortBy('dayNumber');
+        setActivePlanDays(days);
+      }
 
-    // Load today's weight & hydration
-    const todayKey = new Date().toISOString().split('T')[0];
-    const latestMetric = await db.bodyMetrics.orderBy('recordedAt').last();
-    if (latestMetric?.weight) {
-      setTodayWeight(String(latestMetric.weight));
-    }
-    if (typeof window !== 'undefined') {
-      const savedWater = localStorage.getItem(`ironforge-water-${todayKey}`);
-      setWaterGlasses(savedWater ? parseInt(savedWater, 10) || 0 : 0);
-    }
-  }, [setStreak]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  const handleSaveTodayWeight = async () => {
-    const val = parseFloat(todayWeight);
-    if (!val || val <= 0) return;
-    await db.bodyMetrics.add({ weight: val, recordedAt: new Date() });
-    setWeightSavedMsg(`Logged ${val} ${profile.weightUnit}`);
-    setTimeout(() => setWeightSavedMsg(''), 2500);
+      const [catalog, recentSets] = await Promise.all([
+        db.exercises.toArray(),
+        db.sets.orderBy('completedAt').reverse().limit(120).toArray(),
+      ]);
+      setAllExercises(catalog);
+      setExerciseCount(catalog.length);
+      setRecentExerciseIds(new Set(recentSets.map(s => s.exerciseId).filter(Boolean)));
+    } catch {}
   };
 
-  const handleAdjustWater = (delta: number) => {
-    const todayKey = new Date().toISOString().split('T')[0];
-    const next = Math.max(0, Math.min(20, waterGlasses + delta));
-    setWaterGlasses(next);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(`ironforge-water-${todayKey}`, String(next));
+  const toggleExpandSession = async (session: WorkoutSession) => {
+    if (!session.id) return;
+    if (expandedSessionId === session.id) {
+      setExpandedSessionId(null);
+      setExpandedSets([]);
+      return;
     }
-  };
-
-  const handleStartNextWorkout = async () => {
-    let targetPlan = activePlan;
-    let targetDays = planDays;
-
-    if (!targetPlan) {
-      const starter = await ensureStarterPlan();
-      targetPlan = starter.plan;
-      targetDays = starter.days;
-      setActivePlan(starter.plan);
-      setPlanDays(starter.days);
+    setExpandedSessionId(session.id);
+    try {
+      const sets = await db.sets.where('sessionId').equals(session.id).toArray();
+      const exMap = new Map(allExercises.filter(e => e.id != null).map(e => [e.id!, e.name]));
+      const grouped: Record<number, { name: string; sets: { weight: number; reps: number; isPR?: boolean }[] }> = {};
+      for (const s of sets) {
+        if (!grouped[s.exerciseId]) {
+          grouped[s.exerciseId] = { name: exMap.get(s.exerciseId) || 'Exercise', sets: [] };
+        }
+        grouped[s.exerciseId].sets.push({ weight: s.weight, reps: s.reps, isPR: s.isPR });
+      }
+      setExpandedSets(Object.values(grouped));
+    } catch {
+      setExpandedSets([]);
     }
-
-    if (targetPlan && targetDays.length > 0) {
-      const day = targetDays[nextDayIndex] || targetDays[0];
-      const activeExercises = await buildResolvedActiveExercises(day.exercises);
-      startWorkout(targetPlan.id!, day.id!, `${targetPlan.name} — ${day.name}`, activeExercises);
-    }
-  };
-
-  const handleQuickWorkout = () => {
-    startWorkout(0, 0, 'Quick Workout', []);
-  };
-
-  const getGreeting = () => {
-    const h = new Date().getHours();
-    if (h < 12) return 'Good Morning';
-    if (h < 17) return 'Good Afternoon';
-    return 'Good Evening';
   };
 
   const formatDuration = (seconds: number) => {
     if (!seconds || seconds <= 0) return '0m';
     const m = Math.max(1, Math.round(seconds / 60));
-    if (m < 60) return `${m}m`;
-    return `${Math.floor(m / 60)}h ${m % 60}m`;
+    return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
   };
 
   const formatClock = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
   };
 
-  const nextDay = planDays[nextDayIndex];
-  const streakGoal = profile.weeklyGoal || 4;
-  const streakPct = Math.min(1, weekWorkouts / streakGoal);
+  const getRelativeTime = (date: Date) => {
+    const todayKey = toLocalDateKey(new Date());
+    const targetKey = toLocalDateKey(date);
+    if (todayKey === targetKey) return 'Today';
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (toLocalDateKey(yesterday) === targetKey) return 'Yesterday';
+    const diff = Date.now() - new Date(date).getTime();
+    const days = Math.floor(diff / 86400000);
+    if (days < 7) return `${days} days ago`;
+    return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const greeting = () => {
+    const h = new Date().getHours();
+    if (h < 12) return 'Good morning';
+    if (h < 17) return 'Good afternoon';
+    return 'Good evening';
+  };
+
+  const handleQuickStart = async (day: WorkoutDay, extraSeed = 0) => {
+    if (!activePlan) return;
+
+    const savedSwaps: Record<string, { newExerciseId: number; newExerciseName: string; newGifUrl?: string }> = {};
+    try {
+      const swaps = await db.exerciseSwaps.where('planName').equals(activePlan.name).filter(s => s.dayName === day.name).toArray();
+      for (const swap of swaps) {
+        savedSwaps[swap.originalExerciseName.toLowerCase()] = {
+          newExerciseId: swap.newExerciseId,
+          newExerciseName: swap.newExerciseName,
+          newGifUrl: swap.newGifUrl,
+        };
+      }
+    } catch {}
+
+    const catalog = allExercises.length > 0 ? allExercises : await db.exercises.toArray();
+    const equip = userEquipment && userEquipment.length > 0 ? userEquipment : [...ALL_EQUIPMENT];
+    const seed = stats.totalWorkouts + day.dayNumber * 2 + extraSeed;
+
+    const exercises = resolveWorkoutDayExercises({
+      dayExercises: day.exercises,
+      allExercises: catalog,
+      userEquipment: equip,
+      barWeight,
+      dumbbellWeight,
+      savedSwaps,
+      recentExerciseIds,
+      varietySeed: seed,
+      varietyLevel: exerciseVariety || 'medium',
+    });
+
+    startWorkout(activePlan.name, day.name, exercises);
+  };
+
+  const handleSurpriseWorkout = async () => {
+    const catalog = allExercises.length > 0 ? allExercises : await db.exercises.toArray();
+    const equip = userEquipment && userEquipment.length > 0 ? userEquipment : [...ALL_EQUIPMENT];
+    const generated = generateSmartWorkout({
+      targetMuscles: ['chest', 'back', 'shoulders', 'quads', 'hamstrings', 'biceps', 'triceps'],
+      exerciseCount: 6,
+      setsPerExercise: 3,
+      repsPerSet: 10,
+      allExercises: catalog,
+      userEquipment: equip,
+      recentExerciseIds,
+      seed: Date.now(),
+    });
+    const dayExercises = generated.map((item, i) => ({
+      exerciseId: 0,
+      exerciseName: item.name,
+      sets: item.sets,
+      reps: item.reps,
+      restTime: 90,
+      setType: 'normal' as any,
+      order: i,
+    }));
+    const exercises = resolveWorkoutDayExercises({
+      dayExercises,
+      allExercises: catalog,
+      userEquipment: equip,
+      barWeight,
+      dumbbellWeight,
+      recentExerciseIds,
+      varietySeed: 0,
+      varietyLevel: 'low',
+    });
+    startWorkout('Smart Mix', 'Full Body Express', exercises);
+  };
+
+  const todayKey = useMemo(() => toLocalDateKey(new Date()), []);
+
+  // Current week Mon–Sun strip
+  const currentWeekDays = useMemo(() => {
+    const now = new Date();
+    const dayOfWeek = (now.getDay() + 6) % 7; // 0 = Mon
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - dayOfWeek);
+    const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+    return labels.map((label, idx) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + idx);
+      const key = toLocalDateKey(d);
+      const summary = activityByDate.get(key);
+      return {
+        label,
+        dayNum: d.getDate(),
+        dateKey: key,
+        isToday: key === todayKey,
+        count: summary?.count || 0,
+        volume: summary?.volume || 0,
+      };
+    });
+  }, [activityByDate, todayKey]);
+
+  // 16-Week Calendar Grid with Month Headers
+  const { heatmapWeeks, monthHeaders } = useMemo(() => {
+    const weeks: { date: string; monthShort: string; summary: DayActivitySummary }[][] = [];
+    const headers: { label: string; weekIndex: number }[] = [];
+    const now = new Date();
+    let lastMonth = '';
+
+    for (let w = 15; w >= 0; w--) {
+      const week: { date: string; monthShort: string; summary: DayActivitySummary }[] = [];
+      for (let d = 0; d < 7; d++) {
+        const date = new Date(now);
+        date.setDate(date.getDate() - (w * 7 + (6 - d)));
+        const key = toLocalDateKey(date);
+        const monthShort = date.toLocaleDateString('en-US', { month: 'short' });
+        const summary = activityByDate.get(key) || {
+          dateKey: key,
+          count: 0,
+          volume: 0,
+          sets: 0,
+          durationSec: 0,
+          sessions: [],
+        };
+        week.push({ date: key, monthShort, summary });
+      }
+      const firstDayMonth = week[0].monthShort;
+      if (firstDayMonth !== lastMonth) {
+        headers.push({ label: firstDayMonth, weekIndex: 15 - w });
+        lastMonth = firstDayMonth;
+      }
+      weeks.push(week);
+    }
+    return { heatmapWeeks: weeks, monthHeaders: headers };
+  }, [activityByDate]);
+
+  const weeklyGoalTarget = activePlan?.daysPerWeek || 4;
+  const activeWeekDaysCount = currentWeekDays.filter(d => d.count > 0).length;
+  const estWeekCalories = Math.round((stats.weekDurationSec / 60) * 6.5 + stats.weekSets * 11);
+  const selectedDaySummary = activityByDate.get(selectedDateKey);
+
+  // Streak ring
+  const streakDashOffset = Math.max(0, 251 - (251 * Math.min(stats.streak, 7) / 7));
 
   return (
     <div className="page-container">
-      {/* Greeting & Streak Ring */}
-      <div className="animate-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-        <div style={{ minWidth: 0, paddingRight: 12 }}>
-          <p style={{ color: 'var(--text-tertiary)', fontSize: '0.78rem', fontWeight: 600, letterSpacing: '0.03em', textTransform: 'uppercase' }}>{getGreeting()}</p>
-          <h1 className="page-title" style={{ marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile.name}</h1>
+      {/* Header */}
+      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+        <div>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 500, marginBottom: 4 }}>{greeting()}</div>
+          <h1 className="font-display" style={{ fontSize: 32, fontWeight: 800, letterSpacing: '-0.03em' }}>
+            <span className="gradient-text">{name}</span>
+          </h1>
         </div>
-        <div
-          className="streak-ring"
-          title={`${streak} day workout streak (${weekWorkouts}/${streakGoal} weekly goal)`}
-          style={{ flexShrink: 0, width: 64, height: 64 }}
+        <button
+          onClick={handleSurpriseWorkout}
+          className="btn-secondary"
+          style={{ padding: '10px 14px', borderRadius: 12, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}
+          title="Generate a fresh equipment-matched workout"
         >
-          <svg width="64" height="64" style={{ transform: 'rotate(-90deg)' }}>
-            <circle cx="32" cy="32" r="26" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="4" />
-            <circle
-              cx="32" cy="32" r="26" fill="none" stroke="url(#streakGrad)" strokeWidth="4"
-              strokeDasharray={`${streakPct * 163.36} 163.36`} strokeLinecap="round"
-            />
-            <defs>
-              <linearGradient id="streakGrad" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#6366f1" />
-                <stop offset="100%" stopColor="#a855f7" />
-              </linearGradient>
-            </defs>
-          </svg>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Flame size={13} color="#f59e0b" />
-              <span className="num" style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>{streak}</span>
-            </div>
-            <span style={{ fontSize: '0.46rem', fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.05em', marginTop: 2 }}>STREAK</span>
-          </div>
-        </div>
-      </div>
+          <Shuffle size={13} color="var(--accent-purple)" /> Quick Mix
+        </button>
+      </motion.div>
 
-      {/* Primary Hero: Active Plan Quick Start OR Choose Plan Onboarding (Placed Above the Fold) */}
-      {activePlan && nextDay ? (
-        <div className="card-Featured animate-in stagger-1" style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, position: 'relative', zIndex: 1 }}>
-            <div>
-              <span className="badge badge-accent" style={{ marginBottom: 8, display: 'inline-flex' }}>
-                <Sparkles size={10} /> Next Up • Day {nextDayIndex + 1} of {planDays.length}
-              </span>
-              <h2 style={{ fontSize: '1.2rem', fontWeight: 800, letterSpacing: '-0.02em' }}>{nextDay.name}</h2>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginTop: 2 }}>{activePlan.name}</p>
+      {/* Streak Ring + Stats Row */}
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+        className="hero-gradient" style={{ padding: 20, marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+          <div style={{ position: 'relative', width: 86, height: 86, flexShrink: 0 }}>
+            <svg width="86" height="86" viewBox="0 0 86 86">
+              <circle cx="43" cy="43" r="38" fill="none" stroke="var(--border)" strokeWidth="4" />
+              <motion.circle cx="43" cy="43" r="38" fill="none" stroke="var(--accent-red)" strokeWidth="4.5"
+                strokeDasharray="251" strokeDashoffset={streakDashOffset} strokeLinecap="round"
+                initial={{ strokeDashoffset: 251 }} animate={{ strokeDashoffset: streakDashOffset }}
+                transition={{ duration: 1.2, ease: 'easeOut' }}
+                transform="rotate(-90 43 43)" style={{ filter: 'drop-shadow(0 0 6px var(--glow-red))' }} />
+            </svg>
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: 22, fontWeight: 800, lineHeight: 1 }}>{stats.streak}</span>
+              <span style={{ fontSize: 7.5, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 2 }}>Day Streak</span>
             </div>
-            <span style={{ color: 'var(--text-tertiary)', fontSize: '0.75rem', fontWeight: 600 }}>
-              {nextDay.exercises.length} exercises
-            </span>
           </div>
-
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 16, position: 'relative', zIndex: 1 }}>
-            {nextDay.exercises.slice(0, 4).map((ex, i) => (
-              <span key={i} style={{
-                background: 'rgba(255,255,255,0.05)', padding: '4px 10px', borderRadius: 'var(--radius-full)',
-                fontSize: '0.68rem', color: 'var(--text-secondary)', textTransform: 'capitalize', fontWeight: 500,
-                border: '1px solid rgba(255,255,255,0.04)',
-              }}>{ex.exerciseName}</span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, flex: 1 }}>
+            {[
+              { value: `${activeWeekDaysCount}/${weeklyGoalTarget}`, label: 'Week Goal', color: 'var(--accent-purple)' },
+              { value: stats.totalWorkouts, label: 'Workouts', color: 'var(--accent-yellow)' },
+              { value: stats.totalVolume > 1000 ? `${(stats.totalVolume / 1000).toFixed(0)}k` : stats.totalVolume, label: `Volume ${unitLabel}`, color: 'var(--accent-green)' },
+            ].map((stat, i) => (
+              <motion.div key={i} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 + i * 0.05 }}
+                style={{ textAlign: 'center' }}>
+                <div className="font-mono" style={{ fontSize: 20, fontWeight: 800, color: stat.color, lineHeight: 1 }}>
+                  {stat.value}
+                </div>
+                <div className="section-label" style={{ marginTop: 4, fontSize: 9 }}>{stat.label}</div>
+              </motion.div>
             ))}
-            {nextDay.exercises.length > 4 && (
-              <span style={{
-                background: 'rgba(99,102,241,0.1)', padding: '4px 10px', borderRadius: 'var(--radius-full)',
-                fontSize: '0.68rem', color: 'var(--accent-secondary)', fontWeight: 600,
-              }}>+{nextDay.exercises.length - 4} more</span>
-            )}
           </div>
-
-          <button
-            className="btn-primary"
-            onClick={workoutIsActive && workoutIsMinimized ? resumeWorkout : handleStartNextWorkout}
-            style={{ width: '100%', padding: '13px', fontSize: '0.9rem', position: 'relative', zIndex: 1 }}
-          >
-            <Play size={17} fill="white" /> {workoutIsActive && workoutIsMinimized ? 'Resume Active Workout' : 'Start Workout'}
-          </button>
         </div>
-      ) : (
-        <div className="card-Featured animate-in stagger-1" style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14, position: 'relative', zIndex: 1 }}>
-            <div style={{
-              width: 48, height: 48, borderRadius: 'var(--radius-lg)',
-              background: 'rgba(99,102,241,0.14)', border: '1px solid rgba(99,102,241,0.28)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-            }}>
-              <Dumbbell size={22} color="var(--accent-primary)" />
+      </motion.div>
+
+      {/* Above-the-Fold Active Plan / Onboarding Banner */}
+      {!activePlan && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 }}
+          className="card" style={{ marginBottom: 18, padding: 16, border: '1px solid rgba(255,61,90,0.28)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+            <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--gradient-ocean)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Target size={20} color="white" />
             </div>
             <div style={{ minWidth: 0 }}>
-              <span className="badge badge-accent" style={{ marginBottom: 4, display: 'inline-flex' }}>
-                <Sparkles size={10} /> Ready to Train
-              </span>
-              <h3 style={{ fontWeight: 800, fontSize: '1.02rem', letterSpacing: '-0.01em' }}>No Active Workout Plan</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.76rem', marginTop: 2 }}>
-                Choose from {plansCount} balanced programs or launch a session now
-              </p>
+              <div style={{ fontSize: 14, fontWeight: 800 }}>No Active Plan Selected</div>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                Choose from {plansCount} balanced programs or tap Quick Mix above
+              </div>
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, position: 'relative', zIndex: 1 }}>
-            <button className="btn-primary" onClick={() => setCurrentTab('plans')} style={{ padding: '11px 12px', fontSize: '0.82rem' }}>
-              Browse {plansCount} Plans
-            </button>
-            <button className="btn-secondary" onClick={handleStartNextWorkout} style={{ padding: '11px 12px', fontSize: '0.82rem' }}>
-              <Play size={14} /> Quick Start PPL
-            </button>
-          </div>
-        </div>
+          <button
+            className="btn-primary"
+            onClick={() => setActiveTab('plans')}
+            style={{ width: 'auto', minHeight: 38, padding: '8px 14px', fontSize: 11, fontWeight: 800, borderRadius: 10, flexShrink: 0, color: '#fff', boxShadow: 'none', textShadow: 'none' }}
+          >
+            Browse Plans
+          </button>
+        </motion.div>
       )}
 
-      {/* Weekly Progress Row */}
-      <div className="animate-in stagger-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 16 }}>
-        <div className="stat-card" style={{ padding: '12px 8px' }}>
-          <div className="stat-value" style={{ fontSize: '1.25rem' }}>
-            {weekWorkouts}<span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>/{streakGoal}</span>
-          </div>
-          <div className="stat-label" style={{ fontSize: '0.62rem' }}>This Week</div>
-        </div>
-        <div className="stat-card" style={{ padding: '12px 8px' }}>
-          <div className="stat-value" style={{ fontSize: '1.25rem' }}>{allSessions.filter(s => s.completed).length}</div>
-          <div className="stat-label" style={{ fontSize: '0.62rem' }}>Workouts</div>
-        </div>
-        <div className="stat-card" style={{ padding: '12px 8px' }}>
-          <div className="stat-value" style={{ fontSize: '1.25rem' }}>{prs.length}</div>
-          <div className="stat-label" style={{ fontSize: '0.62rem' }}>PRs Set</div>
-        </div>
-      </div>
-
       {/* Standalone Gym Timer & Stopwatch */}
-      <div className="card animate-in stagger-2" style={{ marginBottom: 16, padding: 14 }}>
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.07 }}
+        className="card" style={{ marginBottom: 20, padding: 15, border: '1px solid var(--border-subtle)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Timer size={14} color="var(--accent-primary)" />
-            <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>Gym Timer & Stopwatch</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 800 }}>
+            <Timer size={15} color="var(--accent-red)" /> Gym Timer & Stopwatch
           </div>
-          <div style={{ display: 'flex', background: 'rgba(255,255,255,0.04)', borderRadius: 'var(--radius-full)', padding: 2, border: '1px solid var(--border-glass)' }}>
-            <button
-              onClick={() => setClockMode('timer')}
-              style={{
-                padding: '4px 10px', borderRadius: 'var(--radius-full)', border: 'none', cursor: 'pointer',
-                fontSize: '0.68rem', fontWeight: 700,
-                background: clockMode === 'timer' ? 'var(--accent-gradient)' : 'transparent',
-                color: clockMode === 'timer' ? 'white' : 'var(--text-tertiary)',
-              }}
-            >
-              Timer
-            </button>
-            <button
-              onClick={() => setClockMode('stopwatch')}
-              style={{
-                padding: '4px 10px', borderRadius: 'var(--radius-full)', border: 'none', cursor: 'pointer',
-                fontSize: '0.68rem', fontWeight: 700,
-                background: clockMode === 'stopwatch' ? 'var(--accent-gradient)' : 'transparent',
-                color: clockMode === 'stopwatch' ? 'white' : 'var(--text-tertiary)',
-              }}
-            >
-              Stopwatch
-            </button>
+          <div style={{ display: 'flex', gap: 4, background: 'var(--bg-glass)', padding: 2, borderRadius: 9, border: '1px solid var(--border)' }}>
+            {(['timer', 'stopwatch'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => setClockMode(m)}
+                style={{
+                  padding: '4px 10px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 10, fontWeight: 700,
+                  background: clockMode === m ? 'var(--gradient-fire)' : 'transparent',
+                  color: clockMode === m ? '#fff' : 'var(--text-muted)',
+                  textTransform: 'capitalize',
+                }}
+              >
+                {m}
+              </button>
+            ))}
           </div>
         </div>
 
         {clockMode === 'timer' ? (
-          <>
-            <div style={{ textAlign: 'center', padding: '6px 0 10px' }}>
-              <div className="num" style={{ fontSize: '2.1rem', color: timerRunning ? 'var(--accent-secondary)' : 'var(--text-primary)', letterSpacing: '-0.04em' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
+              <div className="font-mono" style={{ fontSize: 26, fontWeight: 800, color: timerRunning ? 'var(--accent-green)' : 'var(--text-primary)' }}>
                 {formatClock(timerRemaining)}
               </div>
-              <div style={{ fontSize: '0.66rem', color: 'var(--text-tertiary)', fontWeight: 600 }}>
-                {timerRunning ? 'Countdown running' : 'Select duration or start rest timer'}
+              <div style={{ display: 'flex', gap: 4 }}>
+                {[30, 60, 90, 120, 180].map(sec => (
+                  <button
+                    key={sec}
+                    onClick={() => { setTimerPreset(sec); setTimerRemaining(sec); setTimerRunning(false); }}
+                    style={{
+                      padding: '5px 8px', borderRadius: 8, fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                      background: timerPreset === sec ? 'rgba(255,61,90,0.16)' : 'var(--bg-glass)',
+                      border: timerPreset === sec ? '1px solid var(--accent-red)' : '1px solid var(--border)',
+                      color: timerPreset === sec ? 'var(--accent-red)' : 'var(--text-secondary)',
+                    }}
+                  >
+                    {sec < 60 ? `${sec}s` : `${sec / 60}m`}
+                  </button>
+                ))}
               </div>
             </div>
-
-            {/* Duration Presets (Strictly separated from +15s modifier) */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 5, marginBottom: 10 }}>
-              {[
-                { label: '30s', sec: 30 },
-                { label: '1m', sec: 60 },
-                { label: '1.5m', sec: 90 },
-                { label: '2m', sec: 120 },
-                { label: '3m', sec: 180 },
-              ].map((p) => (
-                <button
-                  key={p.sec}
-                  onClick={() => {
-                    setTimerPreset(p.sec);
-                    setTimerRemaining(p.sec);
-                    setTimerRunning(false);
-                  }}
-                  style={{
-                    padding: '6px 4px', borderRadius: 'var(--radius-md)', cursor: 'pointer',
-                    fontSize: '0.7rem', fontWeight: 700,
-                    background: timerPreset === p.sec ? 'rgba(99,102,241,0.16)' : 'rgba(255,255,255,0.03)',
-                    color: timerPreset === p.sec ? 'var(--accent-secondary)' : 'var(--text-tertiary)',
-                    border: timerPreset === p.sec ? '1px solid rgba(99,102,241,0.35)' : '1px solid var(--border-subtle)',
-                  }}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-
             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 6 }}>
               <button
-                className="btn-primary"
                 onClick={() => {
                   if (timerRemaining === 0) setTimerRemaining(timerPreset);
-                  setTimerRunning((r) => !r);
+                  setTimerRunning(r => !r);
                 }}
-                style={{ padding: '9px 14px', fontSize: '0.78rem' }}
+                className="btn-primary"
+                style={{ minHeight: 36, padding: '7px 12px', fontSize: 12, borderRadius: 10, color: '#fff', boxShadow: 'none', textShadow: 'none' }}
               >
-                {timerRunning ? <><Pause size={14} /> Pause</> : <><Play size={14} fill="white" /> Start Timer</>}
+                {timerRunning ? <><Pause size={13} /> Pause</> : <><Play size={13} fill="white" /> Start Timer</>}
               </button>
               <button
+                onClick={() => setTimerRemaining(prev => prev + 15)}
                 className="btn-secondary"
-                onClick={() => setTimerRemaining((prev) => prev + 15)}
-                title="Add 15 seconds"
-                style={{ padding: '9px 11px', fontSize: '0.74rem', fontWeight: 700 }}
+                style={{ minHeight: 36, padding: '7px 11px', fontSize: 11, fontWeight: 700, borderRadius: 10, width: 'auto' }}
               >
                 +15s
               </button>
               <button
-                className="btn-secondary"
                 onClick={() => { setTimerRunning(false); setTimerRemaining(timerPreset); }}
-                title="Reset timer"
-                style={{ padding: '9px 11px', fontSize: '0.74rem' }}
-              >
-                <RotateCcw size={13} /> Reset
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div style={{ textAlign: 'center', padding: '6px 0 12px' }}>
-              <div className="num" style={{ fontSize: '2.1rem', color: stopwatchRunning ? 'var(--success)' : 'var(--text-primary)', letterSpacing: '-0.04em' }}>
-                {formatClock(stopwatchElapsed)}
-              </div>
-              <div style={{ fontSize: '0.66rem', color: 'var(--text-tertiary)', fontWeight: 600 }}>
-                {stopwatchRunning ? 'Stopwatch active' : 'Ready to time sets, planks, or conditioning'}
-              </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6 }}>
-              <button
-                className="btn-primary"
-                onClick={() => setStopwatchRunning((r) => !r)}
-                style={{ padding: '9px 14px', fontSize: '0.78rem' }}
-              >
-                {stopwatchRunning ? <><Pause size={14} /> Pause</> : <><Play size={14} fill="white" /> {stopwatchElapsed > 0 ? 'Resume' : 'Start Stopwatch'}</>}
-              </button>
-              <button
                 className="btn-secondary"
+                style={{ minHeight: 36, padding: '7px 11px', fontSize: 11, borderRadius: 10, width: 'auto' }}
+                title="Reset timer"
+              >
+                <RotateCcw size={13} />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <div className="font-mono" style={{ fontSize: 26, fontWeight: 800, color: stopwatchRunning ? 'var(--accent-cyan)' : 'var(--text-primary)' }}>
+              {formatClock(stopwatchElapsed)}
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                onClick={() => setStopwatchRunning(r => !r)}
+                className="btn-primary"
+                style={{ width: 'auto', minHeight: 36, padding: '7px 14px', fontSize: 12, borderRadius: 10, color: '#fff', boxShadow: 'none', textShadow: 'none' }}
+              >
+                {stopwatchRunning ? <><Pause size={13} /> Pause</> : <><Play size={13} fill="white" /> {stopwatchElapsed > 0 ? 'Resume' : 'Start'}</>}
+              </button>
+              <button
                 onClick={() => { setStopwatchRunning(false); setStopwatchElapsed(0); }}
-                style={{ padding: '9px 12px', fontSize: '0.74rem' }}
+                className="btn-secondary"
+                style={{ width: 'auto', minHeight: 36, padding: '7px 11px', fontSize: 11, borderRadius: 10 }}
               >
                 <RotateCcw size={13} /> Reset
               </button>
             </div>
-          </>
+          </div>
         )}
-      </div>
+      </motion.div>
 
-      {/* Quick Daily Check-In: Body Weight & Hydration */}
-      <div className="card animate-in stagger-2" style={{ marginBottom: 16, padding: 14 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>Daily Check-In</span>
-          <button
-            onClick={() => setCurrentTab('profile')}
-            style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer' }}
-          >
-            All Tools →
-          </button>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 1fr', gap: 10 }}>
-          {/* Body Weight Quick Input */}
-          <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '9px 10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.66rem', color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: 6 }}>
-              <Scale size={12} color="var(--accent-secondary)" /> Body Weight ({profile.weightUnit})
+      {/* Upgraded Activity & Consistency Tracker */}
+      {showActivityHeatmap !== false && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}
+          style={{ marginBottom: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <h2 className="font-display" style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Activity size={16} color="var(--accent-green)" /> Activity Tracker
+            </h2>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {([
+                { id: 'workouts' as const, label: 'Sessions' },
+                { id: 'volume' as const, label: 'Volume' },
+                { id: 'duration' as const, label: 'Time' },
+              ]).map(m => (
+                <button
+                  key={m.id}
+                  onClick={() => setHeatmapMetric(m.id)}
+                  style={{
+                    padding: '4px 8px', borderRadius: 7, fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                    background: heatmapMetric === m.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
+                    border: heatmapMetric === m.id ? 'none' : '1px solid var(--border)',
+                    color: heatmapMetric === m.id ? '#fff' : 'var(--text-muted)',
+                  }}
+                >
+                  {m.label}
+                </button>
+              ))}
             </div>
-            <div style={{ display: 'flex', gap: 5 }}>
-              <input
-                className="input"
-                type="number"
-                inputMode="decimal"
-                placeholder={profile.weightUnit === 'kg' ? '75.0' : '165'}
-                value={todayWeight}
-                onChange={(e) => setTodayWeight(e.target.value)}
-                style={{ padding: '6px 8px', fontSize: '0.78rem', minWidth: 0, flex: 1 }}
-              />
-              <button
-                className="btn-primary"
-                onClick={handleSaveTodayWeight}
-                style={{ padding: '6px 10px', fontSize: '0.7rem', flexShrink: 0 }}
-              >
-                Save
-              </button>
-            </div>
-            {weightSavedMsg && (
-              <div style={{ fontSize: '0.62rem', color: 'var(--success)', marginTop: 4, fontWeight: 600 }}>
-                ✓ {weightSavedMsg}
+          </div>
+
+          <div className="card" style={{ padding: 16, border: '1px solid var(--border-subtle)' }}>
+            {/* Current Week Mon-Sun Interactive Tracker */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>
+                  This Week ({activeWeekDaysCount} of {weeklyGoalTarget} days active)
+                </span>
+                <span className="font-mono" style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-orange)' }}>
+                  🔥 ~{estWeekCalories.toLocaleString()} kcal
+                </span>
               </div>
-            )}
-          </div>
 
-          {/* Hydration Quick Counter */}
-          <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '9px 10px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.66rem', color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: 6 }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Droplets size={12} color="#38bdf8" /> Hydration
-              </span>
-              <span style={{ color: '#38bdf8', fontWeight: 700 }}>{waterGlasses}/8</span>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6, marginBottom: 10 }}>
+                {currentWeekDays.map((d) => {
+                  const isActive = d.count > 0;
+                  const isSelected = selectedDateKey === d.dateKey;
+                  return (
+                    <button
+                      key={d.dateKey}
+                      onClick={() => setSelectedDateKey(d.dateKey)}
+                      style={{
+                        padding: '8px 2px', borderRadius: 12, cursor: 'pointer', textAlign: 'center',
+                        background: isActive ? 'rgba(16,232,154,0.12)' : 'var(--bg-glass)',
+                        border: isSelected
+                          ? '1.5px solid var(--accent-purple)'
+                          : d.isToday
+                            ? '1.5px solid var(--accent-red)'
+                            : isActive
+                              ? '1px solid rgba(16,232,154,0.35)'
+                              : '1px solid var(--border)',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                      }}
+                    >
+                      <span style={{ fontSize: 9, fontWeight: 700, color: d.isToday ? 'var(--accent-red)' : 'var(--text-muted)' }}>
+                        {d.label}
+                      </span>
+                      <div style={{
+                        width: 24, height: 24, borderRadius: '50%',
+                        background: isActive ? 'var(--accent-green)' : 'rgba(255,255,255,0.04)',
+                        color: isActive ? '#06120e' : 'var(--text-secondary)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 11, fontWeight: 800,
+                      }}>
+                        {isActive ? <Check size={13} strokeWidth={3} /> : d.dayNum}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Weekly Metrics Strip */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+                {[
+                  { label: 'Active Time', value: stats.weekDurationSec > 0 ? formatDuration(stats.weekDurationSec) : '0m', color: 'var(--accent-cyan)' },
+                  { label: 'Week Sets', value: stats.weekSets.toString(), color: 'var(--accent-purple)' },
+                  { label: '30D Active', value: `${stats.activeDays30d}d`, color: 'var(--accent-green)' },
+                  { label: 'Best Streak', value: `${stats.bestStreak}d`, color: 'var(--accent-yellow)' },
+                ].map((m, idx) => (
+                  <div key={idx} style={{ padding: '7px 4px', background: 'var(--bg-glass)', borderRadius: 9, textAlign: 'center', border: '1px solid var(--border)' }}>
+                    <div className="font-mono" style={{ fontSize: 13, fontWeight: 800, color: m.color }}>{m.value}</div>
+                    <div style={{ fontSize: 8, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginTop: 2 }}>{m.label}</div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-              <button
-                onClick={() => handleAdjustWater(-1)}
-                style={{
-                  width: 28, height: 28, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)',
-                  background: 'rgba(255,255,255,0.04)', color: 'var(--text-secondary)', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-                aria-label="Remove glass of water"
-              >
-                <Minus size={12} />
-              </button>
-              <span style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                {(waterGlasses * 0.25).toFixed(2)}L
-              </span>
-              <button
-                onClick={() => handleAdjustWater(1)}
-                style={{
-                  width: 28, height: 28, borderRadius: 'var(--radius-sm)', border: '1px solid rgba(56,189,248,0.35)',
-                  background: 'rgba(56,189,248,0.12)', color: '#38bdf8', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-                aria-label="Add glass of water"
-              >
-                <Plus size={12} />
-              </button>
+
+            {/* 16-Week Interactive Heatmap */}
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, paddingLeft: 20 }}>
+                {monthHeaders.map((mh, idx) => (
+                  <span key={idx} style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700 }}>{mh.label}</span>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: 110, paddingRight: 4, fontSize: 8, color: 'var(--text-dim)', fontWeight: 700 }}>
+                  <span>Sun</span>
+                  <span>Wed</span>
+                  <span>Sat</span>
+                </div>
+                <div className="hide-scrollbar" style={{ display: 'flex', gap: 3, overflowX: 'auto', flex: 1, justifyContent: 'space-between' }}>
+                  {heatmapWeeks.map((week, wi) => (
+                    <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      {week.map((day, di) => {
+                        const isToday = day.date === todayKey;
+                        const isSelected = day.date === selectedDateKey;
+                        const s = day.summary;
+                        const hasActivity = s.count > 0;
+
+                        let intensity = 0;
+                        if (hasActivity) {
+                          if (heatmapMetric === 'workouts') intensity = Math.min(1, s.count / 2);
+                          else if (heatmapMetric === 'volume') intensity = Math.min(1, s.volume / 8000);
+                          else intensity = Math.min(1, s.durationSec / 3600);
+                        }
+
+                        return (
+                          <button
+                            key={di}
+                            onClick={() => setSelectedDateKey(day.date)}
+                            title={`${day.date}: ${s.count} workout${s.count !== 1 ? 's' : ''}, ${s.volume.toLocaleString()}${unitLabel}`}
+                            style={{
+                              width: 14, height: 14, borderRadius: 3.5, padding: 0, cursor: 'pointer',
+                              background: !hasActivity
+                                ? 'var(--bg-glass)'
+                                : intensity >= 0.75
+                                  ? 'var(--accent-green)'
+                                  : intensity >= 0.4
+                                    ? 'var(--accent-cyan)'
+                                    : 'var(--accent-purple)',
+                              opacity: !hasActivity ? 0.28 : 0.65 + intensity * 0.35,
+                              border: isSelected
+                                ? '1.5px solid #ffffff'
+                                : isToday
+                                  ? '1.5px solid var(--accent-red)'
+                                  : 'none',
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Selected Date Activity Inspector */}
+              <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, background: 'var(--bg-glass)', border: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)' }}>
+                    {selectedDateKey === todayKey ? 'Today' : new Date(`${selectedDateKey}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+                    {selectedDaySummary && selectedDaySummary.count > 0
+                      ? `${selectedDaySummary.sessions.map(s => s.dayName || s.planName || 'Workout').join(', ')} • ${selectedDaySummary.sets} sets • ${selectedDaySummary.volume.toLocaleString()}${unitLabel}`
+                      : 'Rest day — no workouts logged on this date'}
+                  </div>
+                </div>
+                {selectedDaySummary && selectedDaySummary.count > 0 ? (
+                  <span className="badge" style={{ background: 'rgba(16,232,154,0.12)', color: 'var(--accent-green)', fontSize: 10 }}>
+                    {formatDuration(selectedDaySummary.durationSec)}
+                  </span>
+                ) : (
+                  <button onClick={handleSurpriseWorkout} className="btn-secondary" style={{ padding: '6px 10px', fontSize: 10, minHeight: 30, borderRadius: 8 }}>
+                    Train Now
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      </div>
+        </motion.div>
+      )}
 
-      {/* Consistency Activity Tracker */}
-      <div className="card animate-in stagger-2" style={{ marginBottom: 16, padding: 14 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Calendar size={14} color="var(--accent-primary)" />
-            <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>Activity Tracker</span>
+      {/* Daily Quote */}
+      {showDailyQuote !== false && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+          className="card" style={{ marginBottom: 20, padding: '16px 18px', border: '1px solid var(--border-subtle)', position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', top: 10, right: 14, opacity: 0.06, fontSize: 48 }}>❝</div>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.55, fontStyle: 'italic', marginBottom: 6, position: 'relative', zIndex: 1 }}>
+            &quot;{todayQuote.text}&quot;
+          </p>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, letterSpacing: 0.5 }}>
+            — {todayQuote.author}
           </div>
-          <span style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', fontWeight: 600 }}>
-            Last 16 Weeks • {allSessions.filter(s => s.completed).length} total
-          </span>
-        </div>
+        </motion.div>
+      )}
 
-        <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-          <div style={{ display: 'grid', gridTemplateRows: 'repeat(7, 11px)', gap: 3, paddingTop: 2, fontSize: '0.55rem', color: 'var(--text-tertiary)', lineHeight: '11px' }}>
-            <span>M</span><span></span><span>W</span><span></span><span>F</span><span></span><span>S</span>
-          </div>
-          <div className="hide-scrollbar" style={{ flex: 1, overflowX: 'auto', paddingBottom: 2 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(16, 1fr)', gap: 3, minWidth: 230 }}>
-              {Array.from({ length: 16 }, (_, weekIdx) => (
-                <div key={weekIdx} style={{ display: 'grid', gridTemplateRows: 'repeat(7, 11px)', gap: 3 }}>
-                  {Array.from({ length: 7 }, (_, dayIdx) => {
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    const todayDow = (today.getDay() + 6) % 7;
-                    const daysAgo = (15 - weekIdx) * 7 + (todayDow - dayIdx);
-                    const cellDate = new Date(today);
-                    cellDate.setDate(today.getDate() - daysAgo);
-                    const nextDate = new Date(cellDate);
-                    nextDate.setDate(cellDate.getDate() + 1);
-                    const isFuture = daysAgo < 0;
-
-                    const daySessions = isFuture ? [] : allSessions.filter((s) => {
-                      const d = new Date(s.startTime);
-                      return d >= cellDate && d < nextDate && s.completed;
-                    });
-                    const count = daySessions.length;
-                    const vol = daySessions.reduce((acc, s) => acc + (s.totalVolume || 0), 0);
-                    const dateLabel = cellDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                    const isSelected = selectedActivityDay?.date === dateLabel;
-
-                    const bg = isFuture
-                      ? 'transparent'
-                      : count === 0
-                      ? 'rgba(255,255,255,0.05)'
-                      : count === 1
-                      ? 'rgba(99,102,241,0.55)'
-                      : '#818cf8';
-
-                    return (
-                      <div
-                        key={dayIdx}
-                        onClick={() => !isFuture && setSelectedActivityDay({ date: dateLabel, count, volume: Math.round(vol) })}
-                        title={isFuture ? '' : `${dateLabel}: ${count} workout${count !== 1 ? 's' : ''}`}
-                        style={{
-                          width: '100%',
-                          height: 11,
-                          borderRadius: 3,
-                          background: bg,
-                          border: isSelected
-                            ? '1.5px solid #ffffff'
-                            : daysAgo === 0
-                            ? '1px solid var(--accent-secondary)'
-                            : '1px solid rgba(255,255,255,0.03)',
-                          cursor: isFuture ? 'default' : 'pointer',
-                        }}
-                      />
-                    );
-                  })}
+      {/* Last Workout Summary */}
+      {showLastWorkout !== false && lastWorkout && lastWorkout.isComplete && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.11 }}
+          style={{ marginBottom: 20 }}>
+          <h2 className="font-display" style={{ fontSize: 16, fontWeight: 700, marginBottom: 10, letterSpacing: '-0.01em', color: 'var(--text-secondary)' }}>Last Workout</h2>
+          <div className="card" style={{ padding: 16, border: '1px solid var(--border-subtle)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 800 }}>{lastWorkout.dayName || lastWorkout.planName}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                  {getRelativeTime(lastWorkout.startedAt)}
+                </div>
+              </div>
+              <span className="badge" style={{ background: 'rgba(16,232,154,0.08)', color: 'var(--accent-green)', fontSize: 10 }}>✓ Complete</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+              {[
+                { val: lastWorkout.duration > 0 ? formatDuration(lastWorkout.duration) : '-', lbl: 'Duration' },
+                { val: lastWorkout.totalSets || '-', lbl: 'Sets' },
+                { val: lastWorkout.totalReps || '-', lbl: 'Reps' },
+                { val: lastWorkout.totalVolume > 0 ? `${(lastWorkout.totalVolume / 1000).toFixed(1)}k` : '-', lbl: 'Volume' },
+              ].map((s, i) => (
+                <div key={i} style={{ textAlign: 'center', padding: '8px 4px', background: 'var(--bg-glass)', borderRadius: 8 }}>
+                  <div className="font-mono" style={{ fontSize: 15, fontWeight: 800, color: 'var(--accent-green)' }}>{s.val}</div>
+                  <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600, marginTop: 2 }}>{s.lbl}</div>
                 </div>
               ))}
             </div>
           </div>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, fontSize: '0.66rem', color: 'var(--text-tertiary)' }}>
-          <span>
-            {selectedActivityDay
-              ? `${selectedActivityDay.date}: ${selectedActivityDay.count} workout${selectedActivityDay.count !== 1 ? 's' : ''}${selectedActivityDay.volume > 0 ? ` • ${selectedActivityDay.volume.toLocaleString()} ${profile.weightUnit}` : ''}`
-              : 'Tap any day square to inspect activity'}
-          </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span>Less</span>
-            <span style={{ width: 9, height: 9, borderRadius: 2, background: 'rgba(255,255,255,0.05)', display: 'inline-block' }} />
-            <span style={{ width: 9, height: 9, borderRadius: 2, background: 'rgba(99,102,241,0.55)', display: 'inline-block' }} />
-            <span style={{ width: 9, height: 9, borderRadius: 2, background: '#818cf8', display: 'inline-block' }} />
-            <span>More</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="animate-in stagger-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 22 }}>
-        <button className="card" onClick={handleQuickWorkout} style={{ cursor: 'pointer', textAlign: 'left', border: '1px solid var(--border-glass)', padding: 14 }}>
-          <div style={{
-            width: 34, height: 34, borderRadius: 'var(--radius-md)',
-            background: 'rgba(99,102,241,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8,
-          }}>
-            <Play size={16} color="var(--accent-primary)" />
-          </div>
-          <div style={{ fontWeight: 700, fontSize: '0.82rem' }}>Quick Session</div>
-          <div style={{ color: 'var(--text-tertiary)', fontSize: '0.68rem', marginTop: 2 }}>Freestyle workout</div>
-        </button>
-        <button className="card" onClick={() => setCurrentTab('plans')} style={{ cursor: 'pointer', textAlign: 'left', border: '1px solid var(--border-glass)', padding: 14 }}>
-          <div style={{
-            width: 34, height: 34, borderRadius: 'var(--radius-md)',
-            background: 'rgba(139,92,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8,
-          }}>
-            <Calendar size={16} color="#a855f7" />
-          </div>
-          <div style={{ fontWeight: 700, fontSize: '0.82rem' }}>{plansCount} Balanced Plans</div>
-          <div style={{ color: 'var(--text-tertiary)', fontSize: '0.68rem', marginTop: 2 }}>Switch or customize</div>
-        </button>
-      </div>
-
-      {/* Recent PRs */}
-      {prs.length > 0 && (
-        <div className="animate-in stagger-3" style={{ marginBottom: 22 }}>
-          <div className="section-header">
-            <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Trophy size={15} color="#f59e0b" /> Personal Records
-            </h3>
-            <button onClick={() => setCurrentTab('progress')} style={{
-              background: 'none', border: 'none', color: 'var(--accent-primary)', fontSize: '0.75rem',
-              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2, fontWeight: 600,
-            }}>
-              All <ChevronRight size={13} />
-            </button>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {prs.slice(0, 3).map((pr, i) => (
-              <div key={pr.id || i} className="card" style={{ padding: '11px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.82rem', textTransform: 'capitalize' }}>{pr.exerciseName}</div>
-                  <div style={{ color: 'var(--text-tertiary)', fontSize: '0.68rem' }}>
-                    {new Date(pr.achievedAt).toLocaleDateString()}
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <span className="badge badge-warning">
-                    🏆 {pr.weight}{profile.weightUnit} × {pr.reps}
-                  </span>
-                  <div style={{ color: 'var(--text-tertiary)', fontSize: '0.62rem', marginTop: 2 }}>
-                    e1RM: {pr.estimated1RM}{profile.weightUnit}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        </motion.div>
       )}
 
-      {/* Recent Workouts */}
-      <div className="animate-in stagger-4">
-        <div className="section-header">
-          <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Clock size={15} color="var(--text-secondary)" /> Recent Activity
-          </h3>
-          {recentSessions.length > 0 && (
-            <button onClick={() => setCurrentTab('progress')} style={{
-              background: 'none', border: 'none', color: 'var(--accent-primary)', fontSize: '0.75rem',
-              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2, fontWeight: 600,
-            }}>
-              History <ChevronRight size={13} />
-            </button>
-          )}
-        </div>
-        {recentSessions.length === 0 ? (
-          <div className="empty-state" style={{ padding: '28px 16px' }}>
-            <Dumbbell size={28} />
-            <p style={{ fontSize: '0.82rem' }}>No workouts logged yet. Tap Start Workout above to begin!</p>
+      {/* Quick Start — Active Plan */}
+      {activePlan && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}
+          style={{ marginBottom: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h2 className="font-display" style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.01em' }}>Quick Start</h2>
+            <span className="badge" style={{ background: 'rgba(139,92,246,0.1)', color: 'var(--accent-purple)', border: '1px solid rgba(139,92,246,0.2)' }}>
+              <Zap size={10} /> {activePlan.name}
+            </span>
           </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {recentSessions.slice(0, 5).map((s, i) => (
-              <div key={s.id || i} className="card" style={{ padding: '12px 14px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {activePlanDays.map((day, i) => (
+              <motion.div key={day.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15 + i * 0.04 }}
+                className="card"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', border: '1px solid var(--border-subtle)', minHeight: 64, padding: '12px 16px' }}>
+                <button
+                  onClick={() => handleQuickStart(day, 0)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', textAlign: 'left' }}
+                >
+                  <div style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--gradient-fire)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14, color: 'white', fontFamily: "'JetBrains Mono'" }}>
+                    D{day.dayNumber}
+                  </div>
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: '0.82rem' }}>{s.dayName || s.planName}</div>
-                    <div style={{ color: 'var(--text-tertiary)', fontSize: '0.68rem' }}>
-                      {new Date(s.startTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} • {s.exercises.length} exercises
-                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 700 }}>{day.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{day.exercises.length} exercises • Balanced & equipment-filtered</div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--accent-secondary)' }}>
-                      {formatDuration(s.duration)}
-                    </div>
-                    <div style={{ color: 'var(--text-tertiary)', fontSize: '0.66rem' }}>
-                      {s.totalVolume > 0 ? `${Math.round(s.totalVolume).toLocaleString()} ${profile.weightUnit}` : 'Done'}
-                    </div>
-                  </div>
+                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button
+                    onClick={() => handleQuickStart(day, Math.floor(Math.random() * 50) + 1)}
+                    title="Start with varied exercises"
+                    style={{ background: 'var(--bg-glass)', border: '1px solid var(--border-bright)', color: 'var(--text-secondary)', borderRadius: 10, padding: '8px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                  >
+                    <Shuffle size={12} /> Vary
+                  </button>
+                  <button
+                    onClick={() => handleQuickStart(day, 0)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
+                  >
+                    <ChevronRight size={18} />
+                  </button>
                 </div>
-              </div>
+              </motion.div>
             ))}
           </div>
-        )}
-      </div>
+        </motion.div>
+      )}
+
+      {/* No active plan */}
+      {!activePlan && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+          className="card" style={{ marginBottom: 24, textAlign: 'center', padding: 28 }}>
+          <div style={{ width: 52, height: 52, borderRadius: 14, background: 'var(--gradient-ocean)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+            <Target size={24} color="white" />
+          </div>
+          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>No Active Plan</h3>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.5 }}>
+            Choose a balanced workout program to get started
+          </p>
+          <button
+            className="btn-primary"
+            onClick={() => setActiveTab('plans')}
+            style={{
+              maxWidth: 260,
+              margin: '0 auto',
+              minHeight: 48,
+              borderRadius: 14,
+              fontSize: 14,
+              fontWeight: 800,
+              padding: '12px 20px',
+              color: '#ffffff',
+              boxShadow: 'none',
+              textShadow: 'none',
+              width: 'auto',
+            }}
+          >
+            <Dumbbell size={16} color="currentColor" />
+            <span style={{ letterSpacing: '0.03em', textTransform: 'uppercase' }}>Browse Plans</span>
+          </button>
+        </motion.div>
+      )}
+
+      {/* Feature Cards */}
+      {showFeatureCards !== false && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}
+          style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 24 }}>
+          {[
+            { icon: Dumbbell, label: 'Exercises', count: exerciseCount, color: 'var(--accent-red)', tab: 'exercises' as const },
+            { icon: BarChart3, label: 'Progress & Body Map', count: stats.totalWorkouts, color: 'var(--accent-purple)', tab: 'progress' as const },
+            { icon: Calendar, label: 'Balanced Plans', count: String(plansCount), color: 'var(--accent-green)', tab: 'plans' as const },
+            { icon: Star, label: 'Profile & Tools', count: '', color: 'var(--accent-yellow)', tab: 'profile' as const },
+          ].map((item, i) => (
+            <motion.button key={i} className="card" onClick={() => setActiveTab(item.tab)}
+              style={{ padding: 16, textAlign: 'left', cursor: 'pointer', width: '100%', border: '1px solid var(--border-subtle)', minHeight: 80 }}
+              whileTap={{ scale: 0.97 }}>
+              <item.icon size={20} color={item.color} style={{ marginBottom: 8 }} />
+              <div style={{ fontSize: 14, fontWeight: 700 }}>{item.label}</div>
+              {item.count !== '' && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{item.count} {item.label === 'Exercises' ? 'in catalog' : item.label.startsWith('Progress') ? 'sessions' : 'programs'}</div>}
+            </motion.button>
+          ))}
+        </motion.div>
+      )}
+
+      {/* Interactive Recent Activity Feed */}
+      {recentSessions.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+          <h2 className="font-display" style={{ fontSize: 16, fontWeight: 700, marginBottom: 12, letterSpacing: '-0.01em', color: 'var(--text-secondary)' }}>Recent Activity</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {recentSessions.slice(0, 6).map((session) => {
+              const isExpanded = expandedSessionId === session.id;
+              return (
+                <div key={session.id} className="card" style={{ padding: 14 }}>
+                  <button
+                    onClick={() => toggleExpandSession(session)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', textAlign: 'left', padding: 0 }}
+                  >
+                    <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(16,232,154,0.08)', border: '1px solid rgba(16,232,154,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Trophy size={16} color="var(--accent-green)" />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {session.dayName || session.planName || 'Quick Workout'}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        {getRelativeTime(session.startedAt)}
+                        {session.duration > 0 && ` • ${formatDuration(session.duration)}`}
+                        {session.totalSets > 0 && ` • ${session.totalSets} sets`}
+                      </div>
+                    </div>
+                    {session.totalVolume > 0 && (
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div className="font-mono" style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-green)' }}>{session.totalVolume.toLocaleString()}</div>
+                        <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600 }}>{unitLabel.toUpperCase()}</div>
+                      </div>
+                    )}
+                    {isExpanded ? <ChevronDown size={14} color="var(--text-muted)" /> : <ChevronRight size={14} color="var(--text-muted)" />}
+                  </button>
+
+                  <AnimatePresence>
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        style={{ overflow: 'hidden', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}
+                      >
+                        {session.notes && (
+                          <div style={{ fontSize: 11, color: 'var(--text-secondary)', fontStyle: 'italic', marginBottom: 8 }}>
+                            📝 {session.notes}
+                          </div>
+                        )}
+                        {expandedSets.map((ex, i) => (
+                          <div key={i} style={{ marginBottom: 6 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'capitalize', marginBottom: 3 }}>{ex.name}</div>
+                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                              {ex.sets.map((st, si) => (
+                                <span key={si} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
+                                  {st.weight}{unitLabel} × {st.reps} {st.isPR ? '🏆' : ''}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }

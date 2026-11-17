@@ -13,8 +13,8 @@ const SET_TYPE_ORDER: SetType[] = [
 
 interface PersistedWorkoutSnapshot {
   isActive: boolean;
-  isMinimized: boolean;
   isPaused: boolean;
+  isMinimized?: boolean;
   sessionId: number | null;
   planName: string;
   dayName: string;
@@ -69,8 +69,8 @@ function recomputeTotals(exercises: ActiveExercise[]) {
 
 interface WorkoutState {
   isActive: boolean;
-  isMinimized: boolean;
   isPaused: boolean;
+  isMinimized: boolean;
   sessionId: number | null;
   planName: string;
   dayName: string;
@@ -87,8 +87,6 @@ interface WorkoutState {
 
   startWorkout: (planName: string, dayName: string, exercises: ActiveExercise[]) => void;
   restoreWorkoutIfAny: () => void;
-  minimizeWorkout: () => void;
-  resumeWorkout: () => void;
   completeWorkoutSession: (id: number) => void;
   endWorkout: () => void;
   setSessionId: (id: number) => void;
@@ -111,12 +109,14 @@ interface WorkoutState {
   tickRestTimer: () => void;
   addPR: (exerciseName: string, weight: number, reps: number) => void;
   togglePause: () => void;
+  minimizeWorkout: () => void;
+  resumeWorkout: () => void;
 }
 
 export const useWorkoutStore = create<WorkoutState>((set) => ({
   isActive: false,
-  isMinimized: false,
   isPaused: false,
+  isMinimized: false,
   sessionId: null,
   planName: '',
   dayName: '',
@@ -134,8 +134,8 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
   startWorkout: (planName, dayName, exercises) => {
     const nextState = {
       isActive: true,
-      isMinimized: false,
       isPaused: false,
+      isMinimized: false,
       sessionId: null,
       planName,
       dayName,
@@ -158,8 +158,8 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
     if (snap && snap.isActive) {
       set({
         isActive: true,
-        isMinimized: Boolean(snap.isMinimized),
         isPaused: Boolean(snap.isPaused),
+        isMinimized: Boolean(snap.isMinimized),
         sessionId: snap.sessionId ?? null,
         planName: snap.planName || 'Workout',
         dayName: snap.dayName || '',
@@ -174,24 +174,14 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
     }
   },
 
-  minimizeWorkout: () => set((state) => {
-    const next = { ...state, isMinimized: true };
-    saveSnapshot(next);
-    return { isMinimized: true };
-  }),
-
-  resumeWorkout: () => set((state) => {
-    const next = { ...state, isMinimized: false };
-    saveSnapshot(next);
-    return { isMinimized: false };
-  }),
-
+  // Marks the active workout as finished and clears the persisted snapshot immediately
+  // so navigating back from WorkoutCompletePage never re-opens ActiveWorkoutPage or double-saves.
   completeWorkoutSession: (id) => {
-    saveSnapshot({ isActive: false, isMinimized: false });
+    saveSnapshot({ isActive: false });
     set({
       isActive: false,
-      isMinimized: false,
       isPaused: false,
+      isMinimized: false,
       restTimerActive: false,
       restTimeRemaining: 0,
       sessionId: id,
@@ -199,11 +189,11 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
   },
 
   endWorkout: () => {
-    saveSnapshot({ isActive: false, isMinimized: false });
+    saveSnapshot({ isActive: false });
     set({
       isActive: false,
-      isMinimized: false,
       isPaused: false,
+      isMinimized: false,
       sessionId: null,
       exercises: [],
       currentExerciseIndex: 0,
