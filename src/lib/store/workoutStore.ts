@@ -111,6 +111,7 @@ interface WorkoutState {
   togglePause: () => void;
   minimizeWorkout: () => void;
   resumeWorkout: () => void;
+  resetTimer: () => void;
 }
 
 export const useWorkoutStore = create<WorkoutState>((set) => ({
@@ -134,7 +135,7 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
   startWorkout: (planName, dayName, exercises) => {
     const nextState = {
       isActive: true,
-      isPaused: false,
+      isPaused: true,
       isMinimized: false,
       sessionId: null,
       planName,
@@ -223,9 +224,9 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
     exercises[exerciseIndex] = exercise;
 
     const totals = recomputeTotals(exercises);
-    const next = { ...state, exercises, ...totals };
+    const next = { ...state, isPaused: false, exercises, ...totals };
     saveSnapshot(next);
-    return { exercises, ...totals };
+    return { isPaused: false, exercises, ...totals };
   }),
 
   uncompleteSet: (exerciseIndex, setIndex) => set((state) => {
@@ -416,5 +417,10 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
   resumeWorkout: () => set((state) => {
     saveSnapshot({ ...state, isMinimized: false });
     return { isMinimized: false };
+  }),
+
+  resetTimer: () => set((state) => {
+    saveSnapshot({ ...state, elapsedTime: 0, isPaused: true });
+    return { elapsedTime: 0, isPaused: true };
   }),
 }));

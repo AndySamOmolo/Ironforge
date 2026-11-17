@@ -134,7 +134,7 @@ export default function ExercisesPage() {
                 <span className="gradient-text">Exercise Library</span>
               </h1>
               <p style={{ color: 'var(--text-muted)', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Sparkles size={10} /> {exercises.length.toLocaleString()} exercises • {filteredExercises.length.toLocaleString()} shown
+                <Sparkles size={10} /> {isLoading ? 'Loading exercise catalog...' : `${exercises.length.toLocaleString()} exercises • ${filteredExercises.length.toLocaleString()} shown`}
               </p>
             </div>
           </div>
@@ -212,8 +212,8 @@ export default function ExercisesPage() {
       {/* Results count */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
-          {filteredExercises.length.toLocaleString()} result{filteredExercises.length !== 1 ? 's' : ''}
-          {onlyMyEquipment && <span style={{ color: 'var(--accent-green)', marginLeft: 6 }}>• Filtered to your equipment</span>}
+          {isLoading ? 'Preparing demonstrations...' : `${filteredExercises.length.toLocaleString()} result${filteredExercises.length !== 1 ? 's' : ''}`}
+          {!isLoading && onlyMyEquipment && <span style={{ color: 'var(--accent-green)', marginLeft: 6 }}>• Filtered to your equipment</span>}
         </div>
         {searchQuery && (
           <div style={{ fontSize: 11, color: 'var(--accent-purple)', fontWeight: 700 }}>
@@ -256,11 +256,10 @@ export default function ExercisesPage() {
                     </div>
                   )}
                   {isAnimated && !hasError && (
-                    <div style={{ position: 'absolute', bottom: 8, right: 8, background: 'rgba(7,7,16,0.82)', backdropFilter: 'blur(8px)', borderRadius: 6, padding: '3px 8px', fontSize: 9, fontWeight: 700, color: isGif ? 'var(--accent-green)' : 'var(--accent-cyan)', letterSpacing: 0.5, zIndex: 2, display: 'flex', alignItems: 'center', gap: 3, border: '1px solid rgba(255,255,255,0.12)' }}>
+                    <div style={{ position: 'absolute', bottom: 6, right: 6, background: 'rgba(7,7,16,0.86)', backdropFilter: 'blur(6px)', borderRadius: 6, padding: '2px 7px', fontSize: 8.5, fontWeight: 800, color: isGif ? 'var(--accent-green)' : 'var(--accent-cyan)', letterSpacing: 0.5, zIndex: 2, display: 'flex', alignItems: 'center', gap: 3, border: '1px solid rgba(255,255,255,0.14)' }}>
                       <span style={{ width: 4, height: 4, borderRadius: '50%', background: isGif ? 'var(--accent-green)' : 'var(--accent-cyan)', display: 'inline-block' }} /> {isGif ? 'GIF' : 'FRAMES'}
                     </div>
                   )}
-                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '60%', background: 'linear-gradient(transparent, rgba(7,7,16,0.85))', pointerEvents: 'none', zIndex: 1 }} />
                 </div>
                 <div style={{ padding: '10px 12px 12px' }}>
                   <div title={exercise.name} style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden', letterSpacing: '-0.01em', textTransform: 'capitalize' }}>
@@ -326,6 +325,13 @@ function ExerciseDetailModal({
       <motion.div className="modal-content" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()}>
         <div className="modal-handle" />
+        <button
+          onClick={onClose}
+          aria-label="Close exercise details"
+          style={{ position: 'absolute', top: 18, right: 18, zIndex: 10, width: 32, height: 32, borderRadius: '50%', background: 'rgba(7,7,16,0.75)', border: '1px solid var(--border-bright)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+        >
+          <X size={16} />
+        </button>
 
         {hasMedia ? (
           <div className="gif-container" style={{ marginBottom: 16, position: 'relative' }}>

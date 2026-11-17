@@ -431,54 +431,52 @@ export default function PlansPage() {
                         {days.map((day, j) => {
                           const resolvedNames = previewDayExercises(plan, day);
                           return (
-                            <div key={day.id} style={{ padding: '12px 0', borderBottom: j < days.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
-                                  <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--gradient-fire)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, color: 'white', flexShrink: 0 }}>
-                                    D{day.dayNumber}
-                                  </div>
-                                  <div style={{ minWidth: 0, flex: 1 }}>
-                                    <div style={{ fontSize: 14, fontWeight: 700 }}>{day.name}</div>
-                                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                                      {day.exercises.length} exercises • GIF & equipment matched
-                                    </div>
-                                  </div>
+                            <div key={day.id} style={{ padding: '14px 0', borderBottom: j < days.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 10 }}>
+                                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--gradient-fire)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, color: 'white', flexShrink: 0, marginTop: 1 }}>
+                                  D{day.dayNumber}
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <button
-                                    onClick={() => shuffleDayExercises(plan.id!, day.dayNumber)}
-                                    title="Vary exercises from catalog"
-                                    style={{
-                                      background: 'var(--bg-glass)', border: '1px solid var(--border-bright)', color: 'var(--text-secondary)',
-                                      borderRadius: 12, padding: '10px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                                      display: 'flex', alignItems: 'center', gap: 4, minHeight: 42,
-                                    }}
-                                  >
-                                    <Shuffle size={13} /> Vary
-                                  </button>
-                                  <motion.button
-                                    whileTap={{ scale: 0.93 }}
-                                    onClick={() => startDay(plan, day)}
-                                    style={{
-                                      background: 'var(--gradient-fire)', border: 'none', color: 'white', borderRadius: 12,
-                                      padding: '10px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                                      boxShadow: '0 4px 16px var(--glow-red)', display: 'flex', alignItems: 'center', gap: 6,
-                                      minHeight: 42,
-                                    }}>
-                                    <Play size={14} fill="white" /> Start
-                                  </motion.button>
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                  <div style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.3 }}>{day.name}</div>
+                                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                                    {day.exercises.length} exercises • GIF & equipment matched
+                                  </div>
                                 </div>
                               </div>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8, paddingLeft: 48 }}>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 10 }}>
                                 {resolvedNames.map((exName, idx) => (
                                   <span key={idx} style={{
-                                    fontSize: 10, padding: '3px 8px', borderRadius: 6,
+                                    fontSize: 10, padding: '4px 9px', borderRadius: 7,
                                     background: 'var(--bg-glass)', border: '1px solid var(--border)',
                                     color: 'var(--text-secondary)', textTransform: 'capitalize',
                                   }}>
                                     {exName}
                                   </span>
                                 ))}
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 8 }}>
+                                <button
+                                  onClick={() => shuffleDayExercises(plan.id!, day.dayNumber)}
+                                  title="Vary exercises from catalog"
+                                  style={{
+                                    background: 'var(--bg-glass)', border: '1px solid var(--border-bright)', color: 'var(--text-secondary)',
+                                    borderRadius: 11, padding: '9px 14px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, minHeight: 38,
+                                  }}
+                                >
+                                  <Shuffle size={13} /> Vary Exercises
+                                </button>
+                                <motion.button
+                                  whileTap={{ scale: 0.96 }}
+                                  onClick={() => startDay(plan, day)}
+                                  style={{
+                                    background: 'var(--gradient-fire)', border: 'none', color: 'white', borderRadius: 11,
+                                    padding: '9px 16px', fontSize: 12, fontWeight: 800, cursor: 'pointer',
+                                    boxShadow: '0 4px 16px var(--glow-red)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                                    minHeight: 38,
+                                  }}>
+                                  <Play size={13} fill="white" /> Start Day {day.dayNumber}
+                                </motion.button>
                               </div>
                             </div>
                           );

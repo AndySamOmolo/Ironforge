@@ -501,9 +501,8 @@ export default function ProfilePage() {
       {activeTab === 'appearance' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-          {/* Live Preview Banner (Pinned with Safe-Area Backdrop) */}
-          <div style={{ position: 'sticky', top: 0, zIndex: 35, background: 'var(--bg-primary)', paddingTop: 'calc(max(env(safe-area-inset-top, 16px), 16px) + 4px)', paddingBottom: 8, marginTop: -6 }}>
-          <div className="card hero-gradient" style={{ padding: 16, boxShadow: '0 10px 28px rgba(0,0,0,0.55)' }}>
+          {/* Live Preview Banner */}
+          <div className="card hero-gradient" style={{ padding: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span className="badge" style={{ background: 'rgba(16,232,154,0.12)', color: 'var(--accent-green)', border: '1px solid rgba(16,232,154,0.25)', fontSize: 10 }}>
                 <Sparkles size={10} /> Live Preview
@@ -514,16 +513,15 @@ export default function ProfilePage() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
               <div>
-                <h3 className="font-display" style={{ fontSize: 18, fontWeight: 800 }}>
+                <h3 className="font-display" style={{ fontSize: 17, fontWeight: 800 }}>
                   <span className="gradient-text">IronForge Studio</span>
                 </h3>
-                <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
                   Theme: <strong style={{ textTransform: 'capitalize' }}>{theme}</strong> • Card: <strong style={{ textTransform: 'capitalize' }}>{cardStyle}</strong> • Button: <strong style={{ textTransform: 'capitalize' }}>{buttonStyle}</strong>
                 </p>
               </div>
-              <div className="font-mono" style={{ fontSize: 20, fontWeight: 800, color: 'var(--accent-green)' }}>100kg</div>
+              <div className="font-mono" style={{ fontSize: 19, fontWeight: 800, color: 'var(--accent-green)' }}>100kg</div>
             </div>
-          </div>
           </div>
 
           {/* Theme Selector (24 Themes) */}
@@ -1173,20 +1171,20 @@ export default function ProfilePage() {
                 }}
               />
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: 8 }}>
               <button
                 onClick={() => updateWater(-1)}
                 className="btn-secondary"
-                style={{ flex: 1, minHeight: 42, borderRadius: 10, fontSize: 13, fontWeight: 700 }}
+                style={{ width: '100%', minHeight: 44, borderRadius: 10, fontSize: 12, fontWeight: 700 }}
               >
-                - 1 Glass
+                − 1 Glass
               </button>
               <button
                 onClick={() => updateWater(1)}
                 className="btn-primary"
-                style={{ flex: 2, minHeight: 42, borderRadius: 10, fontSize: 13, fontWeight: 700, background: 'var(--gradient-ocean)', color: '#fff', textShadow: 'none', boxShadow: 'none' }}
+                style={{ width: '100%', minHeight: 44, borderRadius: 10, fontSize: 12, fontWeight: 700, background: 'var(--gradient-ocean)', color: '#fff', textShadow: 'none', boxShadow: 'none', padding: '10px 12px' }}
               >
-                + Add Glass (250ml)
+                + 1 Glass (250ml)
               </button>
             </div>
           </div>
@@ -1196,18 +1194,18 @@ export default function ProfilePage() {
             <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
               📏 Body Measurements ({unitSystem === 'metric' ? 'cm' : 'in'})
             </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 10 }}>
               <input value={measForm.bodyFat} onChange={e => setMeasForm({ ...measForm, bodyFat: e.target.value })} placeholder="Body Fat %" type="number" step="0.1"
-                style={{ padding: '10px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 12, outline: 'none' }} />
+                style={{ width: '100%', minWidth: 0, padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 13, outline: 'none' }} />
               <input value={measForm.chest} onChange={e => setMeasForm({ ...measForm, chest: e.target.value })} placeholder="Chest" type="number" step="0.1"
-                style={{ padding: '10px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 12, outline: 'none' }} />
+                style={{ width: '100%', minWidth: 0, padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 13, outline: 'none' }} />
               <input value={measForm.waist} onChange={e => setMeasForm({ ...measForm, waist: e.target.value })} placeholder="Waist" type="number" step="0.1"
-                style={{ padding: '10px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 12, outline: 'none' }} />
+                style={{ width: '100%', minWidth: 0, padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 13, outline: 'none' }} />
               <input value={measForm.arms} onChange={e => setMeasForm({ ...measForm, arms: e.target.value })} placeholder="Arms" type="number" step="0.1"
-                style={{ padding: '10px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 12, outline: 'none' }} />
+                style={{ width: '100%', minWidth: 0, padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 13, outline: 'none' }} />
               <input value={measForm.thighs} onChange={e => setMeasForm({ ...measForm, thighs: e.target.value })} placeholder="Thighs" type="number" step="0.1"
-                style={{ padding: '10px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 12, outline: 'none' }} />
-              <button onClick={addMeasurement} className="btn-primary" style={{ minHeight: 40, borderRadius: 10, fontSize: 12, fontWeight: 700, color: '#fff', textShadow: 'none', boxShadow: 'none' }}>
+                style={{ width: '100%', minWidth: 0, padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 13, outline: 'none' }} />
+              <button onClick={addMeasurement} className="btn-primary" style={{ width: '100%', minHeight: 42, borderRadius: 10, fontSize: 12, fontWeight: 700, color: '#fff', textShadow: 'none', boxShadow: 'none' }}>
                 <Plus size={14} /> Log
               </button>
             </div>

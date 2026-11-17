@@ -90,10 +90,17 @@ export default function ProgressPage() {
   }, []);
 
   const loadExerciseChart = useCallback(async (exerciseId: number) => {
+    setExerciseChartId(exerciseId);
     try {
       const sets = await db.sets.where('exerciseId').equals(exerciseId).toArray();
+      if (sets.length === 0) {
+        setExerciseChartData([]);
+        return;
+      }
       const sessionIds = [...new Set(sets.map(s => s.sessionId))];
-      const sessionsForEx = await db.workoutSessions.where('id').anyOf(sessionIds).toArray();
+      const sessionsForEx = sessionIds.length > 0
+        ? await db.workoutSessions.where('id').anyOf(sessionIds).toArray()
+        : [];
       const sessionDateMap = new Map(sessionsForEx.map(s => [s.id!, new Date(s.startedAt)]));
 
       const byDate: Record<string, { maxWeight: number; max1RM: number; totalVolume: number }> = {};
@@ -573,7 +580,7 @@ export default function ProgressPage() {
               <option value="">Select an exercise...</option>
               {loggedExercises.map(ex => (
                 <option key={ex.id} value={ex.id}>
-                  {ex.name} {ex.count > 0 ? `(${ex.count} sets logged)` : ''}
+                  {ex.name.replace(/\b\w/g, c => c.toUpperCase())}{ex.count > 0 ? ` (${ex.count} sets logged)` : ''}
                 </option>
               ))}
             </select>

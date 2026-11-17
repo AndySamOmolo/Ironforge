@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Check, Plus, Minus, SkipForward, ChevronLeft, ChevronRight, Dumbbell,
   ArrowLeftRight, ExternalLink, StickyNote, Play, Pause, AlertTriangle,
-  BookOpen, Trash2, Search, TrendingUp, Minimize2, Maximize2, Sun,
+  BookOpen, Trash2, Search, TrendingUp, Minimize2, Maximize2, Sun, RotateCcw, Timer,
 } from 'lucide-react';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
 import { useUserStore } from '@/lib/store/userStore';
@@ -46,7 +46,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     addExercise, removeExercise,
     tickTimer, restTimerActive, restTimeRemaining, restTimeDuration,
     startRestTimer, stopRestTimer, tickRestTimer, endWorkout, togglePause,
-    addPR, setSessionId, completeWorkoutSession, minimizeWorkout,
+    addPR, setSessionId, completeWorkoutSession, minimizeWorkout, resetTimer,
   } = useWorkoutStore();
   const {
     defaultRestTime,
@@ -609,42 +609,46 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
   return (
     <div style={{ minHeight: '100dvh', background: 'var(--bg-primary)' }}>
       {/* Top bar */}
-      <div style={{ position: 'sticky', top: 0, background: 'var(--bg-sheet)', backdropFilter: 'blur(24px)', zIndex: 50, padding: 'calc(max(env(safe-area-inset-top, 20px), 20px) + 6px) 16px 10px', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <button
-              onClick={minimizeWorkout}
-              className="btn-secondary"
-              title="Minimize workout to browse app"
-              style={{ width: 'auto', minHeight: 36, padding: '6px 10px', fontSize: 11, borderRadius: 10, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-            >
-              <Minimize2 size={13} /> Minimize
-            </button>
-            <button onClick={handleCancel} className="btn-cancel" style={{ minHeight: 36, padding: '6px 10px', fontSize: 11 }}><X size={14} /> End</button>
-          </div>
-          <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: '-0.01em', textAlign: 'center', flex: 1, padding: '0 8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <div style={{ position: 'sticky', top: 0, background: 'var(--bg-sheet)', backdropFilter: 'blur(24px)', zIndex: 50, padding: 'calc(env(safe-area-inset-top, 0px) + 10px) 14px 10px', borderBottom: '1px solid var(--border)' }}>
+        {/* Row 1: Minimize | Full Workout Name | Finish */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <button
+            onClick={minimizeWorkout}
+            className="btn-secondary"
+            title="Minimize workout to browse app"
+            style={{ width: 'auto', minHeight: 36, padding: '6px 11px', fontSize: 11, fontWeight: 700, borderRadius: 10, display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}
+          >
+            <Minimize2 size={13} /> Minimize
+          </button>
+          <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: '-0.01em', textAlign: 'center', flex: 1, minWidth: 0, padding: '0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {dayName || planName}
           </div>
           <button
             onClick={handleFinish}
             disabled={isFinishing}
             className="btn-primary"
-            style={{ fontSize: 11, fontWeight: 800, borderRadius: 10, padding: '6px 14px', minHeight: 36, width: 'auto', color: '#fff', textShadow: 'none', boxShadow: 'none', opacity: isFinishing ? 0.6 : 1 }}
+            style={{ fontSize: 11, fontWeight: 800, borderRadius: 10, padding: '6px 14px', minHeight: 36, width: 'auto', color: '#fff', textShadow: 'none', boxShadow: 'none', opacity: isFinishing ? 0.6 : 1, flexShrink: 0 }}
           >
             {isFinishing ? 'Saving...' : 'Finish'}
           </button>
         </div>
-        <div style={{ height: 3, background: 'rgba(255,255,255,0.03)', borderRadius: 2 }}>
+
+        {/* Progress Bar */}
+        <div style={{ height: 3, background: 'rgba(255,255,255,0.04)', borderRadius: 2 }}>
           <motion.div style={{ height: '100%', background: 'var(--gradient-fire)', borderRadius: 2 }} animate={{ width: `${progress}%` }} transition={{ duration: 0.4 }} />
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>Exercise {currentExerciseIndex + 1} of {exercises.length}</span>
+
+        {/* Row 2: Exercise Counter + Awake + End | Workout Timer with Start/Pause/Reset */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, marginTop: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>
+              Ex {currentExerciseIndex + 1}/{exercises.length}
+            </span>
             {keepScreenOn !== false && (
               <span
                 title={screenAwakeLocked ? 'Screen Wake Lock active' : 'Keep screen awake enabled'}
                 style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  display: 'inline-flex', alignItems: 'center', gap: 3,
                   fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 999,
                   background: 'rgba(16,232,154,0.1)', color: 'var(--accent-green)',
                   border: '1px solid rgba(16,232,154,0.22)',
@@ -653,32 +657,78 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                 <Sun size={9} /> Awake
               </span>
             )}
+            <button
+              onClick={handleCancel}
+              className="btn-cancel"
+              style={{ minHeight: 28, padding: '4px 9px', fontSize: 10, borderRadius: 8 }}
+              title="End or discard workout"
+            >
+              <X size={12} /> End
+            </button>
           </div>
+
           {showTimer !== false && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span className="font-mono" style={{
+                color: isPaused ? 'var(--accent-yellow)' : 'var(--accent-green)',
+                fontWeight: 800, fontSize: 14,
+              }}>
+                ⏱ {formatTime(elapsedTime)}
+              </span>
               <button
                 onClick={togglePause}
                 style={{
-                  width: 32, height: 32, borderRadius: 8,
-                  background: isPaused ? 'rgba(16,232,154,0.12)' : 'rgba(255,61,90,0.08)',
-                  border: `1px solid ${isPaused ? 'rgba(16,232,154,0.25)' : 'rgba(255,61,90,0.15)'}`,
-                  color: isPaused ? 'var(--accent-green)' : 'var(--accent-red)',
-                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  minHeight: 30, padding: '5px 11px', borderRadius: 8,
+                  background: isPaused ? 'var(--gradient-mint)' : 'rgba(255,61,90,0.14)',
+                  border: isPaused ? 'none' : '1px solid rgba(255,61,90,0.3)',
+                  color: isPaused ? '#051510' : 'var(--accent-red)',
+                  cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4,
+                  fontSize: 11, fontWeight: 800,
                 }}
               >
-                {isPaused ? <Play size={12} fill="currentColor" /> : <Pause size={12} />}
+                {isPaused ? <><Play size={11} fill="currentColor" /> {elapsedTime === 0 ? 'Start' : 'Resume'}</> : <><Pause size={11} /> Pause</>}
               </button>
-              <span className="font-mono" style={{
-                color: isPaused ? 'var(--accent-yellow)' : 'var(--accent-red)',
-                fontWeight: 700, fontSize: 13,
-                animation: isPaused ? 'pulse-dot 1.5s ease-in-out infinite' : 'none',
-              }}>
-                ⏱ {formatTime(elapsedTime)}
-                {isPaused && <span style={{ fontSize: 9, marginLeft: 4, opacity: 0.8 }}>PAUSED</span>}
-              </span>
+              {elapsedTime > 0 && (
+                <button
+                  onClick={resetTimer}
+                  title="Reset workout timer"
+                  style={{
+                    width: 28, height: 28, borderRadius: 8, border: '1px solid var(--border)',
+                    background: 'var(--bg-glass)', color: 'var(--text-muted)',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  <RotateCcw size={12} />
+                </button>
+              )}
             </div>
           )}
         </div>
+
+        {/* Row 3: Quick Rest Timer Controls inside Active Workout */}
+        {restTimerEnabled && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginTop: 8, paddingTop: 7, borderTop: '1px solid var(--border)' }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Timer size={11} color="var(--accent-purple)" /> Rest Timer:
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              {[30, 60, 90, 120, 180].map(sec => (
+                <button
+                  key={sec}
+                  onClick={() => { setRestMinimized(false); startRestTimer(sec); }}
+                  style={{
+                    padding: '3px 8px', borderRadius: 7, fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                    background: restTimerActive && restTimeDuration === sec ? 'var(--gradient-fire)' : 'var(--bg-glass)',
+                    border: restTimerActive && restTimeDuration === sec ? 'none' : '1px solid var(--border)',
+                    color: restTimerActive && restTimeDuration === sec ? '#fff' : 'var(--text-secondary)',
+                  }}
+                >
+                  {sec < 60 ? `${sec}s` : `${sec / 60}m`}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Exercise queue + Add Exercise */}
@@ -728,10 +778,12 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
           </div>
         )}
 
-        {/* Title + controls */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div style={{ flex: 1 }}>
-            <h2 className="font-display" style={{ fontSize: 19, fontWeight: 800, marginBottom: 2, letterSpacing: '-0.02em', textTransform: 'capitalize' }}>{currentExercise.exerciseName}</h2>
+        {/* Title + controls (Full-width title row + dedicated action bar) */}
+        <div style={{ marginBottom: 12 }}>
+          <h2 className="font-display" style={{ fontSize: 20, fontWeight: 800, marginBottom: 4, letterSpacing: '-0.02em', textTransform: 'capitalize', lineHeight: 1.25 }}>
+            {currentExercise.exerciseName}
+          </h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <span>Set {currentSetIndex >= 0 ? currentSetIndex + 1 : '✓'} of {currentExercise.sets.length}</span>
               {exerciseInfo?.equipment && <span style={{ color: 'var(--accent-purple)', textTransform: 'capitalize' }}>• {exerciseInfo.equipment}</span>}
@@ -741,15 +793,15 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                 </span>
               )}
             </div>
-          </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={() => setShowNotes(true)} title="Notes & Instructions" style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)', color: 'var(--accent-yellow)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><StickyNote size={16} /></button>
-            <button onClick={handleSwap} title="Swap Exercise (Equipment-Filtered)" style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', color: 'var(--accent-purple)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ArrowLeftRight size={16} /></button>
-            {exercises.length > 1 && (
-              <button onClick={() => removeExercise(currentExerciseIndex)} title="Remove Exercise" style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(255,61,90,0.08)', border: '1px solid rgba(255,61,90,0.2)', color: 'var(--accent-red)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={15} /></button>
-            )}
-            <button onClick={prevExercise} disabled={currentExerciseIndex === 0} style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: currentExerciseIndex === 0 ? 0.3 : 1 }}><ChevronLeft size={18} /></button>
-            <button onClick={nextExercise} disabled={currentExerciseIndex === exercises.length - 1} style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: currentExerciseIndex === exercises.length - 1 ? 0.3 : 1 }}><ChevronRight size={18} /></button>
+            <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
+              <button onClick={() => setShowNotes(true)} title="Notes & Instructions" style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)', color: 'var(--accent-yellow)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><StickyNote size={16} /></button>
+              <button onClick={handleSwap} title="Swap Exercise (Equipment-Filtered)" style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', color: 'var(--accent-purple)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ArrowLeftRight size={16} /></button>
+              {exercises.length > 1 && (
+                <button onClick={() => removeExercise(currentExerciseIndex)} title="Remove Exercise" style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(255,61,90,0.08)', border: '1px solid rgba(255,61,90,0.2)', color: 'var(--accent-red)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={15} /></button>
+              )}
+              <button onClick={prevExercise} disabled={currentExerciseIndex === 0} style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: currentExerciseIndex === 0 ? 0.3 : 1 }}><ChevronLeft size={18} /></button>
+              <button onClick={nextExercise} disabled={currentExerciseIndex === exercises.length - 1} style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: currentExerciseIndex === exercises.length - 1 ? 0.3 : 1 }}><ChevronRight size={18} /></button>
+            </div>
           </div>
         </div>
 
@@ -982,32 +1034,30 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
       <AnimatePresence>
         {showCancelConfirm && (
           <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowCancelConfirm(false)}>
-            <motion.div className="modal-content" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()} style={{ maxHeight: '40dvh' }}>
+            <motion.div className="modal-content" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()}>
               <div className="modal-handle" />
-              <div style={{ textAlign: 'center', padding: '8px 0' }}>
-                <div style={{ width: 56, height: 56, borderRadius: 16, background: 'rgba(255,61,90,0.1)', border: '1px solid rgba(255,61,90,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-                  <AlertTriangle size={28} color="var(--accent-red)" />
+              <button
+                onClick={() => setShowCancelConfirm(false)}
+                aria-label="Close modal"
+                style={{ position: 'absolute', top: 18, right: 18, width: 32, height: 32, borderRadius: '50%', background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+              >
+                <X size={16} />
+              </button>
+              <div style={{ textAlign: 'center', padding: '4px 0 8px' }}>
+                <div style={{ width: 52, height: 52, borderRadius: 16, background: 'rgba(255,61,90,0.1)', border: '1px solid rgba(255,61,90,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+                  <AlertTriangle size={26} color="var(--accent-red)" />
                 </div>
-                <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 8 }}>Discard Workout?</h3>
-                <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 24 }}>
-                  Your progress ({totalSets} sets, {totalVolume.toLocaleString()}{unitLabel} volume) will be discarded.
+                <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>Discard Workout?</h3>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 20 }}>
+                  Your progress ({totalSets} sets, {totalVolume.toLocaleString()}{unitLabel} volume) will be permanently discarded.
                 </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <button
-                    onClick={() => { setShowCancelConfirm(false); minimizeWorkout(); }}
-                    className="btn-primary"
-                    style={{ width: '100%', minHeight: 44, borderRadius: 12, fontSize: 13, fontWeight: 800, color: '#fff', boxShadow: 'none', textShadow: 'none' }}
-                  >
-                    <Minimize2 size={14} /> Minimize & Keep Progress
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <button onClick={() => setShowCancelConfirm(false)} className="btn-secondary" style={{ minHeight: 48, borderRadius: 14, fontSize: 13, fontWeight: 700 }}>
+                    Keep Training
                   </button>
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <button onClick={() => setShowCancelConfirm(false)} className="btn-secondary" style={{ flex: 1, minHeight: 46, borderRadius: 14 }}>
-                      Continue
-                    </button>
-                    <button onClick={confirmCancel} className="btn-cancel" style={{ flex: 1, minHeight: 46, justifyContent: 'center' }}>
-                      End & Discard
-                    </button>
-                  </div>
+                  <button onClick={confirmCancel} className="btn-cancel" style={{ minHeight: 48, borderRadius: 14, fontSize: 13, fontWeight: 800, justifyContent: 'center' }}>
+                    End & Discard
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -1052,8 +1102,13 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
           <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowNotes(false)}>
             <motion.div className="modal-content" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()}>
               <div className="modal-handle" />
-              <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 4, textTransform: 'capitalize' }}>{currentExercise.exerciseName}</h3>
-              <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 16 }}>Exercise notes & instructions</p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 14 }}>
+                <div>
+                  <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 2, textTransform: 'capitalize' }}>{currentExercise.exerciseName}</h3>
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Exercise notes & instructions</p>
+                </div>
+                <button onClick={() => setShowNotes(false)} style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}><X size={16} /></button>
+              </div>
 
               <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
                 <a
@@ -1132,8 +1187,13 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
           <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowSwap(false)}>
             <motion.div className="modal-content" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()}>
               <div className="modal-handle" />
-              <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>Swap Exercise</h3>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Swapping: {currentExercise?.exerciseName}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                <div>
+                  <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>Swap Exercise</h3>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'capitalize' }}>Swapping: {currentExercise?.exerciseName}</div>
+                </div>
+                <button onClick={() => setShowSwap(false)} style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}><X size={16} /></button>
+              </div>
               <div style={{ fontSize: 10, color: 'var(--accent-green)', marginBottom: 12 }}>
                 ✓ Filtered to your selected equipment ({userEquipment.length} items) • GIFs prioritized
               </div>
@@ -1156,8 +1216,10 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                           />
                           <div style={{ flex: 1 }}>
                             <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'capitalize' }}>{ex.name}</div>
-                            <div style={{ fontSize: 9, color: 'var(--text-muted)', display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 2 }}>
-                              {matchTags.slice(0, 3).map((tag, i) => (<span key={i} style={{ background: 'var(--bg-elevated)', padding: '1px 4px', borderRadius: 3 }}>{tag}</span>))}
+                            <div style={{ fontSize: 9, color: 'var(--text-muted)', display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 3 }}>
+                              {matchTags.filter(t => !t.toLowerCase().includes('gif')).slice(0, 3).map((tag, i) => (
+                                <span key={i} style={{ background: 'var(--bg-elevated)', padding: '2px 6px', borderRadius: 4, textTransform: 'capitalize' }}>{tag}</span>
+                              ))}
                             </div>
                           </div>
                           {hasGifExerciseMedia(ex) ? (
@@ -1183,6 +1245,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
           <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowNumpad(null)}>
             <motion.div className="modal-content" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()}>
               <div className="modal-handle" />
+              <button onClick={() => setShowNumpad(null)} style={{ position: 'absolute', top: 18, right: 18, width: 32, height: 32, borderRadius: '50%', background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><X size={16} /></button>
               <div style={{ textAlign: 'center', marginBottom: 16 }}>
                 <div className="section-label" style={{ marginBottom: 4 }}>{showNumpad.field === 'weight' ? 'WEIGHT' : 'REPS'}</div>
                 <div className="font-mono" style={{ fontSize: 42, fontWeight: 800 }}>{numpadValue}{showNumpad.field === 'weight' && <span style={{ fontSize: 16, color: 'var(--text-muted)' }}> {unitLabel}</span>}</div>

@@ -1127,8 +1127,8 @@ function AnatomicalFigure({
                     isPartSelected
                       ? '#FFFFFF'
                       : isMuscleSelected
-                        ? '#FDE68A'
-                        : isStale && mode !== 'recovery'
+                        ? '#38BDF8'
+                        : isStale && mode === 'balance'
                           ? '#F59E0B'
                           : colors.stroke
                   }
@@ -1374,10 +1374,11 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
     const upperScore = getScore('chest') + getScore('shoulders') + getScore('lats') + getScore('middle back') + getScore('biceps') + getScore('triceps');
     const lowerScore = (getScore('quadriceps') + getScore('hamstrings') + getScore('glutes') + getScore('calves')) * 1.4;
 
-    const pushPullPct = pushScore + pullScore > 0 ? Math.round((pushScore / (pushScore + pullScore)) * 100) : 50;
-    const upperLowerPct = upperScore + lowerScore > 0 ? Math.round((upperScore / (upperScore + lowerScore)) * 100) : 50;
+    const hasData = pushScore + pullScore > 0 || upperScore + lowerScore > 0;
+    const pushPullPct = pushScore + pullScore > 0 ? Math.round((pushScore / (pushScore + pullScore)) * 100) : 0;
+    const upperLowerPct = upperScore + lowerScore > 0 ? Math.round((upperScore / (upperScore + lowerScore)) * 100) : 0;
 
-    return { pushPullPct, upperLowerPct };
+    return { pushPullPct, upperLowerPct, hasData };
   }, [muscleScores]);
 
   const selectedMuscleDetails = useMemo(() => {
@@ -1663,7 +1664,7 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
                       <div
                         style={{
                           height: '100%',
-                          width: `${Math.max(4, head.score)}%`,
+                          width: `${head.score > 0 ? Math.max(4, head.score) : 0}%`,
                           background: 'var(--gradient-fire)',
                           borderRadius: 999,
                         }}
@@ -1712,23 +1713,23 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
           <div style={{ padding: 10, background: 'var(--bg-glass)', borderRadius: 10, border: '1px solid var(--border)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontWeight: 700, marginBottom: 6 }}>
-              <span style={{ color: 'var(--accent-red)' }}>Push {symmetryMetrics.pushPullPct}%</span>
-              <span style={{ color: 'var(--accent-green)' }}>Pull {100 - symmetryMetrics.pushPullPct}%</span>
+              <span style={{ color: 'var(--accent-red)' }}>Push {symmetryMetrics.hasData ? symmetryMetrics.pushPullPct : 0}%</span>
+              <span style={{ color: 'var(--accent-green)' }}>Pull {symmetryMetrics.hasData ? 100 - symmetryMetrics.pushPullPct : 0}%</span>
             </div>
             <div style={{ display: 'flex', height: 6, borderRadius: 999, overflow: 'hidden', background: 'rgba(255,255,255,0.06)' }}>
-              <div style={{ width: `${symmetryMetrics.pushPullPct}%`, background: 'var(--accent-red)' }} />
-              <div style={{ width: `${100 - symmetryMetrics.pushPullPct}%`, background: 'var(--accent-green)' }} />
+              <div style={{ width: `${symmetryMetrics.hasData ? symmetryMetrics.pushPullPct : 0}%`, background: 'var(--accent-red)' }} />
+              <div style={{ width: `${symmetryMetrics.hasData ? 100 - symmetryMetrics.pushPullPct : 0}%`, background: 'var(--accent-green)' }} />
             </div>
           </div>
 
           <div style={{ padding: 10, background: 'var(--bg-glass)', borderRadius: 10, border: '1px solid var(--border)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontWeight: 700, marginBottom: 6 }}>
-              <span style={{ color: 'var(--accent-purple)' }}>Upper {symmetryMetrics.upperLowerPct}%</span>
-              <span style={{ color: 'var(--accent-yellow)' }}>Lower {100 - symmetryMetrics.upperLowerPct}%</span>
+              <span style={{ color: 'var(--accent-purple)' }}>Upper {symmetryMetrics.hasData ? symmetryMetrics.upperLowerPct : 0}%</span>
+              <span style={{ color: 'var(--accent-yellow)' }}>Lower {symmetryMetrics.hasData ? 100 - symmetryMetrics.upperLowerPct : 0}%</span>
             </div>
             <div style={{ display: 'flex', height: 6, borderRadius: 999, overflow: 'hidden', background: 'rgba(255,255,255,0.06)' }}>
-              <div style={{ width: `${symmetryMetrics.upperLowerPct}%`, background: 'var(--accent-purple)' }} />
-              <div style={{ width: `${100 - symmetryMetrics.upperLowerPct}%`, background: 'var(--accent-yellow)' }} />
+              <div style={{ width: `${symmetryMetrics.hasData ? symmetryMetrics.upperLowerPct : 0}%`, background: 'var(--accent-purple)' }} />
+              <div style={{ width: `${symmetryMetrics.hasData ? 100 - symmetryMetrics.upperLowerPct : 0}%`, background: 'var(--accent-yellow)' }} />
             </div>
           </div>
         </div>

@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Trophy, Dumbbell, Calendar, Target, ChevronRight, ChevronDown, Zap,
-  Star, BarChart3, Shuffle, Check, Activity, Timer, Play, Pause, RotateCcw,
+  Star, BarChart3, Shuffle, Check, Activity,
 } from 'lucide-react';
 import { db } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
@@ -84,33 +84,7 @@ export default function HomePage() {
     weekVolume: 0,
   });
   const [exerciseCount, setExerciseCount] = useState(0);
-  const [plansCount, setPlansCount] = useState(19);
-  const [clockMode, setClockMode] = useState<'timer' | 'stopwatch'>('timer');
-  const [timerPreset, setTimerPreset] = useState(90);
-  const [timerRemaining, setTimerRemaining] = useState(90);
-  const [timerRunning, setTimerRunning] = useState(false);
-  const [stopwatchElapsed, setStopwatchElapsed] = useState(0);
-  const [stopwatchRunning, setStopwatchRunning] = useState(false);
-
-  useEffect(() => {
-    if (!timerRunning) return;
-    const id = setInterval(() => {
-      setTimerRemaining(prev => {
-        if (prev <= 1) {
-          setTimerRunning(false);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(id);
-  }, [timerRunning]);
-
-  useEffect(() => {
-    if (!stopwatchRunning) return;
-    const id = setInterval(() => setStopwatchElapsed(prev => prev + 1), 1000);
-    return () => clearInterval(id);
-  }, [stopwatchRunning]);
+  const [plansCount, setPlansCount] = useState(22);
   const [activityByDate, setActivityByDate] = useState<Map<string, DayActivitySummary>>(new Map());
   const [selectedDateKey, setSelectedDateKey] = useState<string>(() => toLocalDateKey(new Date()));
   const [heatmapMetric, setHeatmapMetric] = useState<'workouts' | 'volume' | 'duration'>('workouts');
@@ -263,11 +237,7 @@ export default function HomePage() {
     return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
   };
 
-  const formatClock = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}:${String(s).padStart(2, '0')}`;
-  };
+
 
   const getRelativeTime = (date: Date) => {
     const todayKey = toLocalDateKey(new Date());
@@ -507,106 +477,7 @@ export default function HomePage() {
         </motion.div>
       )}
 
-      {/* Standalone Gym Timer & Stopwatch */}
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.07 }}
-        className="card" style={{ marginBottom: 20, padding: 15, border: '1px solid var(--border-subtle)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 800 }}>
-            <Timer size={15} color="var(--accent-red)" /> Gym Timer & Stopwatch
-          </div>
-          <div style={{ display: 'flex', gap: 4, background: 'var(--bg-glass)', padding: 2, borderRadius: 9, border: '1px solid var(--border)' }}>
-            {(['timer', 'stopwatch'] as const).map(m => (
-              <button
-                key={m}
-                onClick={() => setClockMode(m)}
-                style={{
-                  padding: '4px 10px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 10, fontWeight: 700,
-                  background: clockMode === m ? 'var(--gradient-fire)' : 'transparent',
-                  color: clockMode === m ? '#fff' : 'var(--text-muted)',
-                  textTransform: 'capitalize',
-                }}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-        </div>
 
-        {clockMode === 'timer' ? (
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
-              <div className="font-mono" style={{ fontSize: 26, fontWeight: 800, color: timerRunning ? 'var(--accent-green)' : 'var(--text-primary)' }}>
-                {formatClock(timerRemaining)}
-              </div>
-              <div style={{ display: 'flex', gap: 4 }}>
-                {[30, 60, 90, 120, 180].map(sec => (
-                  <button
-                    key={sec}
-                    onClick={() => { setTimerPreset(sec); setTimerRemaining(sec); setTimerRunning(false); }}
-                    style={{
-                      padding: '5px 8px', borderRadius: 8, fontSize: 10, fontWeight: 700, cursor: 'pointer',
-                      background: timerPreset === sec ? 'rgba(255,61,90,0.16)' : 'var(--bg-glass)',
-                      border: timerPreset === sec ? '1px solid var(--accent-red)' : '1px solid var(--border)',
-                      color: timerPreset === sec ? 'var(--accent-red)' : 'var(--text-secondary)',
-                    }}
-                  >
-                    {sec < 60 ? `${sec}s` : `${sec / 60}m`}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 6 }}>
-              <button
-                onClick={() => {
-                  if (timerRemaining === 0) setTimerRemaining(timerPreset);
-                  setTimerRunning(r => !r);
-                }}
-                className="btn-primary"
-                style={{ minHeight: 36, padding: '7px 12px', fontSize: 12, borderRadius: 10, color: '#fff', boxShadow: 'none', textShadow: 'none' }}
-              >
-                {timerRunning ? <><Pause size={13} /> Pause</> : <><Play size={13} fill="white" /> Start Timer</>}
-              </button>
-              <button
-                onClick={() => setTimerRemaining(prev => prev + 15)}
-                className="btn-secondary"
-                style={{ minHeight: 36, padding: '7px 11px', fontSize: 11, fontWeight: 700, borderRadius: 10, width: 'auto' }}
-              >
-                +15s
-              </button>
-              <button
-                onClick={() => { setTimerRunning(false); setTimerRemaining(timerPreset); }}
-                className="btn-secondary"
-                style={{ minHeight: 36, padding: '7px 11px', fontSize: 11, borderRadius: 10, width: 'auto' }}
-                title="Reset timer"
-              >
-                <RotateCcw size={13} />
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-            <div className="font-mono" style={{ fontSize: 26, fontWeight: 800, color: stopwatchRunning ? 'var(--accent-cyan)' : 'var(--text-primary)' }}>
-              {formatClock(stopwatchElapsed)}
-            </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button
-                onClick={() => setStopwatchRunning(r => !r)}
-                className="btn-primary"
-                style={{ width: 'auto', minHeight: 36, padding: '7px 14px', fontSize: 12, borderRadius: 10, color: '#fff', boxShadow: 'none', textShadow: 'none' }}
-              >
-                {stopwatchRunning ? <><Pause size={13} /> Pause</> : <><Play size={13} fill="white" /> {stopwatchElapsed > 0 ? 'Resume' : 'Start'}</>}
-              </button>
-              <button
-                onClick={() => { setStopwatchRunning(false); setStopwatchElapsed(0); }}
-                className="btn-secondary"
-                style={{ width: 'auto', minHeight: 36, padding: '7px 11px', fontSize: 11, borderRadius: 10 }}
-              >
-                <RotateCcw size={13} /> Reset
-              </button>
-            </div>
-          </div>
-        )}
-      </motion.div>
 
       {/* Upgraded Activity & Consistency Tracker */}
       {showActivityHeatmap !== false && (
@@ -884,39 +755,7 @@ export default function HomePage() {
         </motion.div>
       )}
 
-      {/* No active plan */}
-      {!activePlan && (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-          className="card" style={{ marginBottom: 24, textAlign: 'center', padding: 28 }}>
-          <div style={{ width: 52, height: 52, borderRadius: 14, background: 'var(--gradient-ocean)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
-            <Target size={24} color="white" />
-          </div>
-          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>No Active Plan</h3>
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.5 }}>
-            Choose a balanced workout program to get started
-          </p>
-          <button
-            className="btn-primary"
-            onClick={() => setActiveTab('plans')}
-            style={{
-              maxWidth: 260,
-              margin: '0 auto',
-              minHeight: 48,
-              borderRadius: 14,
-              fontSize: 14,
-              fontWeight: 800,
-              padding: '12px 20px',
-              color: '#ffffff',
-              boxShadow: 'none',
-              textShadow: 'none',
-              width: 'auto',
-            }}
-          >
-            <Dumbbell size={16} color="currentColor" />
-            <span style={{ letterSpacing: '0.03em', textTransform: 'uppercase' }}>Browse Plans</span>
-          </button>
-        </motion.div>
-      )}
+
 
       {/* Feature Cards */}
       {showFeatureCards !== false && (

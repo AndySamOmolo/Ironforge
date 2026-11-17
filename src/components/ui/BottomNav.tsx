@@ -16,7 +16,6 @@ const tabs = [
   { id: 'home', label: 'Home', icon: Home },
   { id: 'plans', label: 'Plans', icon: ClipboardList },
   { id: 'start', label: 'Start', icon: Play },
-  { id: 'exercises', label: 'Exercises', icon: Dumbbell },
   { id: 'progress', label: 'Progress', icon: BarChart3 },
   { id: 'profile', label: 'Profile', icon: User },
 ];
