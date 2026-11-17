@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Play, Flame, ShieldCheck, Scale, Sparkles, Activity } from 'lucide-react';
 import { db } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
@@ -821,73 +821,152 @@ function blendHexColors(primary: string, secondary: string, weight: number): str
 /**
  * Computes an anatomical ecorché / thermal color based on map mode and score
  */
+export type HeatmapPalette = 'thermal' | 'crimson';
+
+const SAMPLE_DEMO_MUSCLE_SCORES: Record<string, number> = {
+  chest: 0.92,
+  shoulders: 0.78,
+  triceps: 0.74,
+  lats: 0.85,
+  'middle back': 0.68,
+  traps: 0.52,
+  biceps: 0.64,
+  forearms: 0.38,
+  abdominals: 0.56,
+  obliques: 0.44,
+  quadriceps: 0.88,
+  hamstrings: 0.62,
+  glutes: 0.72,
+  'lower back': 0.45,
+  calves: 0.34,
+};
+
+const SAMPLE_DEMO_PART_BIAS: Record<string, number> = {
+  front_chest_upper_l: 0.96,
+  front_chest_upper_r: 0.96,
+  front_chest_middle_l: 0.92,
+  front_chest_middle_r: 0.92,
+  front_chest_lower_l: 0.78,
+  front_chest_lower_r: 0.78,
+  front_shoulder_anterior_l: 0.84,
+  front_shoulder_anterior_r: 0.84,
+  front_shoulder_lateral_l: 0.76,
+  front_shoulder_lateral_r: 0.76,
+  front_biceps_long_l: 0.68,
+  front_biceps_long_r: 0.68,
+  front_biceps_short_l: 0.62,
+  front_biceps_short_r: 0.62,
+  front_abs_upper: 0.62,
+  front_abs_middle: 0.56,
+  front_abs_lower: 0.48,
+  front_quads_lateralis_l: 0.90,
+  front_quads_lateralis_r: 0.90,
+  front_quads_rectus_l: 0.84,
+  front_quads_rectus_r: 0.84,
+  front_quads_medialis_l: 0.79,
+  front_quads_medialis_r: 0.79,
+  back_lats_upper_l: 0.88,
+  back_lats_upper_r: 0.88,
+  back_lats_middle_l: 0.82,
+  back_lats_middle_r: 0.82,
+  back_middle_rhomboids_l: 0.72,
+  back_middle_rhomboids_r: 0.72,
+  back_triceps_lateral_l: 0.78,
+  back_triceps_lateral_r: 0.78,
+  back_triceps_long_l: 0.72,
+  back_triceps_long_r: 0.72,
+  back_glutes_maximus_l: 0.75,
+  back_glutes_maximus_r: 0.75,
+  back_hamstrings_lateral_l: 0.65,
+  back_hamstrings_lateral_r: 0.65,
+  back_hamstrings_medial_l: 0.60,
+  back_hamstrings_medial_r: 0.60,
+};
+
+/**
+ * Perceptually ordered 5-tier sequential heatmap scale (no random per-muscle rainbow colors!).
+ * - Thermal mode: Cool Slate (0%) -> Cyan-Blue (1-25%) -> Emerald (26-50%) -> Solar Amber (51-75%) -> Peak Crimson-Flame (76-100%)
+ * - Crimson Ecorché mode: Deep Slate (0%) -> Burgundy (1-25%) -> Ruby (26-50%) -> Crimson (51-75%) -> Incandescent Scarlet-Gold (76-100%)
+ */
+function getSequentialActivationHex(activation: number, palette: HeatmapPalette): string {
+  const v = Math.max(0, Math.min(1, activation));
+  if (palette === 'crimson') {
+    if (v <= 0.04) return '#222638';
+    if (v <= 0.33) return blendHexColors('#4C1D3D', '#9D174D', v / 0.33);
+    if (v <= 0.66) return blendHexColors('#9D174D', '#E11D48', (v - 0.33) / 0.33);
+    return blendHexColors('#E11D48', '#FB7185', (v - 0.66) / 0.34);
+  }
+
+  // Default Perceptually Ordered Thermal Ramp
+  if (v <= 0.04) return '#222638';
+  if (v <= 0.28) return blendHexColors('#0284C7', '#06B6D4', (v - 0.04) / 0.24);
+  if (v <= 0.52) return blendHexColors('#06B6D4', '#10B981', (v - 0.28) / 0.24);
+  if (v <= 0.76) return blendHexColors('#F59E0B', '#F97316', (v - 0.52) / 0.24);
+  return blendHexColors('#F97316', '#EF4444', (v - 0.76) / 0.24);
+}
+
 function getPartVisualColors(
-  muscle: string,
+  _muscle: string,
   activation: number,
   recoveryPct: number,
   isStale: boolean,
-  mode: MapMode
+  mode: MapMode,
+  palette: HeatmapPalette = 'thermal'
 ): { base: string; highlight: string; shadow: string; stroke: string; fillAlpha: number } {
   if (mode === 'recovery') {
     const recColor =
       recoveryPct >= 85
-        ? '#10E89A' // Fresh & ready
-        : recoveryPct >= 50
-          ? '#FBBF24' // Recovering
-          : '#FF3D5A'; // Fatigued
+        ? '#10B981' // Fresh & ready (85-100%)
+        : recoveryPct >= 55
+          ? '#F59E0B' // Recovering (55-84%)
+          : '#EF4444'; // Fatigued (<55%)
     return {
       base: recColor,
-      highlight: blendHexColors(recColor, '#ffffff', 0.45),
+      highlight: blendHexColors(recColor, '#ffffff', 0.42),
       shadow: blendHexColors(recColor, '#090d16', 0.65),
-      stroke: hexToRgba(recColor, 0.85),
-      fillAlpha: 0.35 + (1 - recoveryPct / 100) * 0.45,
+      stroke: hexToRgba(recColor, 0.88),
+      fillAlpha: 0.44 + (1 - recoveryPct / 100) * 0.42,
     };
   }
 
   if (mode === 'balance') {
-    if (isStale || activation < 0.12) {
+    if (isStale || activation < 0.15) {
       return {
         base: '#F59E0B',
         highlight: '#FDE68A',
         shadow: '#451A03',
         stroke: '#FBBF24',
-        fillAlpha: 0.42,
+        fillAlpha: 0.52,
       };
     }
     return {
-      base: '#10E89A',
+      base: '#10B981',
       highlight: '#A7F3D0',
       shadow: '#064E3B',
       stroke: '#34D399',
-      fillAlpha: 0.35 + activation * 0.45,
+      fillAlpha: 0.45 + activation * 0.42,
     };
   }
 
-  // Default: Anatomical Ecorché + Thermal Activation Ramp
-  const muscleColor = MUSCLE_COLORS[muscle] || '#FF4D6D';
+  // Cohesive Sequential Activation Scale
   if (activation <= 0.04) {
-    // Untrained baseline ecorché striated muscle tissue tone
     return {
-      base: '#4A2C35',
-      highlight: '#6E424E',
-      shadow: '#1F1218',
-      stroke: 'rgba(255, 190, 180, 0.22)',
-      fillAlpha: 0.42,
+      base: '#252B3F',
+      highlight: '#363F5C',
+      shadow: '#131724',
+      stroke: 'rgba(180, 194, 224, 0.24)',
+      fillAlpha: 0.52,
     };
   }
 
-  // Blend from natural crimson muscle fibers -> vibrant muscle accent -> incandescent peak
-  const midColor = blendHexColors('#C92A42', muscleColor, 0.55);
-  const hotColor = activation > 0.65
-    ? blendHexColors(midColor, '#FFB703', (activation - 0.65) / 0.35)
-    : midColor;
+  const hotColor = getSequentialActivationHex(activation, palette);
 
   return {
     base: hotColor,
-    highlight: blendHexColors(hotColor, '#FFF3E6', 0.52),
-    shadow: blendHexColors(hotColor, '#1A070C', 0.6),
-    stroke: hexToRgba(blendHexColors(hotColor, '#FFFFFF', 0.35), 0.55 + activation * 0.45),
-    fillAlpha: 0.48 + activation * 0.48,
+    highlight: blendHexColors(hotColor, '#FFFFFF', 0.46),
+    shadow: blendHexColors(hotColor, '#0B0F1A', 0.62),
+    stroke: hexToRgba(blendHexColors(hotColor, '#FFFFFF', 0.38), 0.68 + activation * 0.32),
+    fillAlpha: 0.58 + activation * 0.38,
   };
 }
 
@@ -900,6 +979,7 @@ function AnatomicalFigure({
   selectedMuscle,
   selectedPart,
   mode,
+  palette,
   onSelectPart,
 }: {
   view: 'front' | 'back';
@@ -910,6 +990,7 @@ function AnatomicalFigure({
   selectedMuscle: string | null;
   selectedPart: AnatomicalMusclePart | null;
   mode: MapMode;
+  palette: HeatmapPalette;
   onSelectPart: (part: AnatomicalMusclePart) => void;
 }) {
   const isFront = view === 'front';
@@ -925,9 +1006,9 @@ function AnatomicalFigure({
       <div
         style={{
           borderRadius: 16,
-          border: '1px solid rgba(255,255,255,0.08)',
+          border: '1px solid var(--border)',
           background:
-            'radial-gradient(ellipse 80% 50% at 50% 15%, rgba(255, 90, 110, 0.10), transparent 70%), radial-gradient(ellipse 70% 45% at 50% 85%, rgba(124, 106, 255, 0.08), transparent 70%), linear-gradient(180deg, #0b0d18 0%, #06070d 100%)',
+            'radial-gradient(ellipse 80% 50% at 50% 15%, rgba(255, 90, 110, 0.10), transparent 70%), radial-gradient(ellipse 70% 45% at 50% 85%, rgba(124, 106, 255, 0.08), transparent 70%), var(--bg-media, linear-gradient(180deg, #0b0d18 0%, #06070d 100%))',
           padding: '6px 4px',
           position: 'relative',
           overflow: 'hidden',
@@ -975,7 +1056,7 @@ function AnatomicalFigure({
               const val = partScores[part.id] || 0;
               const rec = muscleRecovery[part.muscle] ?? 100;
               const isStale = staleMuscles.has(part.muscle);
-              const colors = getPartVisualColors(part.muscle, val, rec, isStale, mode);
+              const colors = getPartVisualColors(part.muscle, val, rec, isStale, mode, palette);
               return (
                 <radialGradient key={`grad-${part.id}`} id={`grad-${part.id}`} cx="42%" cy="32%" r="72%">
                   <stop offset="0%" stopColor={hexToRgba(colors.highlight, Math.min(1, colors.fillAlpha + 0.18))} />
@@ -1105,7 +1186,7 @@ function AnatomicalFigure({
             const val = partScores[part.id] || 0;
             const rec = muscleRecovery[part.muscle] ?? 100;
             const isStale = staleMuscles.has(part.muscle);
-            const colors = getPartVisualColors(part.muscle, val, rec, isStale, mode);
+            const colors = getPartVisualColors(part.muscle, val, rec, isStale, mode, palette);
             const isPartSelected = selectedPart?.id === part.id;
             const isMuscleSelected = selectedMuscle === part.muscle;
             const isHighlighted = isPartSelected || isMuscleSelected;
@@ -1118,6 +1199,15 @@ function AnatomicalFigure({
                 filter={val > 0.65 || isHighlighted ? `url(#muscle-glow-${view})` : undefined}
               >
                 <title>{`${part.headLabel} (${part.latinName}) — ${Math.round(val * 100)}% activation`}</title>
+
+                {/* Invisible Expanded Touch Hit-Target for Small Muscle Heads */}
+                <path
+                  d={part.d}
+                  fill="transparent"
+                  stroke="transparent"
+                  strokeWidth={7}
+                  strokeLinejoin="round"
+                />
 
                 {/* Main Sculpted Muscle Belly */}
                 <path
@@ -1165,8 +1255,13 @@ function AnatomicalFigure({
 }
 
 export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
-  const { equipment: userEquipment, barWeight, dumbbellWeight, defaultRestTime, unitSystem } = useUserStore();
-  const { startWorkout } = useWorkoutStore();
+  const userEquipment = useUserStore((s) => s.equipment);
+  const barWeight = useUserStore((s) => s.barWeight);
+  const dumbbellWeight = useUserStore((s) => s.dumbbellWeight);
+  const defaultRestTime = useUserStore((s) => s.defaultRestTime);
+  const unitSystem = useUserStore((s) => s.unitSystem);
+  const startWorkout = useWorkoutStore((s) => s.startWorkout);
+  const inspectorRef = useRef<HTMLDivElement | null>(null);
   const unitLabel = unitSystem === 'metric' ? 'kg' : 'lbs';
 
   const [muscleScores, setMuscleScores] = useState<Record<string, number>>({});
@@ -1177,6 +1272,8 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
   const [muscleExerciseScores, setMuscleExerciseScores] = useState<Record<string, Record<string, number>>>({});
   const [range, setRange] = useState<TimeRange>('30d');
   const [mode, setMode] = useState<MapMode>('activation');
+  const [palette, setPalette] = useState<HeatmapPalette>('thermal');
+  const [demoPreview, setDemoPreview] = useState<boolean>(true);
   const [viewFilter, setViewFilter] = useState<ViewFilter>('both');
   const [selectedMuscle, setSelectedMuscle] = useState<string | null>('chest');
   const [selectedPart, setSelectedPart] = useState<AnatomicalMusclePart | null>(null);
@@ -1331,8 +1428,22 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
     return out;
   }, [muscleScores]);
 
+  const hasRealData = useMemo(() => Object.keys(muscleScores).length > 0, [muscleScores]);
+  const isShowingDemo = !hasRealData && demoPreview;
+
+  const effectiveNormalizedByMuscle = useMemo(() => {
+    if (isShowingDemo) return SAMPLE_DEMO_MUSCLE_SCORES;
+    return normalizedByMuscle;
+  }, [isShowingDemo, normalizedByMuscle]);
+
   const normalizedByPart = useMemo(() => {
     const out: Record<string, number> = {};
+    if (isShowingDemo) {
+      for (const part of ALL_ANATOMY_PARTS) {
+        out[part.id] = SAMPLE_DEMO_PART_BIAS[part.id] ?? (SAMPLE_DEMO_MUSCLE_SCORES[part.muscle] || 0.4) * 0.9;
+      }
+      return out;
+    }
     const maxPart = Math.max(0.001, ...Object.values(partRawScores));
     for (const part of ALL_ANATOMY_PARTS) {
       const raw = partRawScores[part.id] || 0;
@@ -1341,7 +1452,7 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
       out[part.id] = Math.max(partNorm, muscleBase * 0.85);
     }
     return out;
-  }, [partRawScores, normalizedByMuscle]);
+  }, [isShowingDemo, partRawScores, normalizedByMuscle]);
 
   const muscleRecovery = useMemo(() => {
     const now = Date.now();
@@ -1409,6 +1520,9 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
   const handleSelectPart = (part: AnatomicalMusclePart) => {
     setSelectedPart(part);
     setSelectedMuscle(part.muscle);
+    if (typeof window !== 'undefined' && window.innerWidth < 640 && inspectorRef.current) {
+      inspectorRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   };
 
   const handleTrainMuscles = async (targets: string[], title: string) => {
@@ -1525,7 +1639,7 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: viewFilter === 'both' ? 'repeat(2, minmax(0, 1fr))' : '1fr',
+          gridTemplateColumns: viewFilter === 'both' ? 'repeat(auto-fit, minmax(150px, 1fr))' : '1fr',
           gap: 10,
         }}
       >
@@ -1539,6 +1653,7 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
             selectedMuscle={selectedMuscle}
             selectedPart={selectedPart}
             mode={mode}
+            palette={palette}
             onSelectPart={handleSelectPart}
           />
         )}
@@ -1552,8 +1667,118 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
             selectedMuscle={selectedMuscle}
             selectedPart={selectedPart}
             mode={mode}
+            palette={palette}
             onSelectPart={handleSelectPart}
           />
+        )}
+      </div>
+
+      {/* Interactive Color Scale Legend & Palette Toggle */}
+      <div className="card" style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            {mode === 'activation'
+              ? 'Sequential Activation Intensity Scale'
+              : mode === 'recovery'
+                ? 'Physiological Recovery Readiness Scale'
+                : 'Muscular Symmetry Diagnostic Scale'}
+          </span>
+
+          {mode === 'activation' && (
+            <div style={{ display: 'flex', gap: 4, background: 'var(--bg-glass)', padding: 3, borderRadius: 9, border: '1px solid var(--border-subtle)' }}>
+              {([
+                { id: 'thermal' as const, label: 'Thermal Spectrum' },
+                { id: 'crimson' as const, label: 'Crimson Ecorché' },
+              ]).map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => setPalette(p.id)}
+                  style={{
+                    padding: '4px 9px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 10, fontWeight: 700,
+                    background: palette === p.id ? 'var(--gradient-fire)' : 'transparent',
+                    color: palette === p.id ? 'var(--on-accent-text)' : 'var(--text-muted)',
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {mode === 'activation' ? (
+          <div>
+            <div
+              style={{
+                height: 10,
+                borderRadius: 999,
+                background:
+                  palette === 'thermal'
+                    ? 'linear-gradient(90deg, #252B3F 0%, #0284C7 22%, #10B981 48%, #F59E0B 74%, #EF4444 100%)'
+                    : 'linear-gradient(90deg, #252B3F 0%, #4C1D3D 25%, #9D174D 52%, #E11D48 78%, #FB7185 100%)',
+                border: '1px solid rgba(255,255,255,0.14)',
+                marginBottom: 6,
+              }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-secondary)', fontWeight: 700, flexWrap: 'wrap', gap: 4 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ width: 8, height: 8, borderRadius: 2, background: '#252B3F', border: '1px solid rgba(255,255,255,0.25)' }} /> 0% Rested
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ width: 8, height: 8, borderRadius: 2, background: palette === 'thermal' ? '#06B6D4' : '#6D1B46' }} /> 25% Warm-up
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ width: 8, height: 8, borderRadius: 2, background: palette === 'thermal' ? '#10B981' : '#9D174D' }} /> 50% Moderate
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ width: 8, height: 8, borderRadius: 2, background: palette === 'thermal' ? '#F59E0B' : '#E11D48' }} /> 75% High
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ width: 8, height: 8, borderRadius: 2, background: palette === 'thermal' ? '#EF4444' : '#FB7185' }} /> 100% Peak
+              </span>
+            </div>
+          </div>
+        ) : mode === 'recovery' ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: 10, fontWeight: 700 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#EF4444' }}>
+              <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#EF4444' }} /> &lt;55% Fatigued (Rest Needed)
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#F59E0B' }}>
+              <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#F59E0B' }} /> 55–84% Recovering
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#10B981' }}>
+              <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#10B981' }} /> 85–100% Fresh &amp; Ready
+            </span>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', fontSize: 10, fontWeight: 700 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#F59E0B' }}>
+              <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#F59E0B' }} /> Under-Trained / Priority Target
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#10B981' }}>
+              <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#10B981' }} /> Optimal Balanced Volume
+            </span>
+          </div>
+        )}
+
+        {!hasRealData && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap',
+            paddingTop: 8, borderTop: '1px solid var(--border-subtle)', fontSize: 11, color: 'var(--text-secondary)',
+          }}>
+            <span>
+              {demoPreview
+                ? '✨ Showing sample hypertrophy distribution so you can preview thermal shading before your first workout.'
+                : 'Showing your raw untrained baseline (0%). Complete a workout to populate live activation.'}
+            </span>
+            <button
+              onClick={() => setDemoPreview(prev => !prev)}
+              className="btn-secondary"
+              style={{ padding: '4px 10px', fontSize: 10, minHeight: 28, borderRadius: 8, flexShrink: 0 }}
+            >
+              {demoPreview ? 'Show 0% Baseline' : 'Preview Sample Map'}
+            </button>
+          </div>
         )}
       </div>
 
@@ -1561,7 +1786,7 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
       <div className="chip-scroll" style={{ marginBottom: 0 }}>
         {Object.keys(MUSCLE_METADATA).map(m => {
           const isSel = selectedMuscle === m;
-          const act = Math.round((normalizedByMuscle[m] || 0) * 100);
+          const act = Math.round((effectiveNormalizedByMuscle[m] || 0) * 100);
           return (
             <button
               key={m}
@@ -1581,7 +1806,7 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
 
       {/* Interactive Anatomical Muscle & Sub-Head Inspector */}
       {selectedMuscle && MUSCLE_METADATA[selectedMuscle] && (
-        <div className="card" style={{ padding: 16, border: '1px solid var(--border-bright)' }}>
+        <div ref={inspectorRef} className="card" style={{ padding: 16, border: '1px solid var(--border-bright)', scrollMarginTop: 80 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1606,11 +1831,11 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
           </div>
 
           {/* 4-Metric Diagnostic Strip */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 14 }}>
+          <div className="responsive-stats-4" style={{ marginBottom: 14 }}>
             {[
               {
                 label: 'Activation',
-                value: `${Math.round((normalizedByMuscle[selectedMuscle] || 0) * 100)}%`,
+                value: `${Math.round((effectiveNormalizedByMuscle[selectedMuscle] || 0) * 100)}%`,
                 color: 'var(--accent-red)',
               },
               {

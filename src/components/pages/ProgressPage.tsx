@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BarChart3, Calendar, Clock, Dumbbell, TrendingUp, Trophy, Target, Zap, History, ChevronDown, ChevronRight, Trash2, Flame, Star, Activity } from 'lucide-react';
+import { BarChart3, Calendar, Clock, Dumbbell, TrendingUp, Trophy, Target, Zap, History, ChevronDown, ChevronRight, Trash2, Flame, Star, Activity, Search } from 'lucide-react';
 import { db } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
 import type { WorkoutSession, PersonalRecord } from '@/lib/types';
@@ -26,7 +26,7 @@ function toLocalDateKey(dateInput: Date | string | number): string {
 }
 
 export default function ProgressPage() {
-  const { unitSystem } = useUserStore();
+  const unitSystem = useUserStore(s => s.unitSystem);
   const unitLabel = unitSystem === 'metric' ? 'kg' : 'lbs';
   const [sessions, setSessions] = useState<WorkoutSession[]>([]);
   const [prs, setPrs] = useState<PersonalRecord[]>([]);
@@ -39,55 +39,10 @@ export default function ProgressPage() {
   const [calendarView, setCalendarView] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [exerciseChartId, setExerciseChartId] = useState<number | null>(null);
+  const [exerciseSearch, setExerciseSearch] = useState('');
   const [exerciseChartData, setExerciseChartData] = useState<{ date: string; weight: number; est1RM: number; volume: number }[]>([]);
   const [loggedExercises, setLoggedExercises] = useState<{ id: number; name: string; count: number }[]>([]);
   const PAGE_SIZE = 15;
-
-  useEffect(() => { loadData(); }, []);
-
-  const loadData = async () => {
-    const allSessions = await db.workoutSessions.orderBy('startedAt').reverse().toArray();
-    setSessions(allSessions.filter(s => s.isComplete));
-    const allPRs = await db.personalRecords.orderBy('date').reverse().toArray();
-    setPrs(allPRs);
-
-    try {
-      const [allSets, exercises] = await Promise.all([
-        db.sets.toArray(),
-        db.exercises.toArray(),
-      ]);
-      const countByEx = new Map<number, number>();
-      for (const s of allSets) {
-        if (s.exerciseId) countByEx.set(s.exerciseId, (countByEx.get(s.exerciseId) || 0) + 1);
-      }
-      const exList = exercises
-        .filter(e => e.id != null)
-        .map(e => ({ id: e.id!, name: e.name, count: countByEx.get(e.id!) || 0 }))
-        .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-      setLoggedExercises(exList.slice(0, 150));
-      if (exList.length > 0 && exList[0].count > 0 && !exerciseChartId) {
-        loadExerciseChart(exList[0].id);
-      }
-    } catch {}
-  };
-
-  const loadSessionDetail = useCallback(async (session: WorkoutSession) => {
-    if (!session.id) return;
-    try {
-      const sets = await db.sets.where('sessionId').equals(session.id).toArray();
-      const exerciseIds = [...new Set(sets.map(s => s.exerciseId))];
-      const exercises = await db.exercises.where('id').anyOf(exerciseIds).toArray();
-      const exMap = new Map(exercises.map(e => [e.id!, e.name]));
-
-      const grouped: Record<number, { name: string; sets: { weight: number; reps: number; setNumber: number; isPR?: boolean }[] }> = {};
-      sets.forEach(s => {
-        if (!grouped[s.exerciseId]) grouped[s.exerciseId] = { name: exMap.get(s.exerciseId) || 'Exercise', sets: [] };
-        grouped[s.exerciseId].sets.push({ weight: s.weight, reps: s.reps, setNumber: s.setNumber, isPR: s.isPR });
-      });
-      Object.values(grouped).forEach(g => g.sets.sort((a, b) => a.setNumber - b.setNumber));
-      setSessionDetail({ session, exercises: Object.values(grouped) });
-    } catch { setSessionDetail(null); }
-  }, []);
 
   const loadExerciseChart = useCallback(async (exerciseId: number) => {
     try {
@@ -116,13 +71,64 @@ export default function ProgressPage() {
     } catch {}
   }, []);
 
+  const loadData = useCallback(async () => {
+    const allSessions = await db.workoutSessions.orderBy('startedAt').reverse().toArray();
+    setSessions(allSessions.filter(s => s.isComplete));
+    const allPRs = await db.personalRecords.orderBy('date').reverse().toArray();
+    setPrs(allPRs);
+
+    try {
+      const [allSets, exercises] = await Promise.all([
+        db.sets.toArray(),
+        db.exercises.toArray(),
+      ]);
+      const countByEx = new Map<number, number>();
+      for (const s of allSets) {
+        if (s.exerciseId) countByEx.set(s.exerciseId, (countByEx.get(s.exerciseId) || 0) + 1);
+      }
+      const exList = exercises
+        .filter(e => e.id != null)
+        .map(e => ({ id: e.id!, name: e.name, count: countByEx.get(e.id!) || 0 }))
+        .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+      setLoggedExercises(exList.slice(0, 200));
+      if (exList.length > 0 && exList[0].count > 0 && !exerciseChartId) {
+        void loadExerciseChart(exList[0].id);
+      }
+    } catch {}
+  }, [exerciseChartId, loadExerciseChart]);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  const loadSessionDetail = useCallback(async (session: WorkoutSession) => {
+    if (!session.id) return;
+    try {
+      const sets = await db.sets.where('sessionId').equals(session.id).toArray();
+      const exerciseIds = [...new Set(sets.map(s => s.exerciseId))];
+      const exercises = await db.exercises.where('id').anyOf(exerciseIds).toArray();
+      const exMap = new Map(exercises.map(e => [e.id!, e.name]));
+
+      const grouped: Record<number, { name: string; sets: { weight: number; reps: number; setNumber: number; isPR?: boolean }[] }> = {};
+      sets.forEach(s => {
+        if (!grouped[s.exerciseId]) grouped[s.exerciseId] = { name: exMap.get(s.exerciseId) || 'Exercise', sets: [] };
+        grouped[s.exerciseId].sets.push({ weight: s.weight, reps: s.reps, setNumber: s.setNumber, isPR: s.isPR });
+      });
+      Object.values(grouped).forEach(g => g.sets.sort((a, b) => a.setNumber - b.setNumber));
+      setSessionDetail({ session, exercises: Object.values(grouped) });
+    } catch { setSessionDetail(null); }
+  }, []);
+
   const handleDeleteSession = async (id: number) => {
-    await db.workoutSessions.delete(id);
-    await db.sets.where('sessionId').equals(id).delete();
-    await db.personalRecords.where('sessionId').equals(id).delete();
+    await db.transaction('rw', [db.workoutSessions, db.sets, db.sessionExercises, db.personalRecords], async () => {
+      await db.workoutSessions.delete(id);
+      await db.sets.where('sessionId').equals(id).delete();
+      await db.sessionExercises.where('sessionId').equals(id).delete();
+      await db.personalRecords.where('sessionId').equals(id).delete();
+    });
     setDeleteConfirm(null);
     setExpandedSession(null);
-    loadData();
+    void loadData();
   };
 
   const filteredHistory = useMemo(() => {
@@ -247,18 +253,25 @@ export default function ProgressPage() {
   const fmtDur = (s: number) => { const m = Math.max(1, Math.round(s / 60)); return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`; };
 
   const selectedExerciseName = loggedExercises.find(e => e.id === exerciseChartId)?.name || '';
+  const filteredLoggedExercises = useMemo(() => {
+    if (!exerciseSearch.trim()) return loggedExercises.slice(0, 60);
+    const q = exerciseSearch.trim().toLowerCase();
+    return loggedExercises.filter(e => e.name.toLowerCase().includes(q)).slice(0, 60);
+  }, [loggedExercises, exerciseSearch]);
 
   return (
     <div className="page-container">
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-          <div className="icon-badge" style={{ background: 'rgba(0,229,160,0.1)', width: 38, height: 38, borderRadius: 10 }}>
+          <div className="icon-badge" style={{ background: 'rgba(16,232,154,0.1)', width: 38, height: 38, borderRadius: 10 }}>
             <BarChart3 size={18} color="var(--accent-green)" />
           </div>
           <div>
-            <h1 style={{ fontSize: 24, fontWeight: 800 }}>Progress & Analytics</h1>
-            <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>Track your activity consistency, strength, records & 3D body map</p>
+            <h1 className="font-display" style={{ fontSize: 24, fontWeight: 800 }}>
+              <span className="gradient-text">Progress &amp; Analytics</span>
+            </h1>
+            <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>Track your activity consistency, strength, records &amp; 3D body map</p>
           </div>
         </div>
       </motion.div>
@@ -291,7 +304,7 @@ export default function ProgressPage() {
               { icon: Clock, value: `${avgDuration}m`, label: `Avg Time (${fmtDur(totalDurationSec)} total)`, color: 'var(--accent-orange)', bg: 'rgba(255,140,66,0.08)' },
               { icon: Flame, value: `${currentStreak}d`, label: `Streak (Best: ${longestStreak}d)`, color: 'var(--accent-red)', bg: 'rgba(255,61,90,0.08)' },
             ].map((stat, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}
+              <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
                 className="stat-card" style={{ alignItems: 'center', textAlign: 'center' }}>
                 <div className="icon-badge" style={{ background: stat.bg, width: 32, height: 32, borderRadius: 8 }}>
                   <stat.icon size={16} color={stat.color} />
@@ -302,39 +315,38 @@ export default function ProgressPage() {
             ))}
           </div>
 
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="card" style={{ marginBottom: 16, padding: 18 }}>
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.14 }} className="card" style={{ marginBottom: 16, padding: 18 }}>
             <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>This Week Volume (Mon–Sun, {unitLabel})</h3>
             <div style={{ height: 180 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={getWeeklyData()} barSize={24}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
                   <XAxis dataKey="day" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={35} />
-                  <Tooltip contentStyle={{ background: 'var(--bg-sheet)', border: '1px solid var(--border-bright)', borderRadius: 12, fontSize: 12 }} />
-                  <defs><linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#FF3B5C" stopOpacity={0.9} /><stop offset="100%" stopColor="#FF6B3D" stopOpacity={0.6} /></linearGradient></defs>
-                  <Bar dataKey="volume" fill="url(#barGrad)" radius={[6, 6, 0, 0]} />
+                  <Tooltip contentStyle={{ background: 'var(--bg-sheet)', border: '1px solid var(--border-bright)', borderRadius: 12, fontSize: 12, color: 'var(--text-primary)' }} />
+                  <Bar dataKey="volume" fill="var(--accent-red)" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           </motion.div>
 
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="card" style={{ marginBottom: 16, padding: 18 }}>
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="card" style={{ marginBottom: 16, padding: 18 }}>
             <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Volume Trend (8 Weeks)</h3>
             <div style={{ height: 150 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={getTrendData()}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
                   <XAxis dataKey="week" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={35} />
-                  <Tooltip contentStyle={{ background: 'var(--bg-sheet)', border: '1px solid var(--border-bright)', borderRadius: 12, fontSize: 12 }} />
-                  <defs><linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#7C6AFF" stopOpacity={0.3} /><stop offset="100%" stopColor="#7C6AFF" stopOpacity={0.0} /></linearGradient></defs>
-                  <Area type="monotone" dataKey="volume" stroke="#7C6AFF" strokeWidth={2} fill="url(#areaGrad)" dot={{ r: 4, fill: '#7C6AFF', strokeWidth: 0 }} />
+                  <Tooltip contentStyle={{ background: 'var(--bg-sheet)', border: '1px solid var(--border-bright)', borderRadius: 12, fontSize: 12, color: 'var(--text-primary)' }} />
+                  <defs><linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--accent-purple)" stopOpacity={0.32} /><stop offset="100%" stopColor="var(--accent-purple)" stopOpacity={0.0} /></linearGradient></defs>
+                  <Area type="monotone" dataKey="volume" stroke="var(--accent-purple)" strokeWidth={2} fill="url(#areaGrad)" dot={{ r: 4, fill: 'var(--accent-purple)', strokeWidth: 0 }} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           </motion.div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          <div className="responsive-stats-3">
             <div className="stat-card" style={{ borderLeft: '3px solid var(--accent-red)', padding: 12 }}>
               <div className="stat-label">Total Volume</div>
               <div className="stat-value" style={{ color: 'var(--accent-red)', fontSize: 18 }}>{fmtVol(totalVolume)} <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{unitLabel}</span></div>
@@ -354,7 +366,7 @@ export default function ProgressPage() {
       {/* ════════ HISTORY / ACTIVITY LOG ════════ */}
       {tab === 'history' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14 }}>
+          <div className="responsive-stats-3" style={{ marginBottom: 14 }}>
             <div className="stat-card" style={{ textAlign: 'center', padding: 10 }}>
               <div className="stat-value" style={{ fontSize: 18, color: 'var(--accent-green)' }}>{weekStats.count}</div>
               <div className="stat-label">This Week</div>
@@ -413,9 +425,9 @@ export default function ProgressPage() {
                           title={`${day.date}: ${day.count} workout${day.count !== 1 ? 's' : ''}`}
                           style={{
                             width: 16, height: 16, borderRadius: 3.5, padding: 0, cursor: 'pointer',
-                            background: day.count === 0 ? 'var(--bg-glass)' : day.count === 1 ? 'var(--accent-green)' : 'var(--accent-red)',
-                            opacity: day.count === 0 ? 0.24 : 0.65 + Math.min(day.count * 0.2, 0.35),
-                            border: isSel ? '1.5px solid #ffffff' : day.isToday ? '1.5px solid var(--accent-purple)' : 'none',
+                            background: day.count === 0 ? 'var(--bg-input)' : day.count === 1 ? 'var(--accent-green)' : 'var(--accent-red)',
+                            opacity: day.count === 0 ? 0.35 : 0.7 + Math.min(day.count * 0.15, 0.3),
+                            border: isSel ? '1.5px solid var(--text-primary)' : day.isToday ? '1.5px solid var(--accent-purple)' : 'none',
                           }}
                         />
                       );
@@ -424,8 +436,8 @@ export default function ProgressPage() {
                 ))}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-                <span style={{ fontSize: 8, color: 'var(--text-dim)' }}>12 weeks ago</span>
-                <span style={{ fontSize: 8, color: 'var(--text-dim)' }}>Today</span>
+                <span style={{ fontSize: 8, color: 'var(--text-muted)' }}>12 weeks ago</span>
+                <span style={{ fontSize: 8, color: 'var(--text-muted)' }}>Today</span>
               </div>
             </div>
           )}
@@ -446,7 +458,7 @@ export default function ProgressPage() {
                   <motion.div key={s.id} layout className="card" style={{ overflow: 'hidden' }}>
                     <button onClick={() => {
                       if (isExpanded) { setExpandedSession(null); setSessionDetail(null); }
-                      else { setExpandedSession(s.id!); loadSessionDetail(s); }
+                      else { setExpandedSession(s.id!); void loadSessionDetail(s); }
                     }} style={{
                       display: 'flex', alignItems: 'center', gap: 12, width: '100%', background: 'none', border: 'none',
                       color: 'var(--text-primary)', cursor: 'pointer', padding: 0, textAlign: 'left',
@@ -479,14 +491,14 @@ export default function ProgressPage() {
                       {isExpanded && sessionDetail?.session.id === s.id && (
                         <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
                           style={{ overflow: 'hidden', borderTop: '1px solid var(--border-subtle)', marginTop: 12, paddingTop: 12 }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 12 }}>
+                          <div className="responsive-stats-4" style={{ marginBottom: 12 }}>
                             {[
                               { v: fmtDur(s.duration), l: 'Duration' },
                               { v: s.totalSets, l: 'Sets' },
                               { v: s.totalReps, l: 'Reps' },
                               { v: `${fmtVol(s.totalVolume)}${unitLabel}`, l: 'Volume' },
                             ].map((st, i) => (
-                              <div key={i} style={{ textAlign: 'center', padding: 6, background: 'var(--bg-glass)', borderRadius: 8 }}>
+                              <div key={i} style={{ textAlign: 'center', padding: 6, background: 'var(--bg-glass)', borderRadius: 8, border: '1px solid var(--border-subtle)' }}>
                                 <div className="font-mono" style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-green)' }}>{st.v}</div>
                                 <div style={{ fontSize: 8, color: 'var(--text-muted)', fontWeight: 600 }}>{st.l}</div>
                               </div>
@@ -553,32 +565,47 @@ export default function ProgressPage() {
       {tab === 'strength' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           <div className="card" style={{ marginBottom: 16, padding: 16 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Exercise Strength & Estimated 1RM Progression</h3>
-            <select onChange={(e) => { const id = parseInt(e.target.value); if (id) loadExerciseChart(id); }}
-              value={exerciseChartId || ''}
-              style={{ width: '100%', padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 13, marginBottom: 12, outline: 'none' }}>
-              <option value="">Select an exercise...</option>
-              {loggedExercises.map(ex => (
-                <option key={ex.id} value={ex.id}>
-                  {ex.name} {ex.count > 0 ? `(${ex.count} sets logged)` : ''}
-                </option>
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Exercise Strength &amp; Estimated 1RM Progression</h3>
+
+            <div style={{ position: 'relative', marginBottom: 10 }}>
+              <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input
+                className="search-bar"
+                value={exerciseSearch}
+                onChange={e => setExerciseSearch(e.target.value)}
+                placeholder="Search exercise to inspect progression..."
+                style={{ padding: '10px 12px 10px 36px', fontSize: 12 }}
+              />
+            </div>
+
+            <div className="chip-scroll" style={{ marginBottom: 12 }}>
+              {filteredLoggedExercises.slice(0, 18).map(ex => (
+                <button
+                  key={ex.id}
+                  onClick={() => void loadExerciseChart(ex.id)}
+                  className={`filter-chip ${exerciseChartId === ex.id ? 'active' : ''}`}
+                  style={{ fontSize: 11, padding: '6px 12px', textTransform: 'capitalize' }}
+                >
+                  <span>{ex.name}</span>
+                  {ex.count > 0 && <span style={{ opacity: 0.75, fontSize: 9 }}>({ex.count})</span>}
+                </button>
               ))}
-            </select>
+            </div>
 
             {exerciseChartData.length > 1 && (
               <>
                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8, textTransform: 'capitalize' }}>
-                  Max Weight & Est. 1RM ({unitLabel}) — {selectedExerciseName}
+                  Max Weight &amp; Est. 1RM ({unitLabel}) — {selectedExerciseName}
                 </div>
                 <div style={{ height: 190 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={exerciseChartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
                       <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} />
                       <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={35} />
-                      <Tooltip contentStyle={{ background: 'var(--bg-sheet)', border: '1px solid var(--border-bright)', borderRadius: 12, fontSize: 12 }} />
-                      <Line type="monotone" dataKey="est1RM" name="Est. 1RM" stroke="#10E89A" strokeWidth={2} dot={{ r: 4, fill: '#10E89A' }} />
-                      <Line type="monotone" dataKey="weight" name="Top Weight" stroke="#FF3B5C" strokeWidth={2} dot={{ r: 4, fill: '#FF3B5C' }} />
+                      <Tooltip contentStyle={{ background: 'var(--bg-sheet)', border: '1px solid var(--border-bright)', borderRadius: 12, fontSize: 12, color: 'var(--text-primary)' }} />
+                      <Line type="monotone" dataKey="est1RM" name="Est. 1RM" stroke="var(--accent-green)" strokeWidth={2} dot={{ r: 4, fill: 'var(--accent-green)' }} />
+                      <Line type="monotone" dataKey="weight" name="Top Weight" stroke="var(--accent-red)" strokeWidth={2} dot={{ r: 4, fill: 'var(--accent-red)' }} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -587,7 +614,7 @@ export default function ProgressPage() {
 
             {exerciseChartData.length <= 1 && exerciseChartId && (
               <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>
-                Log at least 2 sessions with this exercise to display a trend line.
+                Log at least 2 sessions with <strong style={{ color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{selectedExerciseName}</strong> to display a progression trend line.
               </div>
             )}
           </div>
@@ -640,16 +667,16 @@ export default function ProgressPage() {
                 <div className="stat-value" style={{ color: 'var(--accent-yellow)', fontSize: 28 }}>{prs.length}</div>
               </div>
               {prs.map((pr, i) => (
-                <motion.div key={pr.id || i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }}
+                <motion.div key={pr.id || i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(i * 0.03, 0.2) }}
                   className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, rgba(255,209,102,0.15), rgba(255,140,66,0.1))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, rgba(255,209,102,0.15), rgba(255,140,66,0.1))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Trophy size={18} color="var(--accent-yellow)" />
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14, textTransform: 'capitalize' }}>{pr.exerciseName}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pr.exerciseName}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{new Date(pr.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <div className="font-mono" style={{ fontSize: 16, fontWeight: 800, color: 'var(--accent-yellow)' }}>{pr.weight}{unitLabel} × {pr.reps}</div>
                     <div style={{ fontSize: 11, color: 'var(--accent-orange)' }}>Est 1RM: {Math.round(pr.estimated1RM)}{unitLabel}</div>
                   </div>

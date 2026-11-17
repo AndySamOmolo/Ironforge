@@ -12,8 +12,20 @@ interface WorkoutCompletePageProps {
 }
 
 export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePageProps) {
-  const { totalVolume, totalSets, totalReps, elapsedTime, newPRs, exercises, planName, dayName, sessionId, endWorkout } = useWorkoutStore();
-  const { unitSystem } = useUserStore();
+  const totalVolume = useWorkoutStore(s => s.totalVolume);
+  const totalSets = useWorkoutStore(s => s.totalSets);
+  const totalReps = useWorkoutStore(s => s.totalReps);
+  const elapsedTime = useWorkoutStore(s => s.elapsedTime);
+  const newPRs = useWorkoutStore(s => s.newPRs);
+  const exercises = useWorkoutStore(s => s.exercises);
+  const planName = useWorkoutStore(s => s.planName);
+  const dayName = useWorkoutStore(s => s.dayName);
+  const sessionId = useWorkoutStore(s => s.sessionId);
+  const endWorkout = useWorkoutStore(s => s.endWorkout);
+
+  const unitSystem = useUserStore(s => s.unitSystem);
+  const animationLevel = useUserStore(s => s.animationLevel);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [musclesTrained, setMusclesTrained] = useState<string[]>([]);
   const [prevSession, setPrevSession] = useState<{ volume: number; sets: number; duration: number } | null>(null);
@@ -26,20 +38,28 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
   const unitLabel = unitSystem === 'metric' ? 'kg' : 'lbs';
 
   useEffect(() => {
+    if (animationLevel === 'none') return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    ctx.scale(dpr, dpr);
 
     const confettiColors = ['#FF3B5C', '#FF8C42', '#FFD166', '#7C6AFF', '#00E5A0', '#4DA6FF', '#FF6EAF'];
     const particles: { x: number; y: number; vx: number; vy: number; color: string; size: number; rotation: number; rotationSpeed: number; shape: 'rect' | 'circle' }[] = [];
 
-    for (let i = 0; i < 140; i++) {
+    for (let i = 0; i < 120; i++) {
       particles.push({
-        x: Math.random() * canvas.width,
-        y: -Math.random() * canvas.height,
+        x: Math.random() * width,
+        y: -Math.random() * height,
         vx: (Math.random() - 0.5) * 4,
         vy: Math.random() * 3 + 2,
         color: confettiColors[Math.floor(Math.random() * confettiColors.length)],
@@ -54,7 +74,7 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
     let rafId = 0;
     const animate = () => {
       if (frame > 200) return;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, width, height);
 
       for (const p of particles) {
         p.x += p.vx;
@@ -83,7 +103,7 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
     };
     animate();
     return () => cancelAnimationFrame(rafId);
-  }, []);
+  }, [animationLevel]);
 
   useEffect(() => {
     const load = async () => {
@@ -190,12 +210,13 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
     <div style={{
       minHeight: '100dvh', background: 'var(--bg-primary)',
       display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'center', padding: '24px 20px', position: 'relative', overflow: 'hidden',
+      justifyContent: 'center', padding: 'max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom))',
+      position: 'relative', overflow: 'hidden',
     }}>
       <canvas ref={canvasRef} style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 10 }} />
 
       {/* Top Back / Done bar */}
-      <div style={{ width: '100%', maxWidth: 400, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, position: 'relative', zIndex: 12 }}>
+      <div style={{ width: '100%', maxWidth: 420, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, position: 'relative', zIndex: 12 }}>
         <button
           onClick={handleFinish}
           className="btn-ghost"
@@ -256,7 +277,7 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.55 }}
-        style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, width: '100%', maxWidth: 400, marginBottom: 14 }}
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, width: '100%', maxWidth: 420, marginBottom: 14 }}
       >
         {stats.map((stat, i) => (
           <motion.div
@@ -279,7 +300,7 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
       {volumeChange !== null && (
         <div
           style={{
-            width: '100%', maxWidth: 400, marginBottom: 14, padding: '10px 16px',
+            width: '100%', maxWidth: 420, marginBottom: 14, padding: '10px 16px',
             borderRadius: 14, background: volumeChange >= 0 ? 'rgba(16,232,154,0.06)' : 'rgba(255,61,90,0.06)',
             border: `1px solid ${volumeChange >= 0 ? 'rgba(16,232,154,0.2)' : 'rgba(255,61,90,0.2)'}`,
             textAlign: 'center',
@@ -297,7 +318,7 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
 
       {/* PRs */}
       {newPRs.length > 0 && (
-        <div style={{ width: '100%', maxWidth: 400, marginBottom: 14 }}>
+        <div style={{ width: '100%', maxWidth: 420, marginBottom: 14 }}>
           <div style={{
             padding: 14, borderRadius: 16,
             background: 'linear-gradient(135deg, rgba(255,209,102,0.1), rgba(255,140,66,0.06))',
@@ -321,7 +342,7 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
 
       {/* Muscles Trained */}
       {musclesTrained.length > 0 && (
-        <div style={{ width: '100%', maxWidth: 400, marginBottom: 14 }}>
+        <div style={{ width: '100%', maxWidth: 420, marginBottom: 14 }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Muscles Trained</div>
           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
             {musclesTrained.map(m => (
@@ -336,13 +357,14 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
       )}
 
       {/* Session Rating & Notes */}
-      <div className="card" style={{ width: '100%', maxWidth: 400, marginBottom: 16, padding: 14 }}>
-        <div className="section-label" style={{ marginBottom: 8, textAlign: 'center' }}>Rate Session & Add Note</div>
+      <div className="card" style={{ width: '100%', maxWidth: 420, marginBottom: 16, padding: 14 }}>
+        <div className="section-label" style={{ marginBottom: 8, textAlign: 'center' }}>Rate Session &amp; Add Note</div>
         <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 10 }}>
           {[1, 2, 3, 4, 5].map(star => (
             <button
               key={star}
               onClick={() => setRating(star)}
+              aria-label={`Rate ${star} stars`}
               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
             >
               <Star size={24} color="#FBBF24" fill={star <= rating ? '#FBBF24' : 'transparent'} />
@@ -353,15 +375,18 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
           value={sessionNote}
           onChange={e => setSessionNote(e.target.value)}
           placeholder="How did the workout feel? (Optional)"
-          style={{ width: '100%', padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 13, outline: 'none' }}
+          style={{ width: '100%', padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 13, outline: 'none' }}
         />
       </div>
 
       {/* Action buttons */}
-      <div style={{ width: '100%', maxWidth: 400, display: 'flex', gap: 10 }}>
-        <button onClick={handleShare}
+      <div style={{ width: '100%', maxWidth: 420, display: 'flex', gap: 10 }}>
+        <button
+          onClick={handleShare}
           className="btn-secondary"
-          style={{ minHeight: 52, borderRadius: 16, flex: '0 0 54px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          aria-label="Share workout summary"
+          style={{ minHeight: 52, borderRadius: 16, flex: '0 0 54px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
           {copied ? <Check size={18} color="var(--accent-green)" /> : <Share2 size={18} />}
         </button>
         <motion.button

@@ -13,6 +13,7 @@ const SET_TYPE_ORDER: SetType[] = [
 
 interface PersistedWorkoutSnapshot {
   isActive: boolean;
+  isMinimized?: boolean;
   isPaused: boolean;
   sessionId: number | null;
   planName: string;
@@ -26,15 +27,30 @@ interface PersistedWorkoutSnapshot {
   newPRs: { exerciseName: string; weight: number; reps: number }[];
 }
 
-function saveSnapshot(state: Partial<PersistedWorkoutSnapshot>) {
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+function saveSnapshot(state: Partial<PersistedWorkoutSnapshot>, immediate = false) {
   if (typeof window === 'undefined') return;
-  try {
-    if (!state.isActive) {
-      window.localStorage.removeItem(STORAGE_KEY);
-      return;
-    }
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch {}
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+
+  const writeNow = () => {
+    try {
+      if (!state.isActive) {
+        window.localStorage.removeItem(STORAGE_KEY);
+        return;
+      }
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch {}
+  };
+
+  if (immediate || !state.isActive) {
+    writeNow();
+  } else {
+    debounceTimer = setTimeout(writeNow, 220);
+  }
 }
 
 function loadSnapshot(): Partial<PersistedWorkoutSnapshot> | null {
@@ -68,6 +84,7 @@ function recomputeTotals(exercises: ActiveExercise[]) {
 
 interface WorkoutState {
   isActive: boolean;
+  isMinimized: boolean;
   isPaused: boolean;
   sessionId: number | null;
   planName: string;
@@ -79,12 +96,14 @@ interface WorkoutState {
   totalSets: number;
   totalReps: number;
   restTimerActive: boolean;
+  restTimerPaused: boolean;
   restTimeRemaining: number;
   restTimeDuration: number;
   newPRs: { exerciseName: string; weight: number; reps: number }[];
 
   startWorkout: (planName: string, dayName: string, exercises: ActiveExercise[]) => void;
   restoreWorkoutIfAny: () => void;
+  setMinimized: (minimized: boolean) => void;
   completeWorkoutSession: (id: number) => void;
   endWorkout: () => void;
   setSessionId: (id: number) => void;
@@ -102,15 +121,19 @@ interface WorkoutState {
   removeExercise: (index: number) => void;
   swapExercise: (index: number, newExercise: ActiveExercise) => void;
   startRestTimer: (duration: number) => void;
+  toggleRestPause: () => void;
+  resetRestTimer: () => void;
   stopRestTimer: () => void;
   tickTimer: () => void;
   tickRestTimer: () => void;
   addPR: (exerciseName: string, weight: number, reps: number) => void;
   togglePause: () => void;
+  resetElapsedTime: () => void;
 }
 
 export const useWorkoutStore = create<WorkoutState>((set) => ({
   isActive: false,
+  isMinimized: false,
   isPaused: false,
   sessionId: null,
   planName: '',
@@ -122,13 +145,15 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
   totalSets: 0,
   totalReps: 0,
   restTimerActive: false,
+  restTimerPaused: false,
   restTimeRemaining: 0,
-  restTimeDuration: 0,
+  restTimeDuration: 90,
   newPRs: [],
 
   startWorkout: (planName, dayName, exercises) => {
     const nextState = {
       isActive: true,
+      isMinimized: false,
       isPaused: false,
       sessionId: null,
       planName,
@@ -140,10 +165,12 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
       totalSets: 0,
       totalReps: 0,
       restTimerActive: false,
+      restTimerPaused: false,
       restTimeRemaining: 0,
+      restTimeDuration: exercises[0]?.restTime || 90,
       newPRs: [],
     };
-    saveSnapshot(nextState);
+    saveSnapshot(nextState, true);
     set(nextState);
   },
 
@@ -152,6 +179,7 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
     if (snap && snap.isActive) {
       set({
         isActive: true,
+        isMinimized: Boolean(snap.isMinimized),
         isPaused: Boolean(snap.isPaused),
         sessionId: snap.sessionId ?? null,
         planName: snap.planName || 'Workout',
@@ -167,23 +195,29 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
     }
   },
 
-  // Marks the active workout as finished and clears the persisted snapshot immediately
-  // so navigating back from WorkoutCompletePage never re-opens ActiveWorkoutPage or double-saves.
+  setMinimized: (isMinimized) => set((state) => {
+    saveSnapshot({ ...state, isMinimized }, true);
+    return { isMinimized };
+  }),
+
   completeWorkoutSession: (id) => {
-    saveSnapshot({ isActive: false });
+    saveSnapshot({ isActive: false }, true);
     set({
       isActive: false,
+      isMinimized: false,
       isPaused: false,
       restTimerActive: false,
+      restTimerPaused: false,
       restTimeRemaining: 0,
       sessionId: id,
     });
   },
 
   endWorkout: () => {
-    saveSnapshot({ isActive: false });
+    saveSnapshot({ isActive: false }, true);
     set({
       isActive: false,
+      isMinimized: false,
       isPaused: false,
       sessionId: null,
       exercises: [],
@@ -194,13 +228,14 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
       totalReps: 0,
       newPRs: [],
       restTimerActive: false,
+      restTimerPaused: false,
       restTimeRemaining: 0,
     });
   },
 
   setSessionId: (id) => set((state) => {
     const next = { ...state, sessionId: id };
-    saveSnapshot(next);
+    saveSnapshot(next, true);
     return { sessionId: id };
   }),
 
@@ -215,7 +250,7 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
 
     const totals = recomputeTotals(exercises);
     const next = { ...state, exercises, ...totals };
-    saveSnapshot(next);
+    saveSnapshot(next, true);
     return { exercises, ...totals };
   }),
 
@@ -230,7 +265,7 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
 
     const totals = recomputeTotals(exercises);
     const next = { ...state, exercises, ...totals };
-    saveSnapshot(next);
+    saveSnapshot(next, true);
     return { exercises, ...totals };
   }),
 
@@ -238,15 +273,23 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
     const exercises = [...state.exercises];
     const exercise = { ...exercises[exerciseIndex] };
     const sets = [...exercise.sets];
+    const previousFirstWeight = sets[0]?.weight;
+
     if (setIndex === 0) {
-      exercise.sets = sets.map((s, idx) => (s.isComplete && idx !== 0 ? s : { ...s, weight }));
+      exercise.sets = sets.map((s, idx) => {
+        if (idx === 0) return { ...s, weight };
+        if (!s.isComplete && s.weight === previousFirstWeight) {
+          return { ...s, weight };
+        }
+        return s;
+      });
     } else {
       sets[setIndex] = { ...sets[setIndex], weight };
       exercise.sets = sets;
     }
     exercises[exerciseIndex] = exercise;
     const totals = recomputeTotals(exercises);
-    saveSnapshot({ ...state, exercises, ...totals });
+    saveSnapshot({ ...state, exercises, ...totals }, false);
     return { exercises, ...totals };
   }),
 
@@ -254,15 +297,23 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
     const exercises = [...state.exercises];
     const exercise = { ...exercises[exerciseIndex] };
     const sets = [...exercise.sets];
+    const previousFirstReps = sets[0]?.reps;
+
     if (setIndex === 0) {
-      exercise.sets = sets.map((s, idx) => (s.isComplete && idx !== 0 ? s : { ...s, reps }));
+      exercise.sets = sets.map((s, idx) => {
+        if (idx === 0) return { ...s, reps };
+        if (!s.isComplete && s.reps === previousFirstReps) {
+          return { ...s, reps };
+        }
+        return s;
+      });
     } else {
       sets[setIndex] = { ...sets[setIndex], reps };
       exercise.sets = sets;
     }
     exercises[exerciseIndex] = exercise;
     const totals = recomputeTotals(exercises);
-    saveSnapshot({ ...state, exercises, ...totals });
+    saveSnapshot({ ...state, exercises, ...totals }, false);
     return { exercises, ...totals };
   }),
 
@@ -275,7 +326,7 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
     sets[setIndex] = { ...sets[setIndex], setType: SET_TYPE_ORDER[nextIdx] };
     exercise.sets = sets;
     exercises[exerciseIndex] = exercise;
-    saveSnapshot({ ...state, exercises });
+    saveSnapshot({ ...state, exercises }, false);
     return { exercises };
   }),
 
@@ -297,7 +348,7 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
     exercise.targetSets = exercise.sets.length;
     exercise.isComplete = false;
     exercises[exerciseIndex] = exercise;
-    saveSnapshot({ ...state, exercises });
+    saveSnapshot({ ...state, exercises }, true);
     return { exercises };
   }),
 
@@ -313,31 +364,31 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
     exercise.isComplete = sets.every(s => s.isComplete);
     exercises[exerciseIndex] = exercise;
     const totals = recomputeTotals(exercises);
-    saveSnapshot({ ...state, exercises, ...totals });
+    saveSnapshot({ ...state, exercises, ...totals }, true);
     return { exercises, ...totals };
   }),
 
   goToExercise: (index) => set((state) => {
-    saveSnapshot({ ...state, currentExerciseIndex: index });
+    saveSnapshot({ ...state, currentExerciseIndex: index }, false);
     return { currentExerciseIndex: index };
   }),
 
   nextExercise: () => set((state) => {
     const nextIdx = Math.min(state.currentExerciseIndex + 1, state.exercises.length - 1);
-    saveSnapshot({ ...state, currentExerciseIndex: nextIdx });
+    saveSnapshot({ ...state, currentExerciseIndex: nextIdx }, false);
     return { currentExerciseIndex: nextIdx };
   }),
 
   prevExercise: () => set((state) => {
     const prevIdx = Math.max(state.currentExerciseIndex - 1, 0);
-    saveSnapshot({ ...state, currentExerciseIndex: prevIdx });
+    saveSnapshot({ ...state, currentExerciseIndex: prevIdx }, false);
     return { currentExerciseIndex: prevIdx };
   }),
 
   addExercise: (exercise) => set((state) => {
     const exercises = [...state.exercises, exercise];
     const currentExerciseIndex = exercises.length - 1;
-    saveSnapshot({ ...state, exercises, currentExerciseIndex });
+    saveSnapshot({ ...state, exercises, currentExerciseIndex }, true);
     return { exercises, currentExerciseIndex };
   }),
 
@@ -346,7 +397,7 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
     const exercises = state.exercises.filter((_, i) => i !== index);
     const currentExerciseIndex = Math.min(state.currentExerciseIndex, exercises.length - 1);
     const totals = recomputeTotals(exercises);
-    saveSnapshot({ ...state, exercises, currentExerciseIndex, ...totals });
+    saveSnapshot({ ...state, exercises, currentExerciseIndex, ...totals }, true);
     return { exercises, currentExerciseIndex, ...totals };
   }),
 
@@ -354,34 +405,47 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
     const exercises = [...state.exercises];
     exercises[index] = newExercise;
     const totals = recomputeTotals(exercises);
-    saveSnapshot({ ...state, exercises, ...totals });
+    saveSnapshot({ ...state, exercises, ...totals }, true);
     return { exercises, ...totals };
   }),
 
   startRestTimer: (duration) => set({
     restTimerActive: true,
-    restTimeRemaining: duration,
-    restTimeDuration: duration,
+    restTimerPaused: false,
+    restTimeRemaining: Math.max(1, duration),
+    restTimeDuration: Math.max(1, duration),
   }),
+
+  toggleRestPause: () => set((state) => ({
+    restTimerPaused: !state.restTimerPaused,
+  })),
+
+  resetRestTimer: () => set((state) => ({
+    restTimerActive: true,
+    restTimerPaused: false,
+    restTimeRemaining: state.restTimeDuration || 90,
+  })),
 
   stopRestTimer: () => set({
     restTimerActive: false,
+    restTimerPaused: false,
     restTimeRemaining: 0,
   }),
 
   tickTimer: () => set((state) => {
-    if (state.isPaused) return {};
+    if (state.isPaused || !state.isActive) return {};
     const elapsedTime = state.elapsedTime + 1;
     if (elapsedTime % 5 === 0) {
-      saveSnapshot({ ...state, elapsedTime });
+      saveSnapshot({ ...state, elapsedTime }, false);
     }
     return { elapsedTime };
   }),
 
   tickRestTimer: () => set((state) => {
+    if (!state.restTimerActive || state.restTimerPaused) return {};
     const remaining = state.restTimeRemaining - 1;
     if (remaining <= 0) {
-      return { restTimerActive: false, restTimeRemaining: 0 };
+      return { restTimerActive: false, restTimerPaused: false, restTimeRemaining: 0 };
     }
     return { restTimeRemaining: remaining };
   }),
@@ -389,13 +453,18 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
   addPR: (exerciseName, weight, reps) => set((state) => {
     const filtered = state.newPRs.filter(p => p.exerciseName !== exerciseName);
     const newPRs = [...filtered, { exerciseName, weight, reps }];
-    saveSnapshot({ ...state, newPRs });
+    saveSnapshot({ ...state, newPRs }, true);
     return { newPRs };
   }),
 
   togglePause: () => set((state) => {
     const isPaused = !state.isPaused;
-    saveSnapshot({ ...state, isPaused });
+    saveSnapshot({ ...state, isPaused }, true);
     return { isPaused };
+  }),
+
+  resetElapsedTime: () => set((state) => {
+    saveSnapshot({ ...state, elapsedTime: 0 }, true);
+    return { elapsedTime: 0 };
   }),
 }));

@@ -16,18 +16,31 @@ const tabs = [
   { id: 'home', label: 'Home', icon: Home },
   { id: 'plans', label: 'Plans', icon: ClipboardList },
   { id: 'start', label: 'Start', icon: Play },
+  { id: 'exercises', label: 'Exercises', icon: Dumbbell },
   { id: 'progress', label: 'Progress', icon: BarChart3 },
   { id: 'profile', label: 'Profile', icon: User },
 ];
 
 export default function BottomNav() {
-  const { activeTab, setActiveTab } = useUIStore();
-  const { equipment: userEquipment, barWeight, dumbbellWeight, exerciseVariety, defaultRestTime } = useUserStore();
-  const { startWorkout } = useWorkoutStore();
+  const activeTab = useUIStore(s => s.activeTab);
+  const setActiveTab = useUIStore(s => s.setActiveTab);
+  const userEquipment = useUserStore(s => s.equipment);
+  const barWeight = useUserStore(s => s.barWeight);
+  const dumbbellWeight = useUserStore(s => s.dumbbellWeight);
+  const exerciseVariety = useUserStore(s => s.exerciseVariety);
+  const defaultRestTime = useUserStore(s => s.defaultRestTime);
+
+  const startWorkout = useWorkoutStore(s => s.startWorkout);
+  const workoutActive = useWorkoutStore(s => s.isActive);
+  const setMinimized = useWorkoutStore(s => s.setMinimized);
   const [showQuickLaunch, setShowQuickLaunch] = useState(false);
 
   const handleTabClick = (tabId: string) => {
     if (tabId === 'start') {
+      if (workoutActive) {
+        setMinimized(false);
+        return;
+      }
       setShowQuickLaunch(true);
       return;
     }
@@ -147,7 +160,7 @@ export default function BottomNav() {
 
   return (
     <>
-      <nav className="bottom-nav">
+      <nav className="bottom-nav" aria-label="Main navigation">
         {tabs.map((tab) => {
           if (tab.id === 'start') {
             return (
@@ -155,15 +168,16 @@ export default function BottomNav() {
                 key={tab.id}
                 className="nav-start-btn"
                 onClick={() => handleTabClick(tab.id)}
-                aria-label="Start workout"
+                aria-label={workoutActive ? 'Resume active workout' : 'Start workout'}
+                title={workoutActive ? 'Resume active workout' : 'Launch workout'}
               >
                 <div style={{
-                  position: 'absolute', width: 64, height: 64, borderRadius: '50%',
-                  border: '2px solid rgba(255,61,90,0.25)',
+                  position: 'absolute', width: 62, height: 62, borderRadius: '50%',
+                  border: '2px solid rgba(255,61,90,0.28)',
                   animation: 'pulse-dot 3s ease-in-out infinite',
                   pointerEvents: 'none',
                 }} />
-                <Play size={24} fill="white" />
+                <Play size={22} fill="currentColor" />
               </button>
             );
           }
@@ -174,8 +188,9 @@ export default function BottomNav() {
               className={`nav-item ${isActive ? 'active' : ''}`}
               onClick={() => handleTabClick(tab.id)}
               aria-label={tab.label}
+              aria-current={isActive ? 'page' : undefined}
             >
-              <tab.icon size={22} strokeWidth={isActive ? 2.5 : 1.5} />
+              <tab.icon size={20} strokeWidth={isActive ? 2.5 : 1.7} />
               <span className="nav-label" style={{ fontWeight: isActive ? 700 : 500 }}>{tab.label}</span>
               {isActive && (
                 <motion.div
@@ -194,15 +209,30 @@ export default function BottomNav() {
         })}
       </nav>
 
-      {/* Quick Launch Bottom Sheet */}
+      {/* Quick Launch Bottom Sheet with Drag-to-Dismiss */}
       <AnimatePresence>
         {showQuickLaunch && (
           <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowQuickLaunch(false)}>
-            <motion.div className="modal-content" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()}>
+            <motion.div
+              className="modal-content"
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              drag="y"
+              dragConstraints={{ top: 0, bottom: 0 }}
+              dragElastic={{ top: 0, bottom: 0.6 }}
+              onDragEnd={(_, info) => {
+                if (info.offset.y > 100 || info.velocity.y > 450) {
+                  setShowQuickLaunch(false);
+                }
+              }}
+              transition={{ type: 'spring', damping: 26, stiffness: 300 }}
+              onClick={e => e.stopPropagation()}
+            >
               <div className="modal-handle" />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                 <h3 className="font-display" style={{ fontSize: 19, fontWeight: 800 }}>Launch Workout</h3>
-                <button onClick={() => setShowQuickLaunch(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
+                <button onClick={() => setShowQuickLaunch(false)} aria-label="Close modal" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}><X size={18} /></button>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <button onClick={handleStartActivePlanDay} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', border: '1px solid rgba(255,61,90,0.3)' }}>

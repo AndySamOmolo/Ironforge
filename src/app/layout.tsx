@@ -15,7 +15,7 @@ const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jet
 
 export const metadata: Metadata = {
   title: "IronForge — Forge Your Best Self",
-  description: "World-class workout tracker with 2,200+ exercises, real-time tracking, and intelligent training suggestions.",
+  description: "World-class workout tracker with 2,240+ exercises, real-time tracking, and intelligent training suggestions.",
   manifest: "/manifest.json",
   icons: {
     icon: [
@@ -35,8 +35,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  viewportFit: "cover",
   themeColor: "#0A0A0F",
 };
 

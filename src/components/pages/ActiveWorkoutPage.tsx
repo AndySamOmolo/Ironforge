@@ -3,16 +3,17 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  X, Check, Plus, Minus, SkipForward, ChevronLeft, ChevronRight, Dumbbell,
+  X, Check, Plus, Minus, SkipForward, ChevronLeft, ChevronRight, ChevronDown, Dumbbell,
   ArrowLeftRight, ExternalLink, StickyNote, Play, Pause, AlertTriangle,
-  BookOpen, Trash2, Search, TrendingUp, Minimize2, Maximize2, Sun,
+  BookOpen, Trash2, Search, TrendingUp, Minimize2, Maximize2, Sun, Timer, RotateCcw,
 } from 'lucide-react';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
 import { useUserStore } from '@/lib/store/userStore';
 import { db } from '@/lib/db/schema';
 import { MUSCLE_COLORS, SetType } from '@/lib/types';
 import type { Exercise } from '@/lib/types';
-import { getSwapSuggestions, calculatePlates } from '@/lib/utils/swapEngine';
+import { getSwapSuggestions } from '@/lib/utils/swapEngine';
+import { calculatePlates, getPlateColor } from '@/lib/utils/plateCalculator';
 import { getProgressionSuggestion, estimate1RM, type ProgressionSuggestion } from '@/lib/utils/progressionEngine';
 import { matchesUserEquipment } from '@/lib/utils/exerciseResolver';
 import { getWorkoutStartingWeight, createKeepScreenAwakeController } from '@/lib/utils/workoutDefaults';
@@ -29,46 +30,451 @@ import ExerciseMedia from '@/components/ui/ExerciseMedia';
 interface ActiveWorkoutPageProps { onComplete: () => void; }
 
 const SET_TYPE_BADGE: Record<string, { label: string; color: string; bg: string; title: string }> = {
-  [SetType.Normal]: { label: '', color: 'var(--text-muted)', bg: 'var(--bg-elevated)', title: 'Normal Set (tap to change)' },
+  [SetType.Normal]: { label: '', color: 'var(--text-muted)', bg: 'var(--bg-elevated)', title: 'Normal Set (tap to cycle type)' },
   [SetType.Warmup]: { label: 'W', color: '#F59E0B', bg: 'rgba(245,158,11,0.16)', title: 'Warmup Set' },
   [SetType.DropSet]: { label: 'D', color: '#A855F7', bg: 'rgba(168,85,247,0.16)', title: 'Drop Set' },
   [SetType.Failure]: { label: 'F', color: '#FF3D5A', bg: 'rgba(255,61,90,0.16)', title: 'To Failure' },
   [SetType.AMRAP]: { label: 'A', color: '#22D3EE', bg: 'rgba(34,211,238,0.16)', title: 'AMRAP Set' },
 };
 
+// Shared singleton AudioContext so WebViews never hit hardware context limits
+let sharedAudioCtx: AudioContext | null = null;
+function getSharedAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!sharedAudioCtx || sharedAudioCtx.state === 'closed') {
+      sharedAudioCtx = new AudioCtx();
+    }
+    if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
+      void sharedAudioCtx.resume().catch(() => {});
+    }
+    return sharedAudioCtx;
+  } catch {
+    return null;
+  }
+}
+
+export function formatWorkoutSeconds(sec: number) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  return h > 0
+    ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+    : `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Isolated leaf subscriber for the header stopwatch so 1Hz ticks never re-render ActiveWorkoutPage.
+ */
+function WorkoutHeaderStopwatch() {
+  const elapsedTime = useWorkoutStore(s => s.elapsedTime);
+  const isPaused = useWorkoutStore(s => s.isPaused);
+  const togglePause = useWorkoutStore(s => s.togglePause);
+  const resetElapsedTime = useWorkoutStore(s => s.resetElapsedTime);
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+      <span className="font-mono" style={{
+        color: isPaused ? 'var(--accent-yellow)' : 'var(--accent-red)',
+        fontWeight: 800, fontSize: 13,
+      }}>
+        ⏱ {formatWorkoutSeconds(elapsedTime)}
+      </span>
+      <button
+        onClick={togglePause}
+        aria-label={isPaused ? 'Start workout timer' : 'Pause workout timer'}
+        style={{
+          minHeight: 30, padding: '4px 10px', borderRadius: 8,
+          background: isPaused ? 'rgba(16,232,154,0.16)' : 'rgba(255,61,90,0.10)',
+          border: `1px solid ${isPaused ? 'rgba(16,232,154,0.38)' : 'rgba(255,61,90,0.24)'}`,
+          color: isPaused ? 'var(--accent-green)' : 'var(--accent-red)',
+          cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4,
+          fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em',
+        }}
+      >
+        {isPaused ? <Play size={11} fill="currentColor" /> : <Pause size={11} />}
+        <span>{isPaused ? 'Start Timer' : 'Pause'}</span>
+      </button>
+      {elapsedTime > 0 && (
+        <button
+          onClick={resetElapsedTime}
+          aria-label="Reset workout stopwatch"
+          title="Reset stopwatch to 00:00"
+          style={{
+            width: 28, height: 28, borderRadius: 7,
+            background: 'var(--bg-glass)', border: '1px solid var(--border-subtle)',
+            color: 'var(--text-muted)', cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <RotateCcw size={11} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Isolated leaf subscriber for the footer elapsed time counter.
+ */
+function WorkoutFooterElapsedStat() {
+  const elapsedTime = useWorkoutStore(s => s.elapsedTime);
+  return (
+    <div style={{ textAlign: 'center' }}>
+      <div className="font-mono" style={{ fontSize: 15, fontWeight: 800, color: 'var(--accent-orange)' }}>
+        {formatWorkoutSeconds(elapsedTime)}
+      </div>
+      <div className="section-label" style={{ fontSize: 9 }}>Time</div>
+    </div>
+  );
+}
+
+/**
+ * Isolated leaf subscriber for the Rest Timer (both Fullscreen Overlay and Minimized Floating Bar).
+ */
+/**
+ * Always-accessible Rest & Interval Timer Control Bar with an explicit "Start Timer" button,
+ * preset duration chips (30s, 60s, 90s, 120s, 180s), and live Pause / Resume / Reset controls.
+ */
+function WorkoutRestTimerBar({ defaultSeconds }: { defaultSeconds: number }) {
+  const restTimerActive = useWorkoutStore(s => s.restTimerActive);
+  const restTimerPaused = useWorkoutStore(s => s.restTimerPaused);
+  const restTimeRemaining = useWorkoutStore(s => s.restTimeRemaining);
+  const restTimeDuration = useWorkoutStore(s => s.restTimeDuration);
+  const startRestTimer = useWorkoutStore(s => s.startRestTimer);
+  const toggleRestPause = useWorkoutStore(s => s.toggleRestPause);
+  const resetRestTimer = useWorkoutStore(s => s.resetRestTimer);
+  const stopRestTimer = useWorkoutStore(s => s.stopRestTimer);
+
+  const [presetSeconds, setPresetSeconds] = useState<number>(defaultSeconds || 90);
+
+  useEffect(() => {
+    if (defaultSeconds && defaultSeconds > 0) {
+      setPresetSeconds(defaultSeconds);
+    }
+  }, [defaultSeconds]);
+
+  const pct = restTimerActive && restTimeDuration > 0
+    ? Math.max(0, Math.min(100, ((restTimeDuration - restTimeRemaining) / restTimeDuration) * 100))
+    : 0;
+
+  return (
+    <div className="card" style={{ padding: '12px 14px', border: restTimerActive ? '1px solid rgba(16,232,154,0.38)' : '1px solid var(--border-subtle)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 9,
+            background: restTimerActive ? 'rgba(16,232,154,0.14)' : 'rgba(139,92,246,0.12)',
+            color: restTimerActive ? 'var(--accent-green)' : 'var(--accent-purple)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            <Timer size={16} />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-primary)' }}>
+              {restTimerActive
+                ? restTimerPaused
+                  ? `Rest Timer Paused (${formatWorkoutSeconds(restTimeRemaining)})`
+                  : `Resting • ${formatWorkoutSeconds(restTimeRemaining)} left`
+                : 'Rest & Interval Timer'}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+              {restTimerActive ? `Target: ${restTimeDuration}s countdown` : 'Pick duration and tap Start Timer anytime'}
+            </div>
+          </div>
+        </div>
+
+        {!restTimerActive ? (
+          <button
+            onClick={() => startRestTimer(presetSeconds)}
+            className="btn-primary"
+            style={{ width: 'auto', minHeight: 38, padding: '8px 16px', fontSize: 12, borderRadius: 10, flexShrink: 0 }}
+          >
+            <Play size={13} fill="currentColor" /> Start Timer ({presetSeconds}s)
+          </button>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <button
+              onClick={toggleRestPause}
+              className={restTimerPaused ? 'btn-primary' : 'btn-secondary'}
+              style={{ width: 'auto', minHeight: 34, padding: '6px 12px', fontSize: 11, borderRadius: 9 }}
+            >
+              {restTimerPaused ? <Play size={12} fill="currentColor" /> : <Pause size={12} />}
+              <span>{restTimerPaused ? 'Start' : 'Pause'}</span>
+            </button>
+            <button
+              onClick={resetRestTimer}
+              className="btn-secondary"
+              style={{ minHeight: 34, padding: '6px 10px', fontSize: 11, borderRadius: 9 }}
+              title="Reset countdown"
+            >
+              <RotateCcw size={12} /> Reset
+            </button>
+            <button
+              onClick={stopRestTimer}
+              className="btn-cancel"
+              style={{ minHeight: 34, padding: '6px 10px', fontSize: 11, borderRadius: 9 }}
+            >
+              Skip
+            </button>
+          </div>
+        )}
+      </div>
+
+      {restTimerActive && (
+        <div className="progress-bar" style={{ height: 6, marginBottom: 10 }}>
+          <div
+            className="progress-bar-fill"
+            style={{
+              width: `${100 - pct}%`,
+              background: restTimeRemaining > 10 ? 'var(--gradient-mint)' : 'var(--gradient-fire)',
+              transition: 'width 0.9s linear',
+            }}
+          />
+        </div>
+      )}
+
+      {/* Duration Preset Chips */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        {[30, 60, 90, 120, 180].map(sec => {
+          const isSel = (restTimerActive ? restTimeDuration : presetSeconds) === sec;
+          return (
+            <button
+              key={sec}
+              onClick={() => {
+                setPresetSeconds(sec);
+                if (restTimerActive) startRestTimer(sec);
+              }}
+              className={`filter-chip ${isSel ? 'active' : ''}`}
+              style={{ padding: '5px 11px', fontSize: 11, minHeight: 30, flex: '1 1 auto' }}
+            >
+              {sec < 60 ? `${sec}s` : `${sec / 60}m (${sec}s)`}
+            </button>
+          );
+        })}
+        <button
+          onClick={() => {
+            const next = Math.max(15, (restTimerActive ? restTimeRemaining : presetSeconds) + 15);
+            setPresetSeconds(next);
+            if (restTimerActive) startRestTimer(next);
+          }}
+          className="btn-secondary"
+          style={{ padding: '5px 10px', fontSize: 11, minHeight: 30, borderRadius: 999 }}
+        >
+          +15s
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Isolated leaf subscriber for the Rest Timer (both Fullscreen Overlay and Minimized Floating Bar).
+ */
+function RestTimerLeaf({
+  exerciseName,
+  restMinimized,
+  setRestMinimized,
+  playFeedbackTone,
+  triggerHaptic,
+  countdownSound,
+}: {
+  exerciseName: string;
+  restMinimized: boolean;
+  setRestMinimized: (val: boolean) => void;
+  playFeedbackTone: (mode: 'set' | 'finish' | 'rest' | 'tick' | 'pr') => void;
+  triggerHaptic: (mode?: 'light' | 'success') => void;
+  countdownSound: boolean;
+}) {
+  const restTimerActive = useWorkoutStore(s => s.restTimerActive);
+  const restTimerPaused = useWorkoutStore(s => s.restTimerPaused);
+  const restTimeRemaining = useWorkoutStore(s => s.restTimeRemaining);
+  const restTimeDuration = useWorkoutStore(s => s.restTimeDuration);
+  const startRestTimer = useWorkoutStore(s => s.startRestTimer);
+  const toggleRestPause = useWorkoutStore(s => s.toggleRestPause);
+  const resetRestTimer = useWorkoutStore(s => s.resetRestTimer);
+  const stopRestTimer = useWorkoutStore(s => s.stopRestTimer);
+  const prevRemainingRef = useRef(restTimeRemaining);
+
+  useEffect(() => {
+    const prev = prevRemainingRef.current;
+    prevRemainingRef.current = restTimeRemaining;
+
+    if (prev > 0 && restTimeRemaining === 0) {
+      playFeedbackTone('rest');
+      triggerHaptic('success');
+    } else if (restTimerActive && !restTimerPaused && countdownSound && restTimeRemaining > 0 && restTimeRemaining <= 3) {
+      playFeedbackTone('tick');
+    }
+  }, [restTimeRemaining, restTimerActive, restTimerPaused, countdownSound, playFeedbackTone, triggerHaptic]);
+
+  return (
+    <>
+      <AnimatePresence>
+        {restTimerActive && restMinimized && (
+          <motion.div
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 80, opacity: 0 }}
+            style={{
+              position: 'fixed', left: 16, right: 16, bottom: 'calc(16px + env(safe-area-inset-bottom))',
+              maxWidth: 520, margin: '0 auto',
+              zIndex: 120, background: 'var(--bg-overlay)', backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(16,232,154,0.38)', borderRadius: 16, padding: '10px 14px',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+              boxShadow: '0 12px 32px rgba(0,0,0,0.45)',
+            }}
+          >
+            <div
+              onClick={() => setRestMinimized(false)}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', flex: 1, minWidth: 0 }}
+            >
+              <div className="font-mono" style={{ fontSize: 20, fontWeight: 800, color: restTimerPaused ? 'var(--accent-yellow)' : restTimeRemaining > 10 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                {restTimeRemaining}s
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 700 }}>
+                  {restTimerPaused ? 'Rest Paused • Tap to expand' : 'Resting • Tap to expand'}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textTransform: 'capitalize' }}>
+                  {exerciseName}
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button
+                onClick={toggleRestPause}
+                className={restTimerPaused ? 'btn-primary' : 'btn-secondary'}
+                style={{ padding: '6px 10px', fontSize: 11, minHeight: 34, borderRadius: 8, width: 'auto' }}
+              >
+                {restTimerPaused ? <Play size={12} fill="currentColor" /> : <Pause size={12} />}
+                <span>{restTimerPaused ? 'Start' : 'Pause'}</span>
+              </button>
+              <button onClick={() => startRestTimer(restTimeRemaining + 15)} className="btn-secondary" style={{ padding: '6px 10px', fontSize: 11, minHeight: 34, borderRadius: 8 }}>+15s</button>
+              <button onClick={stopRestTimer} className="btn-cancel" style={{ padding: '6px 10px', fontSize: 11, minHeight: 34, borderRadius: 8 }}>Skip</button>
+              <button onClick={() => setRestMinimized(false)} className="btn-ghost" style={{ padding: 6, minHeight: 34 }} title="Expand timer"><Maximize2 size={14} /></button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {restTimerActive && !restMinimized && (
+          <motion.div className="rest-timer-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <div style={{ textAlign: 'center', width: '100%', maxWidth: 380, padding: '0 20px' }}>
+              <div className="section-label" style={{ fontSize: 14, marginBottom: 4 }}>
+                {restTimerPaused ? 'REST TIMER (PAUSED)' : 'REST TIMER'}
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20, textTransform: 'capitalize', fontWeight: 600 }}>{exerciseName}</div>
+              <div className="progress-ring-container" style={{ width: 200, height: 200, margin: '0 auto' }}>
+                <svg width="200" height="200" viewBox="0 0 200 200">
+                  <circle cx="100" cy="100" r="88" fill="none" stroke="var(--border-subtle)" strokeWidth="6" />
+                  <circle
+                    cx="100"
+                    cy="100"
+                    r="88"
+                    fill="none"
+                    stroke={restTimerPaused ? 'var(--accent-yellow)' : restTimeRemaining > 10 ? 'var(--accent-green)' : restTimeRemaining > 5 ? 'var(--accent-yellow)' : 'var(--accent-red)'}
+                    strokeWidth="6"
+                    strokeLinecap="round"
+                    strokeDasharray={2 * Math.PI * 88}
+                    strokeDashoffset={2 * Math.PI * 88 * (1 - restTimeRemaining / Math.max(1, restTimeDuration))}
+                    transform="rotate(-90 100 100)"
+                    style={{ transition: 'stroke-dashoffset 1s linear, stroke 0.4s' }}
+                  />
+                </svg>
+                <div className="progress-ring-text">
+                  <div className="font-mono" style={{ fontSize: 52, fontWeight: 800 }}>{restTimeRemaining}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{restTimerPaused ? 'paused' : 'seconds'}</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 24, justifyContent: 'center', flexWrap: 'wrap' }}>
+                <button className="btn-secondary" onClick={() => startRestTimer(Math.max(5, restTimeRemaining - 15))} style={{ padding: '12px 16px', borderRadius: 14, minHeight: 48 }}>-15s</button>
+                <button
+                  className={restTimerPaused ? 'btn-primary' : 'btn-secondary'}
+                  onClick={toggleRestPause}
+                  style={{ padding: '12px 22px', width: 'auto', borderRadius: 14, minHeight: 48 }}
+                >
+                  {restTimerPaused ? <Play size={16} fill="currentColor" /> : <Pause size={16} />}
+                  <span>{restTimerPaused ? 'Start Timer' : 'Pause'}</span>
+                </button>
+                <button className="btn-secondary" onClick={resetRestTimer} style={{ padding: '12px 16px', borderRadius: 14, minHeight: 48 }} title="Reset timer">
+                  <RotateCcw size={16} />
+                </button>
+                <button className="btn-secondary" onClick={() => startRestTimer(restTimeRemaining + 15)} style={{ padding: '12px 16px', borderRadius: 14, minHeight: 48 }}>+15s</button>
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <motion.button whileTap={{ scale: 0.95 }} className="btn-primary" onClick={stopRestTimer} style={{ padding: '12px 32px', width: 'auto', borderRadius: 14, minHeight: 46 }}>
+                  <SkipForward size={16} /> Skip Rest
+                </motion.button>
+              </div>
+              <button
+                onClick={() => setRestMinimized(true)}
+                className="btn-ghost"
+                style={{ marginTop: 14, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)' }}
+              >
+                <Minimize2 size={14} /> Minimize to View Exercise Demo
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
+
 export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps) {
-  const {
-    exercises, currentExerciseIndex, elapsedTime, totalVolume, totalSets,
-    planName, dayName, sessionId, isPaused,
-    completeSet, uncompleteSet, updateSetWeight, updateSetReps,
-    cycleSetType, addSet, removeSet,
-    goToExercise, nextExercise, prevExercise,
-    addExercise, removeExercise,
-    tickTimer, restTimerActive, restTimeRemaining, restTimeDuration,
-    startRestTimer, stopRestTimer, tickRestTimer, endWorkout, togglePause,
-    addPR, setSessionId, completeWorkoutSession,
-  } = useWorkoutStore();
-  const {
-    defaultRestTime,
-    unitSystem,
-    soundEnabled,
-    hapticEnabled,
-    barWeight,
-    dumbbellWeight,
-    equipment: userEquipment,
-    weightIncrement,
-    autoAdvance,
-    autoStartRest,
-    restTimerEnabled,
-    keepScreenOn,
-    showTimer,
-    countdownSound,
-  } = useUserStore();
+  // Atomic Zustand selectors (no elapsedTime or restTimeRemaining subscription in parent!)
+  const exercises = useWorkoutStore(s => s.exercises);
+  const currentExerciseIndex = useWorkoutStore(s => s.currentExerciseIndex);
+  const totalVolume = useWorkoutStore(s => s.totalVolume);
+  const totalSets = useWorkoutStore(s => s.totalSets);
+  const planName = useWorkoutStore(s => s.planName);
+  const dayName = useWorkoutStore(s => s.dayName);
+  const sessionId = useWorkoutStore(s => s.sessionId);
+
+  const completeSet = useWorkoutStore(s => s.completeSet);
+  const uncompleteSet = useWorkoutStore(s => s.uncompleteSet);
+  const updateSetWeight = useWorkoutStore(s => s.updateSetWeight);
+  const updateSetReps = useWorkoutStore(s => s.updateSetReps);
+  const cycleSetType = useWorkoutStore(s => s.cycleSetType);
+  const addSet = useWorkoutStore(s => s.addSet);
+  const removeSet = useWorkoutStore(s => s.removeSet);
+  const goToExercise = useWorkoutStore(s => s.goToExercise);
+  const nextExercise = useWorkoutStore(s => s.nextExercise);
+  const prevExercise = useWorkoutStore(s => s.prevExercise);
+  const addExercise = useWorkoutStore(s => s.addExercise);
+  const removeExercise = useWorkoutStore(s => s.removeExercise);
+  const startRestTimer = useWorkoutStore(s => s.startRestTimer);
+  const endWorkout = useWorkoutStore(s => s.endWorkout);
+  const setMinimized = useWorkoutStore(s => s.setMinimized);
+  const addPR = useWorkoutStore(s => s.addPR);
+  const setSessionId = useWorkoutStore(s => s.setSessionId);
+  const completeWorkoutSession = useWorkoutStore(s => s.completeWorkoutSession);
+
+  const defaultRestTime = useUserStore(s => s.defaultRestTime);
+  const unitSystem = useUserStore(s => s.unitSystem);
+  const soundEnabled = useUserStore(s => s.soundEnabled);
+  const hapticEnabled = useUserStore(s => s.hapticEnabled);
+  const barWeight = useUserStore(s => s.barWeight);
+  const dumbbellWeight = useUserStore(s => s.dumbbellWeight);
+  const userEquipment = useUserStore(s => s.equipment);
+  const weightIncrement = useUserStore(s => s.weightIncrement);
+  const autoAdvance = useUserStore(s => s.autoAdvance);
+  const autoStartRest = useUserStore(s => s.autoStartRest);
+  const restTimerEnabled = useUserStore(s => s.restTimerEnabled);
+  const keepScreenOn = useUserStore(s => s.keepScreenOn);
+  const showTimer = useUserStore(s => s.showTimer);
+  const countdownSound = useUserStore(s => s.countdownSound);
 
   const [showNumpad, setShowNumpad] = useState<{ field: 'weight' | 'reps'; exerciseIdx: number; setIdx: number } | null>(null);
   const [numpadValue, setNumpadValue] = useState('0');
+  const [numpadFresh, setNumpadFresh] = useState(true);
   const [imgErrors, setImgErrors] = useState<Set<string>>(new Set());
   const [activeMediaMode, setActiveMediaMode] = useState<'gif' | 'animated-images' | 'static-image' | 'none'>('gif');
+  const [mediaExpanded, setMediaExpanded] = useState(false);
   const [showSwap, setShowSwap] = useState(false);
   const [swapSuggestions, setSwapSuggestions] = useState<{ exercise: Exercise; score: number; matchTags: string[]; category: string }[]>([]);
   const [showAddExercise, setShowAddExercise] = useState(false);
@@ -78,6 +484,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
   const [showPlates, setShowPlates] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [confirmRemoveEx, setConfirmRemoveEx] = useState(false);
   const [restMinimized, setRestMinimized] = useState(false);
   const [screenAwakeLocked, setScreenAwakeLocked] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
@@ -85,27 +492,10 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
   const [historicalBest1RM, setHistoricalBest1RM] = useState<number>(0);
   const [lastBestSet, setLastBestSet] = useState<{ weight: number; reps: number } | null>(null);
   const [overloadTip, setOverloadTip] = useState<ProgressionSuggestion | null>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const restTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isFinishingRef = useRef(false);
 
   const stepWeight = weightIncrement && weightIncrement > 0 ? weightIncrement : 2.5;
   const unitLabel = unitSystem === 'metric' ? 'kg' : 'lbs';
-
-  useEffect(() => {
-    timerRef.current = setInterval(() => tickTimer(), 1000);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [tickTimer]);
-
-  useEffect(() => {
-    if (restTimerActive) {
-      restTimerRef.current = setInterval(() => tickRestTimer(), 1000);
-      return () => { if (restTimerRef.current) clearInterval(restTimerRef.current); };
-    } else {
-      setRestMinimized(false);
-      if (restTimerRef.current) clearInterval(restTimerRef.current);
-    }
-  }, [restTimerActive, tickRestTimer]);
 
   // Multi-layered Screen Wake Lock controller so the screen never turns off mid-workout
   useEffect(() => {
@@ -127,6 +517,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
   // Load exercise info, historical PRs, and progressive overload suggestion when current exercise changes
   useEffect(() => {
     let cancelled = false;
+    setConfirmRemoveEx(false);
     const loadExerciseInfoAndHistory = async () => {
       if (!currentExercise) return;
       try {
@@ -209,11 +600,10 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
   }, [hapticEnabled]);
 
   const playFeedbackTone = useCallback((mode: 'set' | 'finish' | 'rest' | 'tick' | 'pr') => {
-    if (!soundEnabled || typeof window === 'undefined') return;
+    if (!soundEnabled) return;
+    const ctx = getSharedAudioContext();
+    if (!ctx) return;
     try {
-      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
       const now = ctx.currentTime;
       const gain = ctx.createGain();
       gain.connect(ctx.destination);
@@ -243,23 +633,15 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     } catch {}
   }, [soundEnabled]);
 
-  useEffect(() => {
-    if (restTimerActive && restTimeRemaining === 0) {
-      playFeedbackTone('rest');
-      triggerHaptic('success');
-    } else if (restTimerActive && countdownSound && restTimeRemaining > 0 && restTimeRemaining <= 3) {
-      playFeedbackTone('tick');
-    }
-  }, [restTimeRemaining, restTimerActive, countdownSound, playFeedbackTone, triggerHaptic]);
-
-  const formatTime = (sec: number) => {
-    const h = Math.floor(sec / 3600); const m = Math.floor((sec % 3600) / 60); const s = sec % 60;
-    return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}` : `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  };
-
   const handleCompleteSet = useCallback(async (exerciseIdx: number, setIdx: number) => {
     const exercise = exercises[exerciseIdx];
     const set = exercise.sets[setIdx];
+    if (set.isComplete) {
+      uncompleteSet(exerciseIdx, setIdx);
+      triggerHaptic('light');
+      return;
+    }
+
     const weight = set.weight || 0;
     const reps = set.reps || set.targetReps || 0;
 
@@ -290,9 +672,9 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     const updated = [...exercise.sets];
     updated[setIdx] = { ...updated[setIdx], isComplete: true };
     if (autoAdvance && updated.every(s => s.isComplete) && currentExerciseIndex < exercises.length - 1) {
-      setTimeout(() => nextExercise(), 600);
+      setTimeout(() => nextExercise(), 550);
     }
-  }, [exercises, completeSet, startRestTimer, defaultRestTime, currentExerciseIndex, nextExercise, playFeedbackTone, triggerHaptic, autoStartRest, restTimerEnabled, autoAdvance, historicalBest1RM, addPR]);
+  }, [exercises, completeSet, uncompleteSet, startRestTimer, defaultRestTime, currentExerciseIndex, nextExercise, playFeedbackTone, triggerHaptic, autoStartRest, restTimerEnabled, autoAdvance, historicalBest1RM, addPR]);
 
   const handleFinish = async () => {
     if (isFinishingRef.current) return;
@@ -302,6 +684,9 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     try {
       playFeedbackTone('finish');
       triggerHaptic('success');
+
+      const liveState = useWorkoutStore.getState();
+      const currentElapsedTime = liveState.elapsedTime;
 
       const completedSetEntries = exercises.flatMap((exercise, exOrder) =>
         exercise.sets
@@ -319,7 +704,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
           }))
       );
       const now = new Date();
-      const startedAt = new Date(now.getTime() - elapsedTime * 1000);
+      const startedAt = new Date(now.getTime() - currentElapsedTime * 1000);
       const computedTotalReps = completedSetEntries.reduce((sum, set) => sum + set.reps, 0);
       const computedTotalSets = completedSetEntries.length;
 
@@ -328,7 +713,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
         .map(([idx, text]) => `${exercises[Number(idx)]?.exerciseName || 'Exercise'}: ${text.trim()}`)
         .join(' | ');
 
-      const currentSessionId = useWorkoutStore.getState().sessionId || sessionId;
+      const currentSessionId = liveState.sessionId || sessionId;
 
       const savedSessionId = currentSessionId
         ? currentSessionId
@@ -337,7 +722,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
             dayName,
             startedAt,
             completedAt: now,
-            duration: elapsedTime,
+            duration: currentElapsedTime,
             totalVolume,
             totalSets: computedTotalSets,
             totalReps: computedTotalReps,
@@ -350,7 +735,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
       if (currentSessionId) {
         await db.workoutSessions.update(savedSessionId, {
           completedAt: now,
-          duration: elapsedTime,
+          duration: currentElapsedTime,
           totalVolume,
           totalSets: computedTotalSets,
           totalReps: computedTotalReps,
@@ -362,10 +747,26 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
         await db.personalRecords.where('sessionId').equals(savedSessionId).delete();
       }
 
+      // Persist sessionExercises records and map their IDs to sets
+      const sessionExIdByOrder = new Map<number, number>();
+      for (let i = 0; i < exercises.length; i++) {
+        const ex = exercises[i];
+        if (!ex.sets.some(s => s.isComplete)) continue;
+        const seId = await db.sessionExercises.add({
+          sessionId: savedSessionId,
+          exerciseId: ex.exerciseId,
+          exerciseName: ex.exerciseName,
+          wasSwapped: false,
+          orderIndex: i,
+          notes: notes[i]?.trim() || undefined,
+        });
+        sessionExIdByOrder.set(i, seId);
+      }
+
       if (completedSetEntries.length > 0) {
         await db.sets.bulkAdd(
           completedSetEntries.map(set => ({
-            sessionExerciseId: 0,
+            sessionExerciseId: sessionExIdByOrder.get(set.orderIndex) || 0,
             sessionId: savedSessionId,
             exerciseId: set.exerciseId,
             setNumber: set.setNumber,
@@ -412,7 +813,6 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
         }
       }
 
-      // Immediately mark workout as inactive & clear active snapshot so Back button never re-enters ActiveWorkoutPage
       completeWorkoutSession(savedSessionId);
       onComplete();
     } catch (err) {
@@ -420,15 +820,6 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
       isFinishingRef.current = false;
       setIsFinishing(false);
     }
-  };
-
-  const handleCancel = () => {
-    setShowCancelConfirm(true);
-  };
-
-  const confirmCancel = () => {
-    endWorkout();
-    setShowCancelConfirm(false);
   };
 
   const handleSwap = async () => {
@@ -555,25 +946,56 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
 
   const openNumpad = (field: 'weight' | 'reps', eIdx: number, sIdx: number) => {
     const set = exercises[eIdx].sets[sIdx];
-    setNumpadValue(field === 'weight' ? set.weight.toString() : set.reps.toString());
+    const initial = field === 'weight' ? set.weight : (set.reps || set.targetReps);
+    setNumpadValue(String(initial));
+    setNumpadFresh(true);
     setShowNumpad({ field, exerciseIdx: eIdx, setIdx: sIdx });
   };
 
   const handleNumpadInput = (key: string) => {
-    if (key === 'C') setNumpadValue('0');
-    else if (key === '←') setNumpadValue(prev => prev.length > 1 ? prev.slice(0, -1) : '0');
-    else if (key === '.') { if (!numpadValue.includes('.')) setNumpadValue(prev => prev + '.'); }
-    else if (key === '✓') {
+    if (key === 'C') {
+      setNumpadValue('0');
+      setNumpadFresh(false);
+    } else if (key === '←') {
+      setNumpadFresh(false);
+      setNumpadValue(prev => (prev.length > 1 ? prev.slice(0, -1) : '0'));
+    } else if (key === '.') {
+      if (numpadFresh) {
+        setNumpadValue('0.');
+        setNumpadFresh(false);
+      } else if (!numpadValue.includes('.')) {
+        setNumpadValue(prev => prev + '.');
+      }
+    } else if (key === '✓') {
       if (showNumpad) {
-        const v = parseFloat(numpadValue) || 0;
-        showNumpad.field === 'weight' ? updateSetWeight(showNumpad.exerciseIdx, showNumpad.setIdx, v) : updateSetReps(showNumpad.exerciseIdx, showNumpad.setIdx, Math.round(v));
+        const v = Math.max(0, parseFloat(numpadValue) || 0);
+        if (showNumpad.field === 'weight') {
+          updateSetWeight(showNumpad.exerciseIdx, showNumpad.setIdx, v);
+        } else {
+          updateSetReps(showNumpad.exerciseIdx, showNumpad.setIdx, Math.max(1, Math.round(v)));
+        }
         setShowNumpad(null);
       }
-    } else setNumpadValue(prev => prev === '0' ? key : prev + key);
+    } else {
+      // First digit typed after opening numpad replaces existing value cleanly
+      if (numpadFresh) {
+        setNumpadValue(key);
+        setNumpadFresh(false);
+      } else {
+        setNumpadValue(prev => (prev === '0' ? key : prev + key));
+      }
+    }
   };
 
-  // Strictly separate primary GIF from backup static image frames so GIFs are always primary
-  // and multi-frame static images animate continuously when no GIF exists or GIF fails
+  const adjustNumpadDelta = (delta: number) => {
+    setNumpadFresh(false);
+    setNumpadValue(prev => {
+      const current = parseFloat(prev) || 0;
+      const next = Math.max(0, Number((current + delta).toFixed(2)));
+      return String(next);
+    });
+  };
+
   const primaryGifUrl = useMemo(() => {
     if (!currentExercise) return undefined;
     return getExerciseGifUrl({
@@ -596,10 +1018,27 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     return [];
   }, [currentExercise, exerciseInfo, primaryGifUrl]);
 
+  const activePlateTargetWeight = useMemo(() => {
+    if (!currentExercise) return 0;
+    const idx = currentSetIndex >= 0 ? currentSetIndex : 0;
+    return currentExercise.sets[idx]?.weight || 0;
+  }, [currentExercise, currentSetIndex]);
+
+  const plateBreakdown = useMemo(() => {
+    if (activePlateTargetWeight <= 0) return null;
+    return calculatePlates(activePlateTargetWeight, barWeight, unitSystem);
+  }, [activePlateTargetWeight, barWeight, unitSystem]);
+
   if (!currentExercise) {
-    return <div className="page-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ textAlign: 'center' }}><Dumbbell size={48} color="var(--text-dim)" style={{ marginBottom: 16 }} /><h2>No exercises</h2><button className="btn-secondary" onClick={() => endWorkout()} style={{ marginTop: 16 }}>Go Back</button></div>
-    </div>;
+    return (
+      <div className="page-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center' }}>
+          <Dumbbell size={48} color="var(--text-dim)" style={{ marginBottom: 16 }} />
+          <h2>No exercises</h2>
+          <button className="btn-secondary" onClick={() => endWorkout()} style={{ marginTop: 16 }}>Go Back</button>
+        </div>
+      </div>
+    );
   }
 
   const mediaErrorKey = `${currentExercise.exerciseId || 0}_${currentExercise.exerciseName}`;
@@ -607,29 +1046,56 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
   const hasVisualMedia = Boolean(primaryGifUrl) || backupFrames.length > 0 || (exerciseInfo?.images?.length || 0) > 0;
 
   return (
-    <div style={{ minHeight: '100dvh', background: 'var(--bg-primary)' }}>
-      {/* Top bar */}
-      <div style={{ position: 'sticky', top: 0, background: 'var(--bg-sheet)', backdropFilter: 'blur(24px)', zIndex: 50, padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <button onClick={handleCancel} className="btn-cancel" style={{ minHeight: 40 }}><X size={16} /> Cancel</button>
-          <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: '-0.01em', textAlign: 'center', flex: 1, padding: '0 8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+    <div className="workout-page-shell">
+      {/* Sticky Top Bar with Safe-Area Inset */}
+      <div style={{
+        position: 'sticky',
+        top: 0,
+        background: 'color-mix(in srgb, var(--bg-sheet) 92%, transparent)',
+        backdropFilter: 'blur(24px)',
+        WebkitBackdropFilter: 'blur(24px)',
+        zIndex: 50,
+        padding: 'max(10px, env(safe-area-inset-top)) 16px 10px',
+        borderBottom: '1px solid var(--border-subtle)',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button
+              onClick={() => setMinimized(true)}
+              className="btn-secondary"
+              style={{ minHeight: 36, padding: '6px 10px', borderRadius: 10, fontSize: 11 }}
+              title="Minimize workout to browse app"
+            >
+              <ChevronDown size={15} /> Minimize
+            </button>
+            <button onClick={() => setShowCancelConfirm(true)} className="btn-cancel" style={{ minHeight: 36, padding: '6px 10px', fontSize: 11 }}>
+              <X size={14} /> End
+            </button>
+          </div>
+
+          <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: '-0.01em', textAlign: 'center', flex: 1, padding: '0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {dayName || planName}
           </div>
+
           <button
             onClick={handleFinish}
             disabled={isFinishing}
             className="btn-primary"
-            style={{ fontSize: 11, fontWeight: 800, borderRadius: 10, padding: '6px 14px', minHeight: 36, width: 'auto', color: '#fff', textShadow: 'none', boxShadow: 'none', opacity: isFinishing ? 0.6 : 1 }}
+            style={{ fontSize: 11, fontWeight: 800, borderRadius: 10, padding: '6px 14px', minHeight: 36, width: 'auto', opacity: isFinishing ? 0.6 : 1 }}
           >
             {isFinishing ? 'Saving...' : 'Finish'}
           </button>
         </div>
-        <div style={{ height: 3, background: 'rgba(255,255,255,0.03)', borderRadius: 2 }}>
-          <motion.div style={{ height: '100%', background: 'var(--gradient-fire)', borderRadius: 2 }} animate={{ width: `${progress}%` }} transition={{ duration: 0.4 }} />
+
+        <div className="progress-bar" style={{ height: 4 }}>
+          <motion.div className="progress-bar-fill" animate={{ width: `${progress}%` }} transition={{ duration: 0.35 }} />
         </div>
+
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>Exercise {currentExerciseIndex + 1} of {exercises.length}</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>
+              Exercise {currentExerciseIndex + 1} of {exercises.length}
+            </span>
             {keepScreenOn !== false && (
               <span
                 title={screenAwakeLocked ? 'Screen Wake Lock active' : 'Keep screen awake enabled'}
@@ -644,301 +1110,399 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
               </span>
             )}
           </div>
-          {showTimer !== false && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <button
-                onClick={togglePause}
-                style={{
-                  width: 32, height: 32, borderRadius: 8,
-                  background: isPaused ? 'rgba(16,232,154,0.12)' : 'rgba(255,61,90,0.08)',
-                  border: `1px solid ${isPaused ? 'rgba(16,232,154,0.25)' : 'rgba(255,61,90,0.15)'}`,
-                  color: isPaused ? 'var(--accent-green)' : 'var(--accent-red)',
-                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-              >
-                {isPaused ? <Play size={12} fill="currentColor" /> : <Pause size={12} />}
-              </button>
-              <span className="font-mono" style={{
-                color: isPaused ? 'var(--accent-yellow)' : 'var(--accent-red)',
-                fontWeight: 700, fontSize: 13,
-                animation: isPaused ? 'pulse-dot 1.5s ease-in-out infinite' : 'none',
-              }}>
-                ⏱ {formatTime(elapsedTime)}
-                {isPaused && <span style={{ fontSize: 9, marginLeft: 4, opacity: 0.8 }}>PAUSED</span>}
-              </span>
-            </div>
-          )}
+          {showTimer !== false && <WorkoutHeaderStopwatch />}
         </div>
       </div>
 
-      {/* Exercise queue + Add Exercise */}
-      <div className="chip-scroll" style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
+      {/* Exercise Queue Strip + Add Exercise */}
+      <div className="chip-scroll" style={{ padding: '8px 16px', marginBottom: 0, borderBottom: '1px solid var(--border-subtle)', alignItems: 'center' }}>
         {exercises.map((ex, idx) => (
-          <button key={idx} onClick={() => goToExercise(idx)} style={{ flexShrink: 0, padding: '8px 14px', borderRadius: 12, border: idx === currentExerciseIndex ? '2px solid var(--accent-red)' : '1px solid var(--border)', background: ex.isComplete ? 'rgba(16,232,154,0.06)' : 'var(--bg-glass)', color: ex.isComplete ? 'var(--accent-green)' : idx === currentExerciseIndex ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', minHeight: 38, textTransform: 'capitalize' }}>
+          <button
+            key={idx}
+            onClick={() => goToExercise(idx)}
+            style={{
+              flexShrink: 0, padding: '7px 13px', borderRadius: 12,
+              border: idx === currentExerciseIndex ? '2px solid var(--accent-red)' : '1px solid var(--border-subtle)',
+              background: ex.isComplete ? 'rgba(16,232,154,0.08)' : 'var(--bg-glass)',
+              color: ex.isComplete ? 'var(--accent-green)' : idx === currentExerciseIndex ? 'var(--text-primary)' : 'var(--text-muted)',
+              fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', minHeight: 36, textTransform: 'capitalize',
+            }}
+          >
             {ex.isComplete ? '✓ ' : ''}{ex.exerciseName.split(' ').slice(0, 3).join(' ')}
           </button>
         ))}
         <button
           onClick={openAddExerciseModal}
           style={{
-            flexShrink: 0, padding: '8px 12px', borderRadius: 12,
+            flexShrink: 0, padding: '7px 12px', borderRadius: 12,
             border: '1px dashed var(--accent-purple)', background: 'rgba(139,92,246,0.08)',
             color: 'var(--accent-purple)', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', gap: 4, minHeight: 38,
+            display: 'flex', alignItems: 'center', gap: 4, minHeight: 36,
           }}
         >
           <Plus size={14} /> Add
         </button>
       </div>
 
-      <div style={{ padding: 16, paddingBottom: 'calc(16px + env(safe-area-inset-bottom) + 130px)' }}>
-        {/* Animated GIF / Backup Frame Display */}
-        {hasVisualMedia && !hasImgError && (
-          <div className="gif-upscale-container" style={{ width: '100%', aspectRatio: '1', borderRadius: 'var(--r-lg)', overflow: 'hidden', marginBottom: 14, background: '#0a0a14', position: 'relative', border: '1px solid var(--border)' }}>
-            <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at center, rgba(139,92,246,0.04) 0%, transparent 70%)', zIndex: 0 }} />
-            <ExerciseMedia
-              gifUrl={primaryGifUrl}
-              imageUrls={backupFrames}
-              images={exerciseInfo?.images}
-              alt={currentExercise.exerciseName}
-              loading="eager"
-              frameIntervalMs={700}
-              style={{ width: '100%', height: '100%', objectFit: 'contain', imageRendering: 'auto', transform: 'scale(1.12)', transformOrigin: 'center', position: 'relative', zIndex: 1 }}
-              onMediaModeChange={setActiveMediaMode}
-              onExhausted={() => setImgErrors(prev => new Set(prev).add(mediaErrorKey))}
-            />
-            <div style={{ position: 'absolute', top: 10, left: 10, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)', borderRadius: 8, padding: '4px 10px', fontSize: 10, fontWeight: 700, color: 'var(--accent-green)', display: 'flex', alignItems: 'center', gap: 5, zIndex: 2 }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-green)', animation: 'pulse-dot 2s ease-in-out infinite' }} />
-              {activeMediaMode === 'gif'
-                ? 'LIVE GIF'
-                : activeMediaMode === 'animated-images'
-                  ? 'ANIMATED FRAMES (BACKUP)'
-                  : 'IMAGE (BACKUP)'}
-            </div>
-          </div>
-        )}
-
-        {/* Title + controls */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div style={{ flex: 1 }}>
-            <h2 className="font-display" style={{ fontSize: 19, fontWeight: 800, marginBottom: 2, letterSpacing: '-0.02em', textTransform: 'capitalize' }}>{currentExercise.exerciseName}</h2>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span>Set {currentSetIndex >= 0 ? currentSetIndex + 1 : '✓'} of {currentExercise.sets.length}</span>
-              {exerciseInfo?.equipment && <span style={{ color: 'var(--accent-purple)', textTransform: 'capitalize' }}>• {exerciseInfo.equipment}</span>}
-              {lastBestSet && (
-                <span style={{ color: 'var(--accent-yellow)', fontWeight: 700, fontSize: 11 }}>
-                  🏆 Best: {lastBestSet.weight}{unitLabel} × {lastBestSet.reps}
-                </span>
-              )}
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={() => setShowNotes(true)} title="Notes & Instructions" style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)', color: 'var(--accent-yellow)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><StickyNote size={16} /></button>
-            <button onClick={handleSwap} title="Swap Exercise (Equipment-Filtered)" style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', color: 'var(--accent-purple)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ArrowLeftRight size={16} /></button>
-            {exercises.length > 1 && (
-              <button onClick={() => removeExercise(currentExerciseIndex)} title="Remove Exercise" style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(255,61,90,0.08)', border: '1px solid rgba(255,61,90,0.2)', color: 'var(--accent-red)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={15} /></button>
-            )}
-            <button onClick={prevExercise} disabled={currentExerciseIndex === 0} style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: currentExerciseIndex === 0 ? 0.3 : 1 }}><ChevronLeft size={18} /></button>
-            <button onClick={nextExercise} disabled={currentExerciseIndex === exercises.length - 1} style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: currentExerciseIndex === exercises.length - 1 ? 0.3 : 1 }}><ChevronRight size={18} /></button>
-          </div>
-        </div>
-
-        {/* Progressive Overload Suggestion Banner */}
-        {overloadTip && overloadTip.suggestedWeight > 0 && (
-          <div className="card" style={{ padding: '10px 14px', marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, border: '1px solid rgba(16,232,154,0.22)', background: 'rgba(16,232,154,0.05)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-              <TrendingUp size={16} color="var(--accent-green)" />
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>
-                  {overloadTip.icon} Target: {overloadTip.suggestedWeight}{unitLabel} × {overloadTip.suggestedReps}
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{overloadTip.reason}</div>
-              </div>
-            </div>
-            <button
-              onClick={() => {
-                updateSetWeight(currentExerciseIndex, 0, overloadTip.suggestedWeight);
-                updateSetReps(currentExerciseIndex, 0, overloadTip.suggestedReps);
+      {/* Responsive Split Content Area */}
+      <div className="workout-split-grid" style={{ padding: 16, paddingBottom: 'calc(24px + env(safe-area-inset-bottom) + 110px)' }}>
+        {/* Left Pane (Sticky on Tablet/Desktop): Exercise Media + Overload Tip + Plate Calculator */}
+        <div className="workout-media-sticky" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {hasVisualMedia && !hasImgError && (
+            <div
+              className="gif-upscale-container"
+              style={{
+                width: '100%',
+                height: mediaExpanded ? 340 : 215,
+                borderRadius: 'var(--r-lg)',
+                overflow: 'hidden',
+                background: 'var(--bg-media)',
+                position: 'relative',
+                border: '1px solid var(--border-subtle)',
+                transition: 'height 0.25s cubic-bezier(0.22, 1, 0.36, 1)',
               }}
-              className="btn-secondary"
-              style={{ padding: '6px 10px', fontSize: 11, fontWeight: 700, borderRadius: 8, minHeight: 32, flexShrink: 0 }}
             >
-              Apply
-            </button>
-          </div>
-        )}
+              <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at center, rgba(139,92,246,0.05) 0%, transparent 70%)', zIndex: 0 }} />
+              <ExerciseMedia
+                gifUrl={primaryGifUrl}
+                imageUrls={backupFrames}
+                images={exerciseInfo?.images}
+                alt={currentExercise.exerciseName}
+                loading="eager"
+                frameIntervalMs={700}
+                style={{ width: '100%', height: '100%', objectFit: 'contain', imageRendering: 'auto', position: 'relative', zIndex: 1 }}
+                onMediaModeChange={setActiveMediaMode}
+                onExhausted={() => setImgErrors(prev => new Set(prev).add(mediaErrorKey))}
+              />
+              <div style={{ position: 'absolute', top: 10, left: 10, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)', borderRadius: 8, padding: '4px 10px', fontSize: 10, fontWeight: 700, color: 'var(--accent-green)', display: 'flex', alignItems: 'center', gap: 5, zIndex: 2 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-green)', animation: 'pulse-dot 2s ease-in-out infinite' }} />
+                {activeMediaMode === 'gif'
+                  ? 'LIVE GIF'
+                  : activeMediaMode === 'animated-images'
+                    ? 'ANIMATED FRAMES'
+                    : 'DEMO IMAGE'}
+              </div>
+              <button
+                onClick={() => setMediaExpanded(prev => !prev)}
+                aria-label={mediaExpanded ? 'Compact exercise demo' : 'Expand exercise demo'}
+                style={{
+                  position: 'absolute', top: 10, right: 10, zIndex: 2,
+                  background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)',
+                  border: '1px solid rgba(255,255,255,0.18)', borderRadius: 8,
+                  color: '#ffffff', padding: '5px 8px', fontSize: 10, fontWeight: 700,
+                  cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4,
+                }}
+              >
+                {mediaExpanded ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+                <span>{mediaExpanded ? 'Compact' : 'Expand'}</span>
+              </button>
+            </div>
+          )}
 
-        {/* Set dots */}
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginBottom: 14 }}>
-          {currentExercise.sets.map((set, i) => (
-            <motion.div key={i} animate={{ scale: i === currentSetIndex ? 1.4 : 1 }} style={{ width: 10, height: 10, borderRadius: '50%', background: set.isComplete ? 'var(--accent-green)' : i === currentSetIndex ? 'transparent' : 'rgba(255,255,255,0.04)', border: i === currentSetIndex ? '2px solid var(--accent-red)' : set.isComplete ? 'none' : '1px solid var(--border-subtle)', boxShadow: set.isComplete ? '0 0 8px rgba(16,232,154,0.3)' : 'none' }} />
-          ))}
-        </div>
-
-        {/* Sets */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
-          {currentExercise.sets.map((set, setIdx) => {
-            const typeInfo = SET_TYPE_BADGE[set.setType || SetType.Normal] || SET_TYPE_BADGE[SetType.Normal];
-            return (
-              <motion.div key={setIdx} layout className={`set-row ${set.isComplete ? 'completed' : ''}`} style={setIdx === currentSetIndex ? { borderColor: 'rgba(255,61,90,0.3)' } : {}}>
-                <button
-                  onClick={() => set.isComplete ? uncompleteSet(currentExerciseIndex, setIdx) : cycleSetType(currentExerciseIndex, setIdx)}
-                  title={set.isComplete ? 'Tap to uncheck set' : typeInfo.title}
-                  style={{
-                    width: 34, height: 34, borderRadius: 8, border: 'none', cursor: 'pointer',
-                    background: set.isComplete ? 'var(--accent-green)' : typeInfo.bg,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 12, fontWeight: 800, flexShrink: 0,
-                    color: set.isComplete ? 'white' : typeInfo.color,
-                  }}
-                >
-                  {set.isComplete ? <Check size={14} /> : (typeInfo.label || setIdx + 1)}
-                </button>
-                <div style={{ flex: 1 }}>
-                  <div className="section-label" style={{ marginBottom: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span>{unitLabel.toUpperCase()} (±{stepWeight})</span>
-                    {set.isPR && <span style={{ color: 'var(--accent-yellow)', fontWeight: 800 }}>🏆 PR</span>}
+          {/* Progressive Overload Suggestion Banner */}
+          {overloadTip && overloadTip.suggestedWeight > 0 && (
+            <div className="card" style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, border: '1px solid rgba(16,232,154,0.25)', background: 'rgba(16,232,154,0.05)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                <TrendingUp size={16} color="var(--accent-green)" />
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>
+                    {overloadTip.icon} Target: {overloadTip.suggestedWeight}{unitLabel} × {overloadTip.suggestedReps}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <button onClick={() => updateSetWeight(currentExerciseIndex, setIdx, Math.max(0, Number((set.weight - stepWeight).toFixed(2))))} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Minus size={14} /></button>
-                    <button className="set-input" onClick={() => openNumpad('weight', currentExerciseIndex, setIdx)} style={{ cursor: 'pointer', width: 60, minHeight: 40 }}>{set.weight}</button>
-                    <button onClick={() => updateSetWeight(currentExerciseIndex, setIdx, Number((set.weight + stepWeight).toFixed(2)))} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Plus size={14} /></button>
-                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{overloadTip.reason}</div>
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div className="section-label" style={{ marginBottom: 3 }}>REPS</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <button onClick={() => updateSetReps(currentExerciseIndex, setIdx, Math.max(0, set.reps - 1))} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Minus size={14} /></button>
-                    <button className="set-input" onClick={() => openNumpad('reps', currentExerciseIndex, setIdx)} style={{ cursor: 'pointer', width: 52, minHeight: 40 }}>{set.reps || set.targetReps}</button>
-                    <button onClick={() => updateSetReps(currentExerciseIndex, setIdx, (set.reps || set.targetReps) + 1)} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Plus size={14} /></button>
-                  </div>
-                </div>
-                {!set.isComplete && (
-                  <motion.button
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => handleCompleteSet(currentExerciseIndex, setIdx)}
-                    className="complete-set-btn"
-                    aria-label={`Complete set ${setIdx + 1}`}
-                  >
-                    <Check size={16} />
-                    <span>Done</span>
-                  </motion.button>
-                )}
-              </motion.div>
-            );
-          })}
-        </div>
-
-        {/* Add / Remove Set Controls */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
-          <button
-            onClick={() => addSet(currentExerciseIndex)}
-            className="btn-secondary"
-            style={{ flex: 1, minHeight: 40, padding: '8px 12px', fontSize: 12, fontWeight: 700, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-          >
-            <Plus size={14} /> Add Set
-          </button>
-          {currentExercise.sets.length > 1 && (
-            <button
-              onClick={() => removeSet(currentExerciseIndex, currentExercise.sets.length - 1)}
-              className="btn-ghost"
-              style={{ minHeight: 40, padding: '8px 14px', fontSize: 12, fontWeight: 700, borderRadius: 10, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
-            >
-              <Minus size={14} /> Remove Set
-            </button>
+              </div>
+              <button
+                onClick={() => {
+                  updateSetWeight(currentExerciseIndex, 0, overloadTip.suggestedWeight);
+                  updateSetReps(currentExerciseIndex, 0, overloadTip.suggestedReps);
+                }}
+                className="btn-secondary"
+                style={{ padding: '6px 10px', fontSize: 11, fontWeight: 700, borderRadius: 8, minHeight: 32, flexShrink: 0 }}
+              >
+                Apply
+              </button>
+            </div>
           )}
         </div>
 
-        {/* Plate Calculator */}
-        {currentSetIndex >= 0 && currentExercise.sets[currentSetIndex]?.weight > 0 && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginBottom: 14 }}>
-            <button onClick={() => setShowPlates(!showPlates)} style={{ width: '100%', padding: '10px 14px', background: 'var(--bg-glass)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, minHeight: 44 }}>
-              <span>🏋️ Plate Calculator</span>
-              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{showPlates ? '▲' : '▼'}</span>
+        {/* Right Pane: Title, Controls, Set Logger & Plate Calculator */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* Title + Navigation & Action Controls */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <h2 className="font-display" style={{ fontSize: 19, fontWeight: 800, marginBottom: 2, letterSpacing: '-0.02em', textTransform: 'capitalize' }}>
+                {currentExercise.exerciseName}
+              </h2>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span>Set {currentSetIndex >= 0 ? currentSetIndex + 1 : '✓'} of {currentExercise.sets.length}</span>
+                {exerciseInfo?.equipment && <span style={{ color: 'var(--accent-purple)', textTransform: 'capitalize' }}>• {exerciseInfo.equipment}</span>}
+                {lastBestSet && (
+                  <span style={{ color: 'var(--accent-yellow)', fontWeight: 700, fontSize: 11 }}>
+                    🏆 Best: {lastBestSet.weight}{unitLabel} × {lastBestSet.reps}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+              <button onClick={() => setShowNotes(true)} title="Notes & Form Guide" style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.22)', color: 'var(--accent-yellow)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><StickyNote size={16} /></button>
+              <button onClick={handleSwap} title="Swap Exercise (Equipment-Filtered)" style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.22)', color: 'var(--accent-purple)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ArrowLeftRight size={16} /></button>
+              <button onClick={prevExercise} disabled={currentExerciseIndex === 0} aria-label="Previous exercise" style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--bg-glass)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: currentExerciseIndex === 0 ? 0.3 : 1 }}><ChevronLeft size={18} /></button>
+              <button onClick={nextExercise} disabled={currentExerciseIndex === exercises.length - 1} aria-label="Next exercise" style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--bg-glass)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: currentExerciseIndex === exercises.length - 1 ? 0.3 : 1 }}><ChevronRight size={18} /></button>
+            </div>
+          </div>
+
+          {/* Column Headers for Single-Line Set Logger */}
+          <div style={{ display: 'grid', gridTemplateColumns: '34px minmax(0, 1.15fr) minmax(0, 1fr) 44px auto', gap: 6, padding: '0 10px' }}>
+            <span className="section-label" style={{ textAlign: 'center' }}>SET</span>
+            <span className="section-label" style={{ textAlign: 'center' }}>{unitLabel.toUpperCase()} (±{stepWeight})</span>
+            <span className="section-label" style={{ textAlign: 'center' }}>REPS</span>
+            <span className="section-label" style={{ textAlign: 'center' }}>DONE</span>
+            <span />
+          </div>
+
+          {/* Single-Line Zero-Shift Sets */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {currentExercise.sets.map((set, setIdx) => {
+              const typeInfo = SET_TYPE_BADGE[set.setType || SetType.Normal] || SET_TYPE_BADGE[SetType.Normal];
+              return (
+                <div
+                  key={setIdx}
+                  className={`set-row ${set.isComplete ? 'completed' : ''}`}
+                  style={setIdx === currentSetIndex ? { borderColor: 'var(--border-active)' } : {}}
+                >
+                  {/* Set Number / Set Type Cycle Badge */}
+                  <button
+                    onClick={() => cycleSetType(currentExerciseIndex, setIdx)}
+                    title={typeInfo.title}
+                    style={{
+                      width: 32, height: 36, borderRadius: 8, border: 'none', cursor: 'pointer',
+                      background: typeInfo.bg,
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 12, fontWeight: 800, flexShrink: 0,
+                      color: typeInfo.color,
+                    }}
+                  >
+                    <span>{typeInfo.label || setIdx + 1}</span>
+                    {set.isPR && <span style={{ fontSize: 8, lineHeight: 1 }}>🏆</span>}
+                  </button>
+
+                  {/* Weight Stepper */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, minWidth: 0 }}>
+                    <button
+                      onClick={() => updateSetWeight(currentExerciseIndex, setIdx, Math.max(0, Number((set.weight - stepWeight).toFixed(2))))}
+                      aria-label="Decrease weight"
+                      style={{ width: 30, height: 36, borderRadius: 8, border: '1px solid var(--border-subtle)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                    >
+                      <Minus size={12} />
+                    </button>
+                    <button
+                      className="set-input"
+                      onClick={() => openNumpad('weight', currentExerciseIndex, setIdx)}
+                      style={{ cursor: 'pointer', flex: 1, minWidth: 44, padding: '4px 4px' }}
+                    >
+                      {set.weight}
+                    </button>
+                    <button
+                      onClick={() => updateSetWeight(currentExerciseIndex, setIdx, Number((set.weight + stepWeight).toFixed(2)))}
+                      aria-label="Increase weight"
+                      style={{ width: 30, height: 36, borderRadius: 8, border: '1px solid var(--border-subtle)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                    >
+                      <Plus size={12} />
+                    </button>
+                  </div>
+
+                  {/* Reps Stepper */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, minWidth: 0 }}>
+                    <button
+                      onClick={() => updateSetReps(currentExerciseIndex, setIdx, Math.max(1, (set.reps || set.targetReps) - 1))}
+                      aria-label="Decrease reps"
+                      style={{ width: 30, height: 36, borderRadius: 8, border: '1px solid var(--border-subtle)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                    >
+                      <Minus size={12} />
+                    </button>
+                    <button
+                      className="set-input"
+                      onClick={() => openNumpad('reps', currentExerciseIndex, setIdx)}
+                      style={{ cursor: 'pointer', flex: 1, minWidth: 38, padding: '4px 4px' }}
+                    >
+                      {set.reps || set.targetReps}
+                    </button>
+                    <button
+                      onClick={() => updateSetReps(currentExerciseIndex, setIdx, (set.reps || set.targetReps) + 1)}
+                      aria-label="Increase reps"
+                      style={{ width: 30, height: 36, borderRadius: 8, border: '1px solid var(--border-subtle)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                    >
+                      <Plus size={12} />
+                    </button>
+                  </div>
+
+                  {/* Always-Mounted Complete / Undo Button (Zero Layout Shift!) */}
+                  <motion.button
+                    whileTap={{ scale: 0.92 }}
+                    onClick={() => handleCompleteSet(currentExerciseIndex, setIdx)}
+                    className={`complete-set-btn ${set.isComplete ? 'is-done' : ''}`}
+                    aria-label={set.isComplete ? `Unmark set ${setIdx + 1}` : `Complete set ${setIdx + 1}`}
+                    title={set.isComplete ? 'Tap to uncheck set' : 'Complete set'}
+                  >
+                    <Check size={17} strokeWidth={2.8} />
+                  </motion.button>
+
+                  {/* Optional Per-Row Delete Set Button */}
+                  {currentExercise.sets.length > 1 ? (
+                    <button
+                      onClick={() => removeSet(currentExerciseIndex, setIdx)}
+                      aria-label={`Delete set ${setIdx + 1}`}
+                      title="Delete this set"
+                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <X size={13} />
+                    </button>
+                  ) : <span />}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Add Set & Safe Remove Exercise Controls */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button
+              onClick={() => addSet(currentExerciseIndex)}
+              className="btn-secondary"
+              style={{ flex: 1, minHeight: 40, padding: '8px 12px', fontSize: 12, fontWeight: 700, borderRadius: 10 }}
+            >
+              <Plus size={14} /> Add Set
             </button>
-            <AnimatePresence>
-              {showPlates && (
-                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} style={{ overflow: 'hidden' }}>
-                  <div style={{ padding: '10px 12px', background: 'var(--bg-elevated)', borderRadius: '0 0 var(--r-sm) var(--r-sm)', border: '1px solid var(--border)', borderTop: 'none' }}>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6 }}>
-                      {exerciseInfo?.equipment?.toLowerCase().includes('dumbbell')
-                        ? `Dumbbell default: ${dumbbellWeight}${unitLabel} each`
-                        : `Bar: ${barWeight}${unitLabel} • Each side: ${((currentExercise.sets[currentSetIndex].weight - barWeight) / 2).toFixed(1)}${unitLabel}`}
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {calculatePlates(currentExercise.sets[currentSetIndex].weight, barWeight).map((p, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: `${p.color}15`, border: `1px solid ${p.color}30`, borderRadius: 6 }}>
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color }} />
-                          <span style={{ fontSize: 11, fontWeight: 700, color: p.color }}>{p.plate}{unitLabel} ×{p.count}</span>
+            {exercises.length > 1 && (
+              confirmRemoveEx ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <button
+                    onClick={() => { removeExercise(currentExerciseIndex); setConfirmRemoveEx(false); }}
+                    className="btn-cancel"
+                    style={{ minHeight: 40, padding: '8px 12px', fontSize: 11, borderRadius: 10 }}
+                  >
+                    Confirm Drop
+                  </button>
+                  <button
+                    onClick={() => setConfirmRemoveEx(false)}
+                    className="btn-ghost"
+                    style={{ minHeight: 40, padding: '8px 10px', fontSize: 11 }}
+                  >
+                    Keep
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmRemoveEx(true)}
+                  className="btn-ghost"
+                  style={{ minHeight: 40, padding: '8px 12px', fontSize: 12, color: 'var(--text-muted)', border: '1px solid var(--border-subtle)', borderRadius: 10, display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                >
+                  <Trash2 size={13} /> Drop Exercise
+                </button>
+              )
+            )}
+          </div>
+
+          {/* Interactive Rest & Interval Timer Bar with Explicit Start Timer Button */}
+          <WorkoutRestTimerBar defaultSeconds={currentExercise.restTime || defaultRestTime || 90} />
+
+          {/* Unit-Aware Plate Calculator */}
+          {plateBreakdown && activePlateTargetWeight > 0 && (
+            <div>
+              <button
+                onClick={() => setShowPlates(!showPlates)}
+                style={{
+                  width: '100%', padding: '10px 14px', background: 'var(--bg-glass)',
+                  border: '1px solid var(--border-subtle)', borderRadius: 'var(--r-sm)', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  color: 'var(--text-secondary)', fontSize: 12, fontWeight: 600, minHeight: 42,
+                }}
+              >
+                <span>🏋️ Plate Calculator ({activePlateTargetWeight}{unitLabel})</span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{showPlates ? '▲' : '▼'}</span>
+              </button>
+              <AnimatePresence>
+                {showPlates && (
+                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} style={{ overflow: 'hidden' }}>
+                    <div style={{ padding: '10px 12px', background: 'var(--bg-elevated)', borderRadius: '0 0 var(--r-sm) var(--r-sm)', border: '1px solid var(--border-subtle)', borderTop: 'none' }}>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
+                        {exerciseInfo?.equipment?.toLowerCase().includes('dumbbell')
+                          ? `Dumbbell default: ${dumbbellWeight}${unitLabel} each`
+                          : `Bar: ${barWeight}${unitLabel} • Each side: ${Math.max(0, (activePlateTargetWeight - barWeight) / 2).toFixed(1)}${unitLabel}`}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {plateBreakdown.perSide.map((p, i) => {
+                          const pColor = getPlateColor(p.weight, unitSystem);
+                          return (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 9px', background: `${pColor}18`, border: `1px solid ${pColor}38`, borderRadius: 6 }}>
+                              <div style={{ width: 8, height: 8, borderRadius: '50%', background: pColor }} />
+                              <span style={{ fontSize: 11, fontWeight: 700, color: pColor }}>{p.weight}{unitLabel} ×{p.count}</span>
+                            </div>
+                          );
+                        })}
+                        {plateBreakdown.perSide.length === 0 && (
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Empty bar ({barWeight}{unitLabel})</span>
+                        )}
+                      </div>
+                      {!plateBreakdown.isExact && activePlateTargetWeight > barWeight && (
+                        <div style={{ fontSize: 10, color: 'var(--accent-yellow)', marginTop: 6 }}>
+                          Nearest loadable weight with standard plates: {plateBreakdown.totalWeight}{unitLabel}
                         </div>
-                      ))}
-                      {calculatePlates(currentExercise.sets[currentSetIndex].weight, barWeight).length === 0 && (
-                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Empty bar</span>
                       )}
                     </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
-        )}
-
-        {/* Stats footer */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, padding: 14, background: 'var(--bg-glass)', backdropFilter: 'blur(20px)', borderRadius: 'var(--r-lg)', border: '1px solid var(--border-subtle)' }}>
-          {[{ v: `${totalVolume.toLocaleString()} ${unitLabel}`, l: 'Volume', c: 'var(--accent-green)' }, { v: totalSets.toString(), l: 'Sets', c: 'var(--accent-purple)' }, { v: formatTime(elapsedTime), l: 'Time', c: 'var(--accent-orange)' }].map((s, i) => (
-            <div key={i} style={{ textAlign: 'center' }}>
-              <div className="font-mono" style={{ fontSize: 15, fontWeight: 800, color: s.c }}>{s.v}</div>
-              <div className="section-label" style={{ fontSize: 9 }}>{s.l}</div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-          ))}
+          )}
+
+          {/* Live Session Stats Footer */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, padding: 14, background: 'var(--bg-glass)', backdropFilter: 'blur(20px)', borderRadius: 'var(--r-lg)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div className="font-mono" style={{ fontSize: 15, fontWeight: 800, color: 'var(--accent-green)' }}>{totalVolume.toLocaleString()} {unitLabel}</div>
+              <div className="section-label" style={{ fontSize: 9 }}>Volume</div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div className="font-mono" style={{ fontSize: 15, fontWeight: 800, color: 'var(--accent-purple)' }}>{totalSets}</div>
+              <div className="section-label" style={{ fontSize: 9 }}>Sets</div>
+            </div>
+            <WorkoutFooterElapsedStat />
+          </div>
         </div>
       </div>
 
-      {/* Minimized Floating Rest Timer Bar (allows watching animated GIFs while resting) */}
-      <AnimatePresence>
-        {restTimerActive && restMinimized && (
-          <motion.div
-            initial={{ y: 80, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 80, opacity: 0 }}
-            style={{
-              position: 'fixed', left: 16, right: 16, bottom: 'calc(16px + env(safe-area-inset-bottom))',
-              zIndex: 120, background: 'rgba(10, 12, 24, 0.96)', backdropFilter: 'blur(20px)',
-              border: '1px solid rgba(16,232,154,0.35)', borderRadius: 16, padding: '10px 14px',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-              boxShadow: '0 12px 32px rgba(0,0,0,0.55)',
-            }}
-          >
-            <div
-              onClick={() => setRestMinimized(false)}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', flex: 1 }}
-            >
-              <div className="font-mono" style={{ fontSize: 20, fontWeight: 800, color: restTimeRemaining > 10 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                {restTimeRemaining}s
-              </div>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700 }}>Resting • Tap to expand</div>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{currentExercise.exerciseName}</div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <button onClick={() => startRestTimer(restTimeRemaining + 15)} className="btn-secondary" style={{ padding: '6px 10px', fontSize: 11, minHeight: 34, borderRadius: 8 }}>+15s</button>
-              <button onClick={stopRestTimer} className="btn-primary" style={{ padding: '6px 12px', fontSize: 11, minHeight: 34, borderRadius: 8, width: 'auto' }}>Skip</button>
-              <button onClick={() => setRestMinimized(false)} className="btn-ghost" style={{ padding: 6, minHeight: 34 }} title="Expand timer"><Maximize2 size={14} /></button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Isolated Rest Timer Leaf Component */}
+      <RestTimerLeaf
+        exerciseName={currentExercise.exerciseName}
+        restMinimized={restMinimized}
+        setRestMinimized={setRestMinimized}
+        playFeedbackTone={playFeedbackTone}
+        triggerHaptic={triggerHaptic}
+        countdownSound={countdownSound}
+      />
 
       {/* Add Exercise Mid-Workout Modal */}
       <AnimatePresence>
         {showAddExercise && (
           <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowAddExercise(false)}>
-            <motion.div className="modal-content" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()}>
+            <motion.div
+              className="modal-content"
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              drag="y"
+              dragConstraints={{ top: 0, bottom: 0 }}
+              dragElastic={{ top: 0, bottom: 0.6 }}
+              onDragEnd={(_, info) => {
+                if (info.offset.y > 100 || info.velocity.y > 450) setShowAddExercise(false);
+              }}
+              transition={{ type: 'spring', damping: 26, stiffness: 300 }}
+              onClick={e => e.stopPropagation()}
+            >
               <div className="modal-handle" />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <h3 style={{ fontSize: 16, fontWeight: 800 }}>Add Exercise to Workout</h3>
-                <button onClick={() => setShowAddExercise(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
+                <button onClick={() => setShowAddExercise(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}><X size={18} /></button>
               </div>
               <div style={{ position: 'relative', marginBottom: 12 }}>
                 <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
@@ -948,11 +1512,13 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                 {filteredAddCatalog.map(ex => (
                   <button key={ex.id} onClick={() => handleAddExerciseToWorkout(ex)} style={{
                     display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-                    background: 'var(--bg-glass)', border: '1px solid var(--border)', borderRadius: 12,
+                    background: 'var(--bg-glass)', border: '1px solid var(--border-subtle)', borderRadius: 12,
                     cursor: 'pointer', textAlign: 'left', width: '100%', color: 'var(--text-primary)',
                   }}>
-                    <ExerciseMedia gifUrl={ex.gifUrl} imageUrls={ex.imageUrls} images={ex.images} alt={ex.name} style={{ width: 42, height: 42, borderRadius: 10, objectFit: 'cover' }} />
-                    <div style={{ flex: 1 }}>
+                    <div style={{ width: 42, height: 42, borderRadius: 10, overflow: 'hidden', position: 'relative', background: 'var(--bg-media)', flexShrink: 0 }}>
+                      <ExerciseMedia gifUrl={ex.gifUrl} imageUrls={ex.imageUrls} images={ex.images} alt={ex.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'capitalize' }}>{ex.name}</div>
                       <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{ex.equipment} • {ex.primaryMuscles.join(', ')}</div>
                     </div>
@@ -972,7 +1538,20 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
       <AnimatePresence>
         {showCancelConfirm && (
           <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowCancelConfirm(false)}>
-            <motion.div className="modal-content" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()} style={{ maxHeight: '40dvh' }}>
+            <motion.div
+              className="modal-content"
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              drag="y"
+              dragConstraints={{ top: 0, bottom: 0 }}
+              dragElastic={{ top: 0, bottom: 0.6 }}
+              onDragEnd={(_, info) => {
+                if (info.offset.y > 90 || info.velocity.y > 450) setShowCancelConfirm(false);
+              }}
+              transition={{ type: 'spring', damping: 26, stiffness: 300 }}
+              onClick={e => e.stopPropagation()}
+            >
               <div className="modal-handle" />
               <div style={{ textAlign: 'center', padding: '8px 0' }}>
                 <div style={{ width: 56, height: 56, borderRadius: 16, background: 'rgba(255,61,90,0.1)', border: '1px solid rgba(255,61,90,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
@@ -980,14 +1559,14 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                 </div>
                 <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 8 }}>Discard Workout?</h3>
                 <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 24 }}>
-                  Your progress ({totalSets} sets, {totalVolume.toLocaleString()}{unitLabel} volume) will be discarded.
+                  Your progress ({totalSets} sets, {totalVolume.toLocaleString()}{unitLabel} volume) will be discarded. You can also minimize the workout to keep it running in the background.
                 </p>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button onClick={() => setShowCancelConfirm(false)} className="btn-secondary" style={{ flex: 1, minHeight: 48, borderRadius: 14 }}>
-                    Continue Workout
+                    Keep Training
                   </button>
-                  <button onClick={confirmCancel} className="btn-cancel" style={{ flex: 1, minHeight: 48, justifyContent: 'center' }}>
-                    End & Discard
+                  <button onClick={() => { endWorkout(); setShowCancelConfirm(false); }} className="btn-cancel" style={{ flex: 1, minHeight: 48, justifyContent: 'center' }}>
+                    End &amp; Discard
                   </button>
                 </div>
               </div>
@@ -996,45 +1575,27 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
         )}
       </AnimatePresence>
 
-      {/* Rest Timer Fullscreen Overlay */}
-      <AnimatePresence>
-        {restTimerActive && !restMinimized && (
-          <motion.div className="rest-timer-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <div style={{ textAlign: 'center', width: '100%', maxWidth: 360, padding: '0 20px' }}>
-              <div className="section-label" style={{ fontSize: 14, marginBottom: 4 }}>REST</div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 20, textTransform: 'capitalize' }}>{currentExercise.exerciseName}</div>
-              <div className="progress-ring-container" style={{ width: 200, height: 200, margin: '0 auto' }}>
-                <svg width="200" height="200" viewBox="0 0 200 200">
-                  <circle cx="100" cy="100" r="88" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="6" />
-                  <circle cx="100" cy="100" r="88" fill="none" stroke={restTimeRemaining > 10 ? 'var(--accent-green)' : restTimeRemaining > 5 ? 'var(--accent-yellow)' : 'var(--accent-red)'} strokeWidth="6" strokeLinecap="round" strokeDasharray={2 * Math.PI * 88} strokeDashoffset={2 * Math.PI * 88 * (1 - restTimeRemaining / Math.max(1, restTimeDuration))} transform="rotate(-90 100 100)" style={{ transition: 'stroke-dashoffset 1s linear, stroke 0.5s' }} />
-                </svg>
-                <div className="progress-ring-text"><div className="font-mono" style={{ fontSize: 52, fontWeight: 800 }}>{restTimeRemaining}</div><div style={{ fontSize: 12, color: 'var(--text-muted)' }}>sec</div></div>
-              </div>
-              <div style={{ display: 'flex', gap: 10, marginTop: 24, justifyContent: 'center' }}>
-                <button className="btn-secondary" onClick={() => startRestTimer(Math.max(5, restTimeRemaining - 15))} style={{ padding: '12px 20px', borderRadius: 14, minHeight: 48 }}>-15s</button>
-                <motion.button whileTap={{ scale: 0.95 }} className="btn-primary" onClick={stopRestTimer} style={{ padding: '14px 36px', width: 'auto', borderRadius: 14, minHeight: 48 }}><SkipForward size={18} /> Skip</motion.button>
-                <button className="btn-secondary" onClick={() => startRestTimer(restTimeRemaining + 15)} style={{ padding: '12px 20px', borderRadius: 14, minHeight: 48 }}>+15s</button>
-              </div>
-              <button
-                onClick={() => setRestMinimized(true)}
-                className="btn-ghost"
-                style={{ marginTop: 16, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)' }}
-              >
-                <Minimize2 size={14} /> Minimize to View Exercise Demo
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Notes Modal */}
+      {/* Notes & Instructions Modal */}
       <AnimatePresence>
         {showNotes && (
           <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowNotes(false)}>
-            <motion.div className="modal-content" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()}>
+            <motion.div
+              className="modal-content"
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              drag="y"
+              dragConstraints={{ top: 0, bottom: 0 }}
+              dragElastic={{ top: 0, bottom: 0.6 }}
+              onDragEnd={(_, info) => {
+                if (info.offset.y > 100 || info.velocity.y > 450) setShowNotes(false);
+              }}
+              transition={{ type: 'spring', damping: 26, stiffness: 300 }}
+              onClick={e => e.stopPropagation()}
+            >
               <div className="modal-handle" />
               <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 4, textTransform: 'capitalize' }}>{currentExercise.exerciseName}</h3>
-              <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 16 }}>Exercise notes & instructions</p>
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 16 }}>Exercise notes &amp; instructions</p>
 
               <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
                 <a
@@ -1044,8 +1605,8 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                   style={{
                     flex: '1 1 160px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                     padding: '10px 12px', borderRadius: 'var(--r-sm)', textDecoration: 'none',
-                    background: 'rgba(255,0,0,0.06)', border: '1px solid rgba(255,0,0,0.15)',
-                    color: '#FF4444', fontWeight: 600, fontSize: 12,
+                    background: 'rgba(255,0,0,0.08)', border: '1px solid rgba(255,0,0,0.18)',
+                    color: '#FF5555', fontWeight: 600, fontSize: 12,
                   }}
                 >
                   <ExternalLink size={12} /> Watch on YouTube
@@ -1058,7 +1619,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                     rel="noopener noreferrer"
                     style={{
                       padding: '10px 12px', borderRadius: 'var(--r-sm)', textDecoration: 'none', textAlign: 'center',
-                      background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)',
+                      background: 'var(--bg-glass)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)',
                       fontSize: 10, fontWeight: 600,
                     }}
                   >
@@ -1073,7 +1634,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                     <BookOpen size={14} color="var(--accent-purple)" />
                     <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-purple)' }}>How to Perform</span>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 14px', background: 'var(--bg-glass)', borderRadius: 12, border: '1px solid var(--border)', maxHeight: '35vh', overflowY: 'auto' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 14px', background: 'var(--bg-glass)', borderRadius: 12, border: '1px solid var(--border-subtle)', maxHeight: '32vh', overflowY: 'auto' }}>
                     {exerciseInfo.instructions.map((step, i) => (
                       <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                         <div style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--gradient-ocean)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, flexShrink: 0, color: 'white' }}>{i + 1}</div>
@@ -1087,7 +1648,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
               {exerciseInfo?.primaryMuscles && exerciseInfo.primaryMuscles.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
                   {exerciseInfo.primaryMuscles.map(m => {
-                    const color = MUSCLE_COLORS[m.toLowerCase()] || '#888';
+                    const color = '#EF4444';
                     return <span key={m} className="badge" style={{ background: `${color}14`, color, border: `1px solid ${color}28`, fontWeight: 700, fontSize: 10 }}>● {m}</span>;
                   })}
                   {exerciseInfo.equipment && (
@@ -1098,10 +1659,15 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
 
               <div style={{ marginBottom: 12 }}>
                 <div className="section-label" style={{ marginBottom: 8 }}>YOUR NOTES (SAVED WITH WORKOUT)</div>
-                <textarea value={notes[currentExerciseIndex] || ''} onChange={e => setNotes(prev => ({ ...prev, [currentExerciseIndex]: e.target.value }))} placeholder="Add form cues, seat settings, or notes..." rows={3}
-                  style={{ width: '100%', padding: 14, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit' }} />
+                <textarea
+                  value={notes[currentExerciseIndex] || ''}
+                  onChange={e => setNotes(prev => ({ ...prev, [currentExerciseIndex]: e.target.value }))}
+                  placeholder="Add form cues, seat settings, or notes..."
+                  rows={3}
+                  style={{ width: '100%', padding: 14, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit' }}
+                />
               </div>
-              <button onClick={() => setShowNotes(false)} className="btn-primary" style={{ borderRadius: 14, minHeight: 46, color: '#fff', textShadow: 'none', boxShadow: 'none' }}>Save Note</button>
+              <button onClick={() => setShowNotes(false)} className="btn-primary" style={{ borderRadius: 14, minHeight: 46 }}>Save Note</button>
             </motion.div>
           </motion.div>
         )}
@@ -1111,9 +1677,25 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
       <AnimatePresence>
         {showSwap && (
           <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowSwap(false)}>
-            <motion.div className="modal-content" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()}>
+            <motion.div
+              className="modal-content"
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              drag="y"
+              dragConstraints={{ top: 0, bottom: 0 }}
+              dragElastic={{ top: 0, bottom: 0.6 }}
+              onDragEnd={(_, info) => {
+                if (info.offset.y > 100 || info.velocity.y > 450) setShowSwap(false);
+              }}
+              transition={{ type: 'spring', damping: 26, stiffness: 300 }}
+              onClick={e => e.stopPropagation()}
+            >
               <div className="modal-handle" />
-              <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>Swap Exercise</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 800 }}>Swap Exercise</h3>
+                <button onClick={() => setShowSwap(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}><X size={18} /></button>
+              </div>
               <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Swapping: {currentExercise?.exerciseName}</div>
               <div style={{ fontSize: 10, color: 'var(--accent-green)', marginBottom: 12 }}>
                 ✓ Filtered to your selected equipment ({userEquipment.length} items) • GIFs prioritized
@@ -1127,15 +1709,17 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                     <div key={cat}>
                       <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4, marginTop: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>{catLabel}</div>
                       {items.map(({ exercise: ex, matchTags, score }) => (
-                        <button key={ex.id} onClick={() => doSwap(ex)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: 'var(--bg-glass)', border: '1px solid var(--border)', borderRadius: 14, cursor: 'pointer', textAlign: 'left', width: '100%', color: 'var(--text-primary)', marginBottom: 4, minHeight: 56 }}>
-                          <ExerciseMedia
-                            gifUrl={ex.gifUrl}
-                            imageUrls={ex.imageUrls}
-                            images={ex.images}
-                            alt={ex.name}
-                            style={{ width: 44, height: 44, borderRadius: 10, objectFit: 'cover' }}
-                          />
-                          <div style={{ flex: 1 }}>
+                        <button key={ex.id} onClick={() => doSwap(ex)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: 'var(--bg-glass)', border: '1px solid var(--border-subtle)', borderRadius: 14, cursor: 'pointer', textAlign: 'left', width: '100%', color: 'var(--text-primary)', marginBottom: 4, minHeight: 56 }}>
+                          <div style={{ width: 44, height: 44, borderRadius: 10, overflow: 'hidden', position: 'relative', background: 'var(--bg-media)', flexShrink: 0 }}>
+                            <ExerciseMedia
+                              gifUrl={ex.gifUrl}
+                              imageUrls={ex.imageUrls}
+                              images={ex.images}
+                              alt={ex.name}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'capitalize' }}>{ex.name}</div>
                             <div style={{ fontSize: 9, color: 'var(--text-muted)', display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 2 }}>
                               {matchTags.slice(0, 3).map((tag, i) => (<span key={i} style={{ background: 'var(--bg-elevated)', padding: '1px 4px', borderRadius: 3 }}>{tag}</span>))}
@@ -1158,24 +1742,93 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
         )}
       </AnimatePresence>
 
-      {/* Numpad */}
+      {/* First-Keystroke Auto-Replace Numpad */}
       <AnimatePresence>
         {showNumpad && (
           <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowNumpad(null)}>
-            <motion.div className="modal-content" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()}>
+            <motion.div
+              className="modal-content"
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              drag="y"
+              dragConstraints={{ top: 0, bottom: 0 }}
+              dragElastic={{ top: 0, bottom: 0.6 }}
+              onDragEnd={(_, info) => {
+                if (info.offset.y > 100 || info.velocity.y > 450) setShowNumpad(null);
+              }}
+              transition={{ type: 'spring', damping: 26, stiffness: 300 }}
+              onClick={e => e.stopPropagation()}
+            >
               <div className="modal-handle" />
-              <div style={{ textAlign: 'center', marginBottom: 16 }}>
-                <div className="section-label" style={{ marginBottom: 4 }}>{showNumpad.field === 'weight' ? 'WEIGHT' : 'REPS'}</div>
-                <div className="font-mono" style={{ fontSize: 42, fontWeight: 800 }}>{numpadValue}{showNumpad.field === 'weight' && <span style={{ fontSize: 16, color: 'var(--text-muted)' }}> {unitLabel}</span>}</div>
+              <div style={{ textAlign: 'center', marginBottom: 12 }}>
+                <div className="section-label" style={{ marginBottom: 4 }}>
+                  {showNumpad.field === 'weight' ? `SET ${showNumpad.setIdx + 1} WEIGHT (${unitLabel.toUpperCase()})` : `SET ${showNumpad.setIdx + 1} REPS`}
+                </div>
+                <div
+                  className="font-mono"
+                  style={{
+                    fontSize: 40,
+                    fontWeight: 800,
+                    display: 'inline-block',
+                    padding: '2px 14px',
+                    borderRadius: 12,
+                    background: numpadFresh ? 'color-mix(in srgb, var(--accent-purple) 18%, transparent)' : 'transparent',
+                    border: numpadFresh ? '1px dashed var(--accent-purple)' : '1px solid transparent',
+                  }}
+                >
+                  {numpadValue}
+                  {showNumpad.field === 'weight' && <span style={{ fontSize: 16, color: 'var(--text-muted)', marginLeft: 4 }}>{unitLabel}</span>}
+                </div>
+                {numpadFresh && (
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+                    Type new value to replace, or tap +/- below to adjust
+                  </div>
+                )}
               </div>
-              {showNumpad.field === 'weight' && (
-                <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 10 }}>
-                  {[1, 2.5, 5, 10, 20].map(inc => <button key={inc} className="btn-secondary" onClick={() => setNumpadValue(prev => (parseFloat(prev) + inc).toString())} style={{ padding: '9px 14px', fontSize: 13, borderRadius: 10, minHeight: 40 }}>+{inc}</button>)}
+
+              {showNumpad.field === 'weight' ? (
+                <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+                  {[-5, -2.5, 1, 2.5, 5, 10].map(inc => (
+                    <button
+                      key={inc}
+                      className="btn-secondary"
+                      onClick={() => adjustNumpadDelta(inc)}
+                      style={{ padding: '7px 11px', fontSize: 12, borderRadius: 10, minHeight: 36 }}
+                    >
+                      {inc > 0 ? `+${inc}` : inc}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+                  {[-2, -1, 1, 2, 5].map(inc => (
+                    <button
+                      key={inc}
+                      className="btn-secondary"
+                      onClick={() => adjustNumpadDelta(inc)}
+                      style={{ padding: '7px 12px', fontSize: 12, borderRadius: 10, minHeight: 36 }}
+                    >
+                      {inc > 0 ? `+${inc}` : inc}
+                    </button>
+                  ))}
                 </div>
               )}
+
               <div className="numpad-grid">
-                {['1','2','3','4','5','6','7','8','9', showNumpad.field === 'weight' ? '.' : 'C','0','←'].map(key => <button key={key} className="numpad-key" onClick={() => handleNumpadInput(key)}>{key}</button>)}
-                <motion.button whileTap={{ scale: 0.95 }} className="numpad-key action" onClick={() => handleNumpadInput('✓')} style={{ gridColumn: '1 / -1' }}>Done</motion.button>
+                {['1', '2', '3', '4', '5', '6', '7', '8', '9', showNumpad.field === 'weight' ? '.' : 'C', '0', '←'].map(key => (
+                  <button key={key} className="numpad-key" onClick={() => handleNumpadInput(key)}>
+                    {key}
+                  </button>
+                ))}
+                <motion.button
+                  whileTap={{ scale: 0.96 }}
+                  className="numpad-key action"
+                  onClick={() => handleNumpadInput('✓')}
+                  style={{ gridColumn: '1 / -1' }}
+                >
+                  Apply {showNumpad.field === 'weight' ? 'Weight' : 'Reps'}
+                </motion.button>
               </div>
             </motion.div>
           </motion.div>

@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { MotionConfig } from 'framer-motion';
+import { MotionConfig, AnimatePresence, motion } from 'framer-motion';
+import { Play, Pause, Maximize2 } from 'lucide-react';
 import { seedDatabase, ensureWorkoutPrograms, migrateExerciseCatalog, EXERCISE_CATALOG_VERSION } from '@/lib/db/seed';
 import { db, resetDB } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
@@ -18,10 +19,198 @@ import BottomNav from '@/components/ui/BottomNav';
 import SeedingScreen from '@/components/ui/SeedingScreen';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
 
+/**
+ * Isolated leaf component for the floating minimized workout bar so 1Hz timer ticks
+ * never re-render the main page tree.
+ */
+function MinimizedWorkoutBar() {
+  const isActive = useWorkoutStore(s => s.isActive);
+  const isMinimized = useWorkoutStore(s => s.isMinimized);
+  const isPaused = useWorkoutStore(s => s.isPaused);
+  const elapsedTime = useWorkoutStore(s => s.elapsedTime);
+  const restTimerActive = useWorkoutStore(s => s.restTimerActive);
+  const restTimeRemaining = useWorkoutStore(s => s.restTimeRemaining);
+  const dayName = useWorkoutStore(s => s.dayName);
+  const planName = useWorkoutStore(s => s.planName);
+  const exercises = useWorkoutStore(s => s.exercises);
+  const currentExerciseIndex = useWorkoutStore(s => s.currentExerciseIndex);
+  const setMinimized = useWorkoutStore(s => s.setMinimized);
+  const togglePause = useWorkoutStore(s => s.togglePause);
+
+  if (!isActive || !isMinimized) return null;
+
+  const currentEx = exercises[currentExerciseIndex];
+  const completedSets = exercises.reduce((acc, ex) => acc + ex.sets.filter(st => st.isComplete).length, 0);
+  const totalSets = exercises.reduce((acc, ex) => acc + ex.sets.length, 0);
+
+  const formatTime = (sec: number) => {
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    return h > 0
+      ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+      : `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <motion.div
+      initial={{ y: 60, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      exit={{ y: 60, opacity: 0 }}
+      style={{
+        position: 'fixed',
+        left: 12,
+        right: 12,
+        bottom: 'calc(78px + env(safe-area-inset-bottom))',
+        maxWidth: 536,
+        margin: '0 auto',
+        zIndex: 110,
+        background: 'var(--bg-overlay)',
+        backdropFilter: 'blur(24px)',
+        WebkitBackdropFilter: 'blur(24px)',
+        border: '1px solid var(--border-active)',
+        borderRadius: 16,
+        padding: '10px 14px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        boxShadow: '0 12px 32px rgba(0,0,0,0.45), 0 0 20px var(--glow-red)',
+      }}
+    >
+      <button
+        onClick={() => setMinimized(false)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          flex: 1,
+          minWidth: 0,
+          background: 'none',
+          border: 'none',
+          color: 'inherit',
+          cursor: 'pointer',
+          textAlign: 'left',
+        }}
+      >
+        <div
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 10,
+            background: 'var(--gradient-fire)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            color: 'var(--on-accent-text)',
+          }}
+        >
+          <Maximize2 size={16} />
+        </div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {dayName || planName || 'Active Workout'}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textTransform: 'capitalize' }}>
+            {currentEx ? currentEx.exerciseName : 'In Progress'} • {completedSets}/{totalSets} sets
+          </div>
+        </div>
+      </button>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        {restTimerActive && (
+          <span
+            className="font-mono"
+            style={{
+              fontSize: 11,
+              fontWeight: 800,
+              padding: '4px 8px',
+              borderRadius: 8,
+              background: 'rgba(16,232,154,0.14)',
+              color: 'var(--accent-green)',
+              border: '1px solid rgba(16,232,154,0.3)',
+            }}
+          >
+            Rest {restTimeRemaining}s
+          </span>
+        )}
+        <span className="font-mono" style={{ fontSize: 13, fontWeight: 800, color: isPaused ? 'var(--accent-yellow)' : 'var(--accent-red)' }}>
+          {formatTime(elapsedTime)}
+        </span>
+        <button
+          onClick={togglePause}
+          aria-label={isPaused ? 'Resume workout timer' : 'Pause workout timer'}
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            background: 'var(--bg-glass)',
+            border: '1px solid var(--border-subtle)',
+            color: 'var(--text-primary)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {isPaused ? <Play size={13} fill="currentColor" /> : <Pause size={13} />}
+        </button>
+        <button
+          onClick={() => setMinimized(false)}
+          className="btn-primary"
+          style={{ width: 'auto', minHeight: 34, padding: '6px 12px', fontSize: 11, borderRadius: 9 }}
+        >
+          Resume
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
+/**
+ * Global background ticker that keeps workout elapsedTime and restTimeRemaining
+ * accurate whether ActiveWorkoutPage is fullscreen or minimized.
+ */
+function GlobalWorkoutClock() {
+  const isActive = useWorkoutStore(s => s.isActive);
+  const restTimerActive = useWorkoutStore(s => s.restTimerActive);
+  const tickTimer = useWorkoutStore(s => s.tickTimer);
+  const tickRestTimer = useWorkoutStore(s => s.tickRestTimer);
+
+  useEffect(() => {
+    if (!isActive) return;
+    const id = setInterval(() => tickTimer(), 1000);
+    return () => clearInterval(id);
+  }, [isActive, tickTimer]);
+
+  useEffect(() => {
+    if (!isActive || !restTimerActive) return;
+    const id = setInterval(() => tickRestTimer(), 1000);
+    return () => clearInterval(id);
+  }, [isActive, restTimerActive, tickRestTimer]);
+
+  return null;
+}
+
 export default function App() {
-  const { activeTab, setActiveTab, showSeedingScreen, setShowSeedingScreen, setSeedingProgress } = useUIStore();
-  const { setIsSeeded, setIsLoading, loadFromProfile, animationLevel } = useUserStore();
-  const { isActive: workoutActive, endWorkout, restoreWorkoutIfAny } = useWorkoutStore();
+  const activeTab = useUIStore(s => s.activeTab);
+  const setActiveTab = useUIStore(s => s.setActiveTab);
+  const showSeedingScreen = useUIStore(s => s.showSeedingScreen);
+  const setShowSeedingScreen = useUIStore(s => s.setShowSeedingScreen);
+  const setSeedingProgress = useUIStore(s => s.setSeedingProgress);
+
+  const setIsSeeded = useUserStore(s => s.setIsSeeded);
+  const setIsLoading = useUserStore(s => s.setIsLoading);
+  const loadFromProfile = useUserStore(s => s.loadFromProfile);
+  const animationLevel = useUserStore(s => s.animationLevel);
+
+  const workoutActive = useWorkoutStore(s => s.isActive);
+  const workoutMinimized = useWorkoutStore(s => s.isMinimized);
+  const setMinimized = useWorkoutStore(s => s.setMinimized);
+  const endWorkout = useWorkoutStore(s => s.endWorkout);
+  const restoreWorkoutIfAny = useWorkoutStore(s => s.restoreWorkoutIfAny);
+
   const [showComplete, setShowComplete] = useState(false);
   const [showExitHint, setShowExitHint] = useState(false);
   const [showCatalogUpdateToast, setShowCatalogUpdateToast] = useState(false);
@@ -31,7 +220,7 @@ export default function App() {
   const lastBackPressRef = useRef(0);
   const exitHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const catalogToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const navStateRef = useRef({ activeTab, workoutActive, showComplete });
+  const navStateRef = useRef({ activeTab, workoutActive, workoutMinimized, showComplete });
 
   const doInit = useCallback(async (forceReset = false) => {
     const attempt = ++attemptRef.current;
@@ -167,13 +356,11 @@ export default function App() {
   }, [doInit]);
 
   useEffect(() => {
-    navStateRef.current = { activeTab, workoutActive, showComplete };
-  }, [activeTab, workoutActive, showComplete]);
+    navStateRef.current = { activeTab, workoutActive, workoutMinimized, showComplete };
+  }, [activeTab, workoutActive, workoutMinimized, showComplete]);
 
   useEffect(() => {
-    if (!showCatalogUpdateToast) {
-      return;
-    }
+    if (!showCatalogUpdateToast) return;
 
     if (catalogToastTimerRef.current) {
       clearTimeout(catalogToastTimerRef.current);
@@ -205,15 +392,13 @@ export default function App() {
       const current = navStateRef.current;
 
       if (current.showComplete) {
-        // Workout is already saved when entering WorkoutCompletePage.
-        // Going back from WorkoutCompletePage must clear workout state and return to dashboard,
-        // NEVER re-opening ActiveWorkoutPage where the workout could save a second time.
         endWorkout();
         setShowComplete(false);
         setActiveTab('home');
         pushSentinel();
-      } else if (current.workoutActive) {
-        endWorkout();
+      } else if (current.workoutActive && !current.workoutMinimized) {
+        // Minimize active workout on Android hardware Back so progress is never lost accidentally
+        setMinimized(true);
         pushSentinel();
       } else if (current.activeTab !== 'home') {
         setActiveTab('home');
@@ -260,7 +445,7 @@ export default function App() {
         catalogToastTimerRef.current = null;
       }
     };
-  }, [endWorkout, setActiveTab]);
+  }, [endWorkout, setActiveTab, setMinimized]);
 
   const handleWorkoutComplete = useCallback(() => {
     setShowComplete(true);
@@ -293,24 +478,25 @@ export default function App() {
 
   return (
     <MotionConfig reducedMotion={animationLevel === 'none' ? 'always' : 'never'}>
+      <GlobalWorkoutClock />
       {showComplete ? (
         <WorkoutCompletePage onFinish={handleFinishComplete} />
-      ) : workoutActive ? (
+      ) : workoutActive && !workoutMinimized ? (
         <ActiveWorkoutPage onComplete={handleWorkoutComplete} />
       ) : (
         <>
           {initError && (
             <div style={{
               position: 'fixed', top: 0, left: 0, right: 0, zIndex: 200,
-              background: 'rgba(255,61,90,0.12)', backdropFilter: 'blur(8px)',
-              padding: '12px 16px', display: 'flex', alignItems: 'center',
-              justifyContent: 'space-between', borderBottom: '1px solid rgba(255,61,90,0.2)',
+              background: 'rgba(255,61,90,0.14)', backdropFilter: 'blur(12px)',
+              padding: 'max(12px, env(safe-area-inset-top)) 16px 12px', display: 'flex', alignItems: 'center',
+              justifyContent: 'space-between', borderBottom: '1px solid rgba(255,61,90,0.25)',
             }}>
               <span style={{ fontSize: 12, color: 'var(--accent-red)', fontWeight: 600, flex: 1, marginRight: 10 }}>{initError}</span>
               <button onClick={() => doInit(true)} style={{
-                background: 'var(--gradient-fire)', border: 'none', color: 'white',
+                background: 'var(--gradient-fire)', border: 'none', color: 'var(--on-accent-text)',
                 padding: '8px 18px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-              }}>Reset & Retry</button>
+              }}>Reset &amp; Retry</button>
             </div>
           )}
           {showExitHint && (
@@ -320,10 +506,23 @@ export default function App() {
           )}
           {showCatalogUpdateToast && (
             <div className="app-inline-toast app-inline-toast--success">
-              Catalog updated: GIFs prioritized, plans balanced & body map upgraded!
+              Catalog updated: GIFs prioritized, plans balanced &amp; body map upgraded!
             </div>
           )}
-          {renderPage()}
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.16, ease: 'easeOut' }}
+            >
+              {renderPage()}
+            </motion.div>
+          </AnimatePresence>
+          <AnimatePresence>
+            {workoutActive && workoutMinimized && <MinimizedWorkoutBar />}
+          </AnimatePresence>
           <BottomNav />
         </>
       )}
