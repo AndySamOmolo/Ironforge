@@ -8,6 +8,7 @@ import type { Exercise } from '@/lib/types';
 import { MUSCLE_COLORS, SetType } from '@/lib/types';
 import { useUserStore } from '@/lib/store/userStore';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
+import { useUIStore } from '@/lib/store/uiStore';
 import { ALL_EQUIPMENT, matchesUserEquipment, normalizeEquipmentName, sharesTargetMuscle } from '@/lib/utils/exerciseResolver';
 import { getWorkoutStartingWeight } from '@/lib/utils/workoutDefaults';
 import { getYoutubeSearchUrl, getVideoSearchOptions } from '@/lib/data/youtube-ids';
@@ -26,6 +27,7 @@ const EQUIPMENT_TYPES = ['all', ...ALL_EQUIPMENT];
 export default function ExercisesPage() {
   const { equipment: userEquipment, barWeight, dumbbellWeight, defaultRestTime } = useUserStore();
   const { startWorkout } = useWorkoutStore();
+  const { setActiveTab } = useUIStore();
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [bodyPartFilter, setBodyPartFilter] = useState('all');
@@ -138,14 +140,24 @@ export default function ExercisesPage() {
               </p>
             </div>
           </div>
-          <button
-            onClick={() => setOnlyMyEquipment(!onlyMyEquipment)}
-            className={`filter-chip ${onlyMyEquipment ? 'active' : ''}`}
-            style={{ fontSize: 11, padding: '8px 12px', flexShrink: 0 }}
-            title="Filter by your selected equipment"
-          >
-            {onlyMyEquipment && <Check size={12} />} My Gear ({userEquipment?.length || 0})
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <button
+              onClick={() => setActiveTab('plans')}
+              className="btn-secondary"
+              style={{ fontSize: 11, padding: '8px 12px', borderRadius: 12, fontWeight: 700, flexShrink: 0 }}
+              title="Switch to Workout Plans"
+            >
+              ← Plans
+            </button>
+            <button
+              onClick={() => setOnlyMyEquipment(!onlyMyEquipment)}
+              className={`filter-chip ${onlyMyEquipment ? 'active' : ''}`}
+              style={{ fontSize: 11, padding: '8px 12px', flexShrink: 0 }}
+              title="Filter by your selected equipment"
+            >
+              {onlyMyEquipment && <Check size={12} />} My Gear ({userEquipment?.length || 0})
+            </button>
+          </div>
         </div>
       </motion.div>
 
@@ -226,6 +238,26 @@ export default function ExercisesPage() {
       {isLoading ? (
         <div className="exercise-grid">
           {Array.from({ length: 6 }).map((_, i) => <div key={i} className="skeleton" style={{ aspectRatio: '0.8', borderRadius: 18 }} />)}
+        </div>
+      ) : filteredExercises.length === 0 ? (
+        <div className="card" style={{ padding: 32, textAlign: 'center', border: '1px solid var(--border-subtle)' }}>
+          <Dumbbell size={32} color="var(--text-dim)" style={{ margin: '0 auto 10px' }} />
+          <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>No matching exercises</div>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
+            Try adjusting your search or clearing your active muscle and equipment filters.
+          </p>
+          <button
+            onClick={() => {
+              setSearchQuery('');
+              setBodyPartFilter('all');
+              setEquipmentFilter('all');
+              setOnlyMyEquipment(false);
+            }}
+            className="btn-primary"
+            style={{ width: 'auto', padding: '10px 20px', borderRadius: 12, fontSize: 12, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            Reset All Filters
+          </button>
         </div>
       ) : (
         <div className="exercise-grid">
@@ -329,14 +361,31 @@ function ExerciseDetailModal({
   const isGif = hasGifExerciseMedia(exercise);
   const isAnimated = hasAnimatedExerciseMedia(exercise);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   return (
-    <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+    <motion.div
+      className="modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label={exercise.name}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+    >
       <motion.div className="modal-content" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()}>
         <div className="modal-handle" />
         <button
           onClick={onClose}
-          aria-label="Close exercise details"
+          aria-label="Close modal"
           style={{ position: 'absolute', top: 18, right: 18, zIndex: 10, width: 32, height: 32, borderRadius: '50%', background: 'rgba(7,7,16,0.75)', border: '1px solid var(--border-bright)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
         >
           <X size={16} />
@@ -363,16 +412,16 @@ function ExerciseDetailModal({
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
           <a href={ytSearchUrl} target="_blank" rel="noopener noreferrer" style={{
-            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            flex: 1, minWidth: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             padding: '10px', borderRadius: 'var(--r-sm)', textDecoration: 'none',
             background: 'rgba(255,0,0,0.06)', border: '1px solid rgba(255,0,0,0.15)',
             color: '#FF4444', fontWeight: 600, fontSize: 12,
           }}>
             <ExternalLink size={12} /> Watch on YouTube
           </a>
-          {videoOptions.slice(1, 3).map(opt => (
+          {videoOptions.slice(1).map(opt => (
             <a key={opt.label} href={opt.url} target="_blank" rel="noopener noreferrer" style={{
               padding: '10px 12px', borderRadius: 'var(--r-sm)', textDecoration: 'none', textAlign: 'center',
               background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)',

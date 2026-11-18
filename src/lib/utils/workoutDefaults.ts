@@ -144,7 +144,11 @@ export function createKeepScreenAwakeController(onStatusChange?: (locked: boolea
       notify(nativeOk);
     }
 
-    ensureFallbackVideo();
+    if (!nativeOk && (!sentinel || sentinel.released)) {
+      ensureFallbackVideo();
+    } else {
+      stopFallbackVideo();
+    }
   };
 
   const handleVisibilityOrFocus = () => {
@@ -158,8 +162,6 @@ export function createKeepScreenAwakeController(onStatusChange?: (locked: boolea
     if (!active) return;
     if (!sentinel || sentinel.released) {
       void requestWakeLock();
-    } else {
-      ensureFallbackVideo();
     }
   };
 
@@ -177,11 +179,15 @@ export function createKeepScreenAwakeController(onStatusChange?: (locked: boolea
     watchdogTimer = setInterval(() => {
       if (!active) return;
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        const nativeOk = setNativeKeepScreenOn(true);
         if (!sentinel || sentinel.released) {
           void requestWakeLock();
         }
-        ensureFallbackVideo();
-        setNativeKeepScreenOn(true);
+        if (!nativeOk && (!sentinel || sentinel.released)) {
+          ensureFallbackVideo();
+        } else {
+          stopFallbackVideo();
+        }
       }
     }, 10000);
   };

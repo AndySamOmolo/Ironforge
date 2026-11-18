@@ -21,13 +21,14 @@ interface ExerciseDBEntry {
   imageUrls?: string[];
 }
 
-export const EXERCISE_CATALOG_VERSION = 8;
+export const EXERCISE_CATALOG_VERSION = 9;
 
 export function cleanExerciseDisplayName(rawName: string): string {
   return (rawName || 'Unknown')
     .replace(/в°/g, '°')
     .replace(/\ball fours squad stretch\b/gi, 'all fours quad stretch')
-    .replace(/\s*\((?:male|female)\)\s*$/i, '')
+    .replace(/_shoulder\b/gi, '')
+    .replace(/\s*(?:\((?:male|female)\)|\b(?:male|female))\s*$/i, '')
     .trim();
 }
 
@@ -110,6 +111,8 @@ async function seedExercises(
   onProgress?.(`Processing ${allExercises.length} exercises...`, 15);
 
   onProgress?.(`Saving ${allExercises.length} exercises...`, 70);
+  const existingCount = await db.exercises.count();
+  if (existingCount > 0) await db.exercises.clear();
   const chunkSize = 200;
   for (let i = 0; i < allExercises.length; i += chunkSize) {
     const chunk = allExercises.slice(i, i + chunkSize);
@@ -320,6 +323,63 @@ export async function ensureWorkoutPrograms(forceUpdateBuiltIn = false): Promise
         { dayNumber: 3, name: 'Legs, Glutes & Core', exercises: buildDay(['bodyweight squat', 'lunge', 'glute bridge', 'calf raise', 'crunch', 'bicycle crunch'], [4, 3, 4, 4, 3, 3], [20, 12, 15, 20, 20, 20]) },
       ],
     },
+    {
+      plan: {
+        name: 'Calisthenics Foundation (3-Day)',
+        description: 'Structured 3-day beginner calisthenics program building push-up, pull-up, dip, squat, and hollow-core control with zero gym machines.',
+        category: 'Calisthenics',
+        difficulty: 'beginner',
+        daysPerWeek: 3,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      days: [
+        { dayNumber: 1, name: 'Day 1: Push & Scapular Control', exercises: buildDay(['push up', 'incline push-up', 'pike push up', 'dips', 'scapula dips', 'plank'], [4, 3, 3, 3, 3, 3], [12, 15, 10, 10, 12, 45]) },
+        { dayNumber: 2, name: 'Day 2: Pull, Bar Hang & Posterior', exercises: buildDay(['inverted row', 'chin up', 'pull up', 'superman', 'back extension', 'hanging leg raise'], [4, 3, 3, 3, 3, 3], [12, 6, 6, 15, 15, 10]) },
+        { dayNumber: 3, name: 'Day 3: Pistol Prep, Glutes & Core', exercises: buildDay(['bodyweight squat', 'walking lunge', 'pistol squat', 'glute bridge', 'calf raise', 'bicycle crunch'], [4, 3, 3, 4, 4, 3], [20, 12, 6, 15, 20, 20]) },
+      ],
+    },
+    {
+      plan: {
+        name: 'Calisthenics Street Workout (PPL)',
+        description: 'Four-day intermediate bar and floor calisthenics split targeting high-volume pull-ups, straight-bar dips, archer movements, pistol squats, and L-sit compression.',
+        category: 'Calisthenics',
+        difficulty: 'intermediate',
+        daysPerWeek: 4,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      days: [
+        { dayNumber: 1, name: 'Day 1: Street Push (Dips, Pike & Archer)', exercises: buildDay(['straight bar dip', 'archer push up', 'pike push up', 'diamond push up', 'dips', 'l-sit'], [4, 4, 4, 3, 3, 3], [10, 8, 10, 12, 12, 25]) },
+        { dayNumber: 2, name: 'Day 2: Street Pull (Explosive Bar & Rows)', exercises: buildDay(['pull up', 'archer pull up', 'chin up', 'inverted row', 'superman', 'hanging pike'], [4, 3, 4, 4, 3, 3], [10, 6, 10, 12, 15, 10]) },
+        { dayNumber: 3, name: 'Day 3: Calisthenics Legs & Plyo Control', exercises: buildDay(['pistol squat', 'walking lunge', 'bodyweight squat', 'glute bridge', 'calf raise', 'hanging leg raise'], [4, 4, 4, 3, 4, 3], [6, 12, 20, 15, 20, 12]) },
+        { dayNumber: 4, name: 'Day 4: Full Body Freestyle & Bar Mastery', exercises: buildDay(['muscle-up', 'handstand push-up', 'pull up', 'straight bar dip', 'pistol squat', 'l-sit'], [4, 3, 3, 3, 3, 3], [5, 6, 10, 12, 6, 30]) },
+      ],
+    },
+    {
+      plan: {
+        name: 'Calisthenics Skills & Statics',
+        description: 'Four-day advanced calisthenics skill and straight-arm strength block focused on Planche, Front/Back Lever, Muscle-Ups, Handstand Push-Ups, and Pistol Squats.',
+        category: 'Calisthenics',
+        difficulty: 'expert',
+        daysPerWeek: 4,
+        isCustom: false,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      days: [
+        { dayNumber: 1, name: 'Day 1: Planche & Straight-Arm Push', exercises: buildDay(['planche', 'handstand push-up', 'straight bar dip', 'archer push up', 'diamond push up', 'l-sit'], [5, 4, 4, 3, 3, 4], [15, 6, 10, 8, 12, 30]) },
+        { dayNumber: 2, name: 'Day 2: Front/Back Lever & Straight-Arm Pull', exercises: buildDay(['front lever', 'back lever', 'archer pull up', 'chin up', 'inverted row', 'hanging pike'], [5, 4, 4, 3, 4, 3], [15, 15, 6, 10, 12, 10]) },
+        { dayNumber: 3, name: 'Day 3: Unilateral Lower Body & Core Compression', exercises: buildDay(['pistol squat', 'walking lunge', 'bodyweight squat', 'glute bridge', 'calf raise', 'hanging leg raise'], [5, 4, 3, 4, 4, 4], [8, 12, 20, 15, 20, 12]) },
+        { dayNumber: 4, name: 'Day 4: Muscle-Up, Handstand & Static Flow', exercises: buildDay(['muscle-up', 'planche', 'front lever', 'handstand push-up', 'pistol squat', 'l-sit'], [5, 4, 4, 3, 3, 3], [5, 15, 15, 6, 8, 30]) },
+      ],
+    },
+
     {
       plan: {
         name: 'Arms Specialization',
@@ -587,32 +647,32 @@ export async function ensureWorkoutPrograms(forceUpdateBuiltIn = false): Promise
 
   const existingPlans = await db.workoutPlans.toArray();
   const hasAnyActivePlan = existingPlans.some((p) => p.isActive);
+  const existingByName = new Map(existingPlans.map(p => [p.name, p]));
 
   for (let idx = 0; idx < programs.length; idx++) {
     const { plan, days } = programs[idx];
     if (idx === 0 && !hasAnyActivePlan && existingPlans.length === 0) {
       plan.isActive = true;
     }
-    const existing = await db.workoutPlans.where('name').equals(plan.name).first();
+    const existing = existingByName.get(plan.name);
     if (existing?.id) {
       if (forceUpdateBuiltIn && !existing.isCustom) {
-        await db.workoutPlans.update(existing.id, {
+        const planId = existing.id;
+        await db.workoutPlans.update(planId, {
           description: plan.description,
+          category: plan.category,
+          difficulty: plan.difficulty,
           daysPerWeek: plan.daysPerWeek,
           updatedAt: new Date(),
         });
-        await db.workoutDays.where('planId').equals(existing.id).delete();
-        for (const day of days) {
-          await db.workoutDays.add({ ...day, planId: existing.id } as WorkoutDay);
-        }
+        await db.workoutDays.where('planId').equals(planId).delete();
+        await db.workoutDays.bulkAdd(days.map(day => ({ ...day, planId }) as WorkoutDay));
       }
       continue;
     }
 
     const planId = await db.workoutPlans.add(plan as WorkoutPlan);
-    for (const day of days) {
-      await db.workoutDays.add({ ...day, planId } as WorkoutDay);
-    }
+    await db.workoutDays.bulkAdd(days.map(day => ({ ...day, planId }) as WorkoutDay));
   }
 }
 

@@ -6,7 +6,7 @@ import { Dumbbell, RefreshCw, AlertTriangle } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface SeedingScreenProps {
-  onRetry?: () => void;
+  onRetry?: (forceReset?: boolean) => void;
   error?: string | null;
 }
 
@@ -18,6 +18,13 @@ export default function SeedingScreen({ onRetry, error }: SeedingScreenProps) {
     const timer = setInterval(() => setElapsed(e => e + 1), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  const handleDestructiveReset = () => {
+    if (!onRetry) return;
+    if (window.confirm('Reset local database and reload exercise library? Any unsynced local data on this device will be cleared.')) {
+      onRetry(true);
+    }
+  };
 
   return (
     <div className="seeding-screen">
@@ -73,20 +80,35 @@ export default function SeedingScreen({ onRetry, error }: SeedingScreenProps) {
             {error}
           </motion.p>
           {onRetry && (
-            <motion.button
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-              onClick={onRetry}
-              style={{
-                background: 'var(--gradient-fire)', border: 'none', color: 'white',
-                padding: '14px 32px', borderRadius: 14, fontSize: 15, fontWeight: 700,
-                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, marginTop: 8,
-                boxShadow: '0 4px 20px var(--glow-red)',
-              }}
-            >
-              <RefreshCw size={16} /> Reset & Try Again
-            </motion.button>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginTop: 8 }}>
+              <motion.button
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                onClick={() => onRetry(false)}
+                style={{
+                  background: 'var(--gradient-fire)', border: 'none', color: 'white',
+                  padding: '14px 32px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+                  boxShadow: '0 4px 20px var(--glow-red)',
+                }}
+              >
+                <RefreshCw size={16} /> Retry
+              </motion.button>
+              <motion.button
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+                onClick={handleDestructiveReset}
+                style={{
+                  background: 'var(--bg-glass)', border: '1px solid var(--border-bright)',
+                  color: 'var(--text-secondary)', padding: '10px 24px', borderRadius: 12,
+                  fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                <AlertTriangle size={14} color="var(--accent-red)" /> Reset Database & Retry
+              </motion.button>
+            </div>
           )}
           <motion.p
             initial={{ opacity: 0 }}
@@ -94,7 +116,7 @@ export default function SeedingScreen({ onRetry, error }: SeedingScreenProps) {
             transition={{ delay: 0.5 }}
             style={{ color: 'var(--text-muted)', fontSize: 11, textAlign: 'center', maxWidth: 260, lineHeight: 1.5, marginTop: 4 }}
           >
-            This will clear any corrupted data and set up fresh. Your exercise library will be reloaded.
+            Retry preserves your existing workout history. Only use Reset Database if local storage is corrupted.
           </motion.p>
         </>
       ) : (
@@ -141,16 +163,28 @@ export default function SeedingScreen({ onRetry, error }: SeedingScreenProps) {
                 Taking longer than expected...
               </p>
               {onRetry && (
-                <button
-                  onClick={onRetry}
-                  style={{
-                    background: 'var(--bg-glass)', border: '1px solid var(--border-bright)',
-                    color: 'var(--text-secondary)', padding: '10px 24px', borderRadius: 12,
-                    fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
-                  }}
-                >
-                  <RefreshCw size={14} /> Reset & Retry
-                </button>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <button
+                    onClick={() => onRetry(false)}
+                    style={{
+                      background: 'var(--gradient-fire)', border: 'none',
+                      color: 'white', padding: '10px 20px', borderRadius: 12,
+                      fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+                    }}
+                  >
+                    <RefreshCw size={14} /> Retry
+                  </button>
+                  <button
+                    onClick={handleDestructiveReset}
+                    style={{
+                      background: 'var(--bg-glass)', border: '1px solid var(--border-bright)',
+                      color: 'var(--text-secondary)', padding: '10px 20px', borderRadius: 12,
+                      fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+                    }}
+                  >
+                    <AlertTriangle size={14} color="var(--accent-red)" /> Reset Database & Retry
+                  </button>
+                </div>
               )}
             </motion.div>
           )}

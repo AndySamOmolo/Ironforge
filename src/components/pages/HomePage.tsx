@@ -77,14 +77,17 @@ export default function HomePage() {
     streak: 0,
     bestStreak: 0,
     totalVolume: 0,
+    totalDurationSec: 0,
     prsThisMonth: 0,
     activeDays30d: 0,
     weekDurationSec: 0,
     weekSets: 0,
     weekVolume: 0,
+    monthVolume: 0,
+    monthDurationSec: 0,
   });
   const [exerciseCount, setExerciseCount] = useState(0);
-  const [plansCount, setPlansCount] = useState(22);
+  const [plansCount, setPlansCount] = useState(25);
   const [activityByDate, setActivityByDate] = useState<Map<string, DayActivitySummary>>(new Map());
   const [selectedDateKey, setSelectedDateKey] = useState<string>(() => toLocalDateKey(new Date()));
   const [heatmapMetric, setHeatmapMetric] = useState<'workouts' | 'volume' | 'duration'>('workouts');
@@ -110,9 +113,9 @@ export default function HomePage() {
       setRecentSessions(completedAll.slice(0, 10));
       if (completedAll.length > 0) setLastWorkout(completedAll[0]);
 
-      // Start of current week (Monday)
+      // Start of current week (Sunday, aligned with 16-week Sun-Sat heatmap)
       const now = new Date();
-      const dayOfWeek = (now.getDay() + 6) % 7; // 0 = Mon, 6 = Sun
+      const dayOfWeek = now.getDay(); // 0 = Sun, 6 = Sat
       const startOfWeek = new Date(now);
       startOfWeek.setDate(now.getDate() - dayOfWeek);
       startOfWeek.setHours(0, 0, 0, 0);
@@ -166,14 +169,15 @@ export default function HomePage() {
         bestStreak = Math.max(bestStreak, runStreak);
       }
 
-      // Active days in last 30 days
+      // Active days & totals in last 30 days
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const activeDays30d = Array.from(byDate.keys()).filter(k => new Date(`${k}T12:00:00`) >= thirtyDaysAgo).length;
+      const monthSessions = completedAll.filter(s => new Date(s.startedAt) >= thirtyDaysAgo);
 
       const monthAgo = new Date();
       monthAgo.setMonth(monthAgo.getMonth() - 1);
-      const monthPRs = await db.personalRecords.filter(pr => new Date(pr.date) >= monthAgo).count();
+      const monthPRs = await db.personalRecords.where('date').aboveOrEqual(monthAgo).count();
 
       setStats({
         totalWorkouts: completedAll.length,
@@ -181,11 +185,14 @@ export default function HomePage() {
         streak,
         bestStreak,
         totalVolume: completedAll.reduce((sum, s) => sum + (s.totalVolume || 0), 0),
+        totalDurationSec: completedAll.reduce((sum, s) => sum + (s.duration || 0), 0),
         prsThisMonth: monthPRs,
         activeDays30d,
         weekDurationSec: weekSessions.reduce((sum, s) => sum + (s.duration || 0), 0),
         weekSets: weekSessions.reduce((sum, s) => sum + (s.totalSets || 0), 0),
         weekVolume: weekSessions.reduce((sum, s) => sum + (s.totalVolume || 0), 0),
+        monthVolume: monthSessions.reduce((sum, s) => sum + (s.totalVolume || 0), 0),
+        monthDurationSec: monthSessions.reduce((sum, s) => sum + (s.duration || 0), 0),
       });
 
       const totalPlans = await db.workoutPlans.count();
@@ -236,8 +243,6 @@ export default function HomePage() {
     const m = Math.max(1, Math.round(seconds / 60));
     return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
   };
-
-
 
   const getRelativeTime = (date: Date) => {
     const todayKey = toLocalDateKey(new Date());
@@ -330,17 +335,17 @@ export default function HomePage() {
 
   const todayKey = useMemo(() => toLocalDateKey(new Date()), []);
 
-  // Current week Mon–Sun strip
+  // Current week Sun–Sat strip (aligned with 16-week Sun–Sat heatmap)
   const currentWeekDays = useMemo(() => {
     const now = new Date();
-    const dayOfWeek = (now.getDay() + 6) % 7; // 0 = Mon
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - dayOfWeek);
-    const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const dayOfWeek = now.getDay(); // 0 = Sun, 6 = Sat
+    const sunday = new Date(now);
+    sunday.setDate(now.getDate() - dayOfWeek);
+    const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
     return labels.map((label, idx) => {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + idx);
+      const d = new Date(sunday);
+      d.setDate(sunday.getDate() + idx);
       const key = toLocalDateKey(d);
       const summary = activityByDate.get(key);
       return {
@@ -350,6 +355,8 @@ export default function HomePage() {
         isToday: key === todayKey,
         count: summary?.count || 0,
         volume: summary?.volume || 0,
+        durationSec: summary?.durationSec || 0,
+        sets: summary?.sets || 0,
       };
     });
   }, [activityByDate, todayKey]);
@@ -398,20 +405,23 @@ export default function HomePage() {
   // Streak ring
   const streakDashOffset = Math.max(0, 251 - (251 * Math.min(stats.streak, 7) / 7));
 
+  const activeDays = activePlanDays;
+  const nextUpIdx = activeDays.length > 0 ? stats.totalWorkouts % activeDays.length : 0;
+
   return (
     <div className="page-container">
       {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+      <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <div style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 500, marginBottom: 4 }}>{greeting()}</div>
-          <h1 className="font-display" style={{ fontSize: 32, fontWeight: 800, letterSpacing: '-0.03em' }}>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 2 }}>{greeting()}</div>
+          <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1.1 }}>
             <span className="gradient-text">{name}</span>
           </h1>
         </div>
         <button
           onClick={handleSurpriseWorkout}
           className="btn-secondary"
-          style={{ padding: '10px 14px', borderRadius: 12, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}
+          style={{ padding: '9px 13px', borderRadius: 12, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, minHeight: 38 }}
           title="Generate a fresh equipment-matched workout"
         >
           <Shuffle size={13} color="var(--accent-purple)" /> Quick Mix
@@ -419,8 +429,8 @@ export default function HomePage() {
       </motion.div>
 
       {/* Streak Ring + Stats Row */}
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
-        className="hero-gradient" style={{ padding: 20, marginBottom: 20 }}>
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.04 }}
+        className="hero-gradient" style={{ padding: '14px 16px', marginBottom: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
           <div style={{ position: 'relative', width: 86, height: 86, flexShrink: 0 }}>
             <svg width="86" height="86" viewBox="0 0 86 86">
@@ -440,7 +450,7 @@ export default function HomePage() {
             {[
               { value: `${activeWeekDaysCount}/${weeklyGoalTarget}`, label: 'Week Goal', color: 'var(--accent-purple)' },
               { value: stats.totalWorkouts, label: 'Workouts', color: 'var(--accent-yellow)' },
-              { value: stats.totalVolume > 1000 ? `${(stats.totalVolume / 1000).toFixed(0)}k` : stats.totalVolume, label: `Volume ${unitLabel}`, color: 'var(--accent-green)' },
+              { value: stats.totalVolume >= 1000 ? `${(stats.totalVolume / 1000).toFixed(1)}K` : Math.round(stats.totalVolume), label: `Volume ${unitLabel}`, color: 'var(--accent-green)' },
             ].map((stat, i) => (
               <motion.div key={i} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 + i * 0.05 }}
                 style={{ textAlign: 'center' }}>
@@ -479,12 +489,10 @@ export default function HomePage() {
         </motion.div>
       )}
 
-
-
       {/* Upgraded Activity & Consistency Tracker */}
       {showActivityHeatmap !== false && (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}
-          style={{ marginBottom: 24 }}>
+          style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <h2 className="font-display" style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}>
               <Activity size={16} color="var(--accent-green)" /> Activity Tracker
@@ -511,65 +519,113 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="card" style={{ padding: 16, border: '1px solid var(--border-subtle)' }}>
-            {/* Current Week Mon-Sun Interactive Tracker */}
+          <div className="card" style={{ padding: 15, border: '1px solid var(--border-subtle)' }}>
+            {/* Current Week Sun-Sat Interactive Tracker (Adapts to Sessions / Volume / Time tab) */}
             <div style={{ marginBottom: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>
-                  This Week ({activeWeekDaysCount} of {weeklyGoalTarget} days active)
+                <span style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--text-primary)' }}>
+                  {heatmapMetric === 'workouts'
+                    ? `This Week: ${activeWeekDaysCount} of ${weeklyGoalTarget} days active`
+                    : heatmapMetric === 'volume'
+                      ? `This Week Volume: ${stats.weekVolume.toLocaleString()} ${unitLabel}`
+                      : `This Week Active Time: ${formatDuration(stats.weekDurationSec)}`}
                 </span>
-                <span className="font-mono" style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-orange)' }}>
-                  🔥 ~{estWeekCalories.toLocaleString()} kcal
+                <span className="font-mono" style={{ fontSize: 11, fontWeight: 700, color: heatmapMetric === 'volume' ? 'var(--accent-green)' : heatmapMetric === 'duration' ? 'var(--accent-cyan)' : 'var(--accent-orange)' }}>
+                  {heatmapMetric === 'workouts'
+                    ? `🔥 ~${estWeekCalories.toLocaleString()} kcal`
+                    : heatmapMetric === 'volume'
+                      ? `🏋️ ${stats.weekSets} sets logged`
+                      : `⏱ Avg ${stats.weekWorkouts > 0 ? formatDuration(Math.round(stats.weekDurationSec / stats.weekWorkouts)) : '0m'}/sess`}
                 </span>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6, marginBottom: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 5, marginBottom: 10 }}>
                 {currentWeekDays.map((d) => {
                   const isActive = d.count > 0;
                   const isSelected = selectedDateKey === d.dateKey;
+                  const daySubValue =
+                    heatmapMetric === 'workouts'
+                      ? (d.count > 0 ? `${d.count}x` : '–')
+                      : heatmapMetric === 'volume'
+                        ? (d.volume >= 1000 ? `${(d.volume / 1000).toFixed(1)}K` : d.volume > 0 ? `${Math.round(d.volume)}` : `0${unitLabel}`)
+                        : (d.durationSec > 0 ? formatDuration(d.durationSec) : '0m');
+
                   return (
                     <button
                       key={d.dateKey}
+                      type="button"
                       onClick={() => setSelectedDateKey(d.dateKey)}
+                      aria-label={`${d.label} ${d.dateKey}: ${d.count} workout${d.count !== 1 ? 's' : ''}`}
                       style={{
-                        padding: '8px 2px', borderRadius: 12, cursor: 'pointer', textAlign: 'center',
-                        background: isActive ? 'rgba(16,232,154,0.12)' : 'var(--bg-glass)',
+                        padding: '7px 2px 6px', borderRadius: 12, cursor: 'pointer', textAlign: 'center',
+                        background: isActive ? 'rgba(16,232,154,0.12)' : 'var(--bg-input)',
                         border: isSelected
                           ? '1.5px solid var(--accent-purple)'
                           : d.isToday
                             ? '1.5px solid var(--accent-red)'
                             : isActive
                               ? '1px solid rgba(16,232,154,0.35)'
-                              : '1px solid var(--border)',
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                              : '1px solid var(--border-subtle)',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
                       }}
                     >
                       <span style={{ fontSize: 9, fontWeight: 700, color: d.isToday ? 'var(--accent-red)' : 'var(--text-muted)' }}>
                         {d.label}
                       </span>
                       <div style={{
-                        width: 24, height: 24, borderRadius: '50%',
-                        background: isActive ? 'var(--accent-green)' : 'rgba(255,255,255,0.04)',
+                        width: 23, height: 23, borderRadius: '50%',
+                        background: isActive ? 'var(--accent-green)' : 'rgba(255,255,255,0.05)',
                         color: isActive ? '#06120e' : 'var(--text-secondary)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 11, fontWeight: 800,
+                        fontSize: 10.5, fontWeight: 800,
                       }}>
-                        {isActive ? <Check size={13} strokeWidth={3} /> : d.dayNum}
+                        {isActive ? <Check size={12} strokeWidth={3} /> : d.dayNum}
                       </div>
+                      <span
+                        className="font-mono"
+                        style={{
+                          fontSize: 8.5,
+                          fontWeight: 700,
+                          color: isActive
+                            ? heatmapMetric === 'volume'
+                              ? 'var(--accent-green)'
+                              : heatmapMetric === 'duration'
+                                ? 'var(--accent-cyan)'
+                                : 'var(--text-primary)'
+                            : 'var(--text-muted)',
+                        }}
+                      >
+                        {daySubValue}
+                      </span>
                     </button>
                   );
                 })}
               </div>
 
-              {/* Weekly Metrics Strip */}
+              {/* Dynamic 4-Tile Metrics Strip (Switches immediately with Sessions / Volume / Time) */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-                {[
-                  { label: 'Active Time', value: stats.weekDurationSec > 0 ? formatDuration(stats.weekDurationSec) : '0m', color: 'var(--accent-cyan)' },
-                  { label: 'Week Sets', value: stats.weekSets.toString(), color: 'var(--accent-purple)' },
-                  { label: '30D Active', value: `${stats.activeDays30d}d`, color: 'var(--accent-green)' },
-                  { label: 'Best Streak', value: `${stats.bestStreak}d`, color: 'var(--accent-yellow)' },
-                ].map((m, idx) => (
-                  <div key={idx} style={{ padding: '7px 4px', background: 'var(--bg-glass)', borderRadius: 9, textAlign: 'center', border: '1px solid var(--border)' }}>
+                {(heatmapMetric === 'volume'
+                  ? [
+                      { label: `Week ${unitLabel.toUpperCase()}`, value: stats.weekVolume >= 1000 ? `${(stats.weekVolume / 1000).toFixed(1)}K` : `${Math.round(stats.weekVolume)}`, color: 'var(--accent-green)' },
+                      { label: `30D ${unitLabel.toUpperCase()}`, value: stats.monthVolume >= 1000 ? `${(stats.monthVolume / 1000).toFixed(1)}K` : `${Math.round(stats.monthVolume)}`, color: 'var(--accent-cyan)' },
+                      { label: 'Avg / Lift', value: stats.totalWorkouts > 0 ? (stats.totalVolume / stats.totalWorkouts >= 1000 ? `${(stats.totalVolume / stats.totalWorkouts / 1000).toFixed(1)}K` : `${Math.round(stats.totalVolume / stats.totalWorkouts)}`) : '0', color: 'var(--accent-purple)' },
+                      { label: `Total ${unitLabel.toUpperCase()}`, value: stats.totalVolume >= 1000 ? `${(stats.totalVolume / 1000).toFixed(1)}K` : `${Math.round(stats.totalVolume)}`, color: 'var(--accent-yellow)' },
+                    ]
+                  : heatmapMetric === 'duration'
+                    ? [
+                        { label: 'Week Time', value: stats.weekDurationSec > 0 ? formatDuration(stats.weekDurationSec) : '0m', color: 'var(--accent-cyan)' },
+                        { label: '30D Time', value: stats.monthDurationSec > 0 ? formatDuration(stats.monthDurationSec) : '0m', color: 'var(--accent-green)' },
+                        { label: 'Avg Length', value: stats.totalWorkouts > 0 ? formatDuration(Math.round(stats.totalDurationSec / stats.totalWorkouts)) : '0m', color: 'var(--accent-purple)' },
+                        { label: 'Total Time', value: stats.totalDurationSec > 0 ? formatDuration(stats.totalDurationSec) : '0m', color: 'var(--accent-yellow)' },
+                      ]
+                    : [
+                        { label: 'Week Goal', value: `${activeWeekDaysCount}/${weeklyGoalTarget}`, color: 'var(--accent-cyan)' },
+                        { label: 'Week Sets', value: stats.weekSets.toString(), color: 'var(--accent-purple)' },
+                        { label: '30D Active', value: `${stats.activeDays30d}d`, color: 'var(--accent-green)' },
+                        { label: 'Best Streak', value: `${stats.bestStreak}d`, color: 'var(--accent-yellow)' },
+                      ]
+                ).map((m, idx) => (
+                  <div key={idx} style={{ padding: '7px 4px', background: 'var(--bg-input)', borderRadius: 9, textAlign: 'center', border: '1px solid var(--border-subtle)' }}>
                     <div className="font-mono" style={{ fontSize: 13, fontWeight: 800, color: m.color }}>{m.value}</div>
                     <div style={{ fontSize: 8, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginTop: 2 }}>{m.label}</div>
                   </div>
@@ -578,22 +634,40 @@ export default function HomePage() {
             </div>
 
             {/* 16-Week Interactive Heatmap */}
-            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, paddingLeft: 20 }}>
-                {monthHeaders.map((mh, idx) => (
-                  <span key={idx} style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700 }}>{mh.label}</span>
-                ))}
+            <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', flex: 1, paddingLeft: 26, paddingRight: 8 }}>
+                  {monthHeaders.map((mh, idx) => (
+                    <span key={idx} style={{ fontSize: 9.5, color: 'var(--text-secondary)', fontWeight: 700 }}>{mh.label}</span>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 8.5, color: 'var(--text-muted)', fontWeight: 700 }}>
+                  <span>
+                    {heatmapMetric === 'workouts' ? '0' : heatmapMetric === 'volume' ? `0${unitLabel}` : '0m'}
+                  </span>
+                  <span style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(255,255,255,0.085)', border: '1px solid rgba(255,255,255,0.16)' }} />
+                  <span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--accent-purple)' }} />
+                  <span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--accent-cyan)' }} />
+                  <span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--accent-green)' }} />
+                  <span>
+                    {heatmapMetric === 'workouts' ? '2+ sess' : heatmapMetric === 'volume' ? `8K+ ${unitLabel}` : '60m+'}
+                  </span>
+                </div>
               </div>
 
-              <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: 110, paddingRight: 4, fontSize: 8, color: 'var(--text-dim)', fontWeight: 700 }}>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'stretch' }}>
+                <div style={{ display: 'grid', gridTemplateRows: 'repeat(7, 1fr)', alignItems: 'center', paddingRight: 2, fontSize: 8.5, color: 'var(--text-muted)', fontWeight: 700, lineHeight: 1 }}>
                   <span>Sun</span>
-                  <span>Wed</span>
+                  <span />
+                  <span>Tue</span>
+                  <span />
+                  <span>Thu</span>
+                  <span />
                   <span>Sat</span>
                 </div>
-                <div className="hide-scrollbar" style={{ display: 'flex', gap: 3, overflowX: 'auto', flex: 1, justifyContent: 'space-between' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(16, minmax(0, 1fr))', gap: 3.5, flex: 1 }}>
                   {heatmapWeeks.map((week, wi) => (
-                    <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: 3.5 }}>
                       {week.map((day, di) => {
                         const isToday = day.date === todayKey;
                         const isSelected = day.date === selectedDateKey;
@@ -607,25 +681,35 @@ export default function HomePage() {
                           else intensity = Math.min(1, s.durationSec / 3600);
                         }
 
+                        const cellBg = !hasActivity
+                          ? 'rgba(255, 255, 255, 0.075)'
+                          : intensity >= 0.75
+                            ? 'var(--accent-green)'
+                            : intensity >= 0.4
+                              ? 'var(--accent-cyan)'
+                              : 'var(--accent-purple)';
+
                         return (
                           <button
                             key={di}
+                            type="button"
+                            className="activity-heatmap-cell"
                             onClick={() => setSelectedDateKey(day.date)}
-                            title={`${day.date}: ${s.count} workout${s.count !== 1 ? 's' : ''}, ${s.volume.toLocaleString()}${unitLabel}`}
+                            aria-label={`${day.date}: ${s.count} workout${s.count !== 1 ? 's' : ''}, ${s.volume.toLocaleString()} ${unitLabel}`}
+                            title={`${day.date}: ${s.count} workout${s.count !== 1 ? 's' : ''}, ${s.volume.toLocaleString()} ${unitLabel}`}
                             style={{
-                              width: 14, height: 14, borderRadius: 3.5, padding: 0, cursor: 'pointer',
-                              background: !hasActivity
-                                ? 'var(--bg-glass)'
-                                : intensity >= 0.75
-                                  ? 'var(--accent-green)'
-                                  : intensity >= 0.4
-                                    ? 'var(--accent-cyan)'
-                                    : 'var(--accent-purple)',
-                              opacity: !hasActivity ? 0.28 : 0.65 + intensity * 0.35,
+                              background: cellBg,
                               border: isSelected
-                                ? '1.5px solid #ffffff'
+                                ? '1.5px solid var(--text-primary)'
                                 : isToday
                                   ? '1.5px solid var(--accent-red)'
+                                  : hasActivity
+                                    ? '1px solid rgba(255,255,255,0.24)'
+                                    : '1px solid rgba(255,255,255,0.14)',
+                              boxShadow: isSelected
+                                ? '0 0 8px var(--glow-purple)'
+                                : hasActivity && intensity >= 0.75
+                                  ? '0 0 6px var(--glow-green)'
                                   : 'none',
                             }}
                           />
@@ -637,23 +721,40 @@ export default function HomePage() {
               </div>
 
               {/* Selected Date Activity Inspector */}
-              <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, background: 'var(--bg-glass)', border: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)' }}>
-                    {selectedDateKey === todayKey ? 'Today' : new Date(`${selectedDateKey}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+              <div style={{ marginTop: 11, padding: '10px 12px', borderRadius: 10, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span>
+                      {selectedDateKey === todayKey ? 'Today' : new Date(`${selectedDateKey}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                    </span>
+                    <span className="badge" style={{ fontSize: 9, padding: '1px 7px', background: 'var(--bg-glass)', border: '1px solid var(--border-bright)', color: 'var(--text-secondary)' }}>
+                      {heatmapMetric === 'workouts' ? 'Sessions View' : heatmapMetric === 'volume' ? 'Volume View' : 'Time View'}
+                    </span>
                   </div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+                  <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2 }}>
                     {selectedDaySummary && selectedDaySummary.count > 0
-                      ? `${selectedDaySummary.sessions.map(s => s.dayName || s.planName || 'Workout').join(', ')} • ${selectedDaySummary.sets} sets • ${selectedDaySummary.volume.toLocaleString()}${unitLabel}`
-                      : 'Rest day — no workouts logged on this date'}
+                      ? heatmapMetric === 'volume'
+                        ? `Volume: ${selectedDaySummary.volume.toLocaleString()} ${unitLabel} across ${selectedDaySummary.sets} sets (${selectedDaySummary.sessions.map(s => s.dayName || s.planName || 'Workout').join(', ')})`
+                        : heatmapMetric === 'duration'
+                          ? `Active Time: ${formatDuration(selectedDaySummary.durationSec)} across ${selectedDaySummary.count} session${selectedDaySummary.count !== 1 ? 's' : ''} (${selectedDaySummary.sets} sets)`
+                          : `${selectedDaySummary.sessions.map(s => s.dayName || s.planName || 'Workout').join(', ')} • ${selectedDaySummary.sets} sets • ${selectedDaySummary.volume.toLocaleString()} ${unitLabel}`
+                      : heatmapMetric === 'volume'
+                        ? `0 ${unitLabel} lifted on this date — tap Train Now to log volume`
+                        : heatmapMetric === 'duration'
+                          ? '0m active training time on this date — tap Train Now to start'
+                          : 'Rest day — no workouts logged on this date'}
                   </div>
                 </div>
                 {selectedDaySummary && selectedDaySummary.count > 0 ? (
-                  <span className="badge" style={{ background: 'rgba(16,232,154,0.12)', color: 'var(--accent-green)', fontSize: 10 }}>
-                    {formatDuration(selectedDaySummary.durationSec)}
+                  <span className="badge" style={{ background: 'rgba(16,232,154,0.14)', color: 'var(--accent-green)', fontSize: 10, fontWeight: 800 }}>
+                    {heatmapMetric === 'volume'
+                      ? `${selectedDaySummary.volume.toLocaleString()} ${unitLabel}`
+                      : heatmapMetric === 'duration'
+                        ? formatDuration(selectedDaySummary.durationSec)
+                        : `${selectedDaySummary.count} sess`}
                   </span>
                 ) : (
-                  <button onClick={handleSurpriseWorkout} className="btn-secondary" style={{ padding: '6px 10px', fontSize: 10, minHeight: 30, borderRadius: 8 }}>
+                  <button onClick={handleSurpriseWorkout} className="btn-secondary" style={{ padding: '6px 10px', fontSize: 10, minHeight: 30, borderRadius: 8, flexShrink: 0 }}>
                     Train Now
                   </button>
                 )}
@@ -697,7 +798,7 @@ export default function HomePage() {
                 { val: lastWorkout.duration > 0 ? formatDuration(lastWorkout.duration) : '-', lbl: 'Duration' },
                 { val: lastWorkout.totalSets || '-', lbl: 'Sets' },
                 { val: lastWorkout.totalReps || '-', lbl: 'Reps' },
-                { val: lastWorkout.totalVolume > 0 ? `${(lastWorkout.totalVolume / 1000).toFixed(1)}k` : '-', lbl: 'Volume' },
+                { val: lastWorkout.totalVolume >= 1000 ? `${(lastWorkout.totalVolume / 1000).toFixed(1)}K` : lastWorkout.totalVolume > 0 ? `${Math.round(lastWorkout.totalVolume)}` : '-', lbl: 'Volume' },
               ].map((s, i) => (
                 <div key={i} style={{ textAlign: 'center', padding: '8px 4px', background: 'var(--bg-glass)', borderRadius: 8 }}>
                   <div className="font-mono" style={{ fontSize: 15, fontWeight: 800, color: 'var(--accent-green)' }}>{s.val}</div>
@@ -712,7 +813,7 @@ export default function HomePage() {
       {/* Quick Start — Active Plan */}
       {activePlan && (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}
-          style={{ marginBottom: 24 }}>
+          style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <h2 className="font-display" style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.01em' }}>Quick Start</h2>
             <span className="badge" style={{ background: 'rgba(139,92,246,0.1)', color: 'var(--accent-purple)', border: '1px solid rgba(139,92,246,0.2)' }}>
@@ -720,49 +821,62 @@ export default function HomePage() {
             </span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {activePlanDays.map((day, i) => (
-              <motion.div key={day.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15 + i * 0.04 }}
-                className="card"
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', border: '1px solid var(--border-subtle)', minHeight: 64, padding: '12px 16px' }}>
-                <button
-                  onClick={() => handleQuickStart(day, 0)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', textAlign: 'left' }}
-                >
-                  <div style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--gradient-fire)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14, color: 'white', fontFamily: "'JetBrains Mono'" }}>
-                    D{day.dayNumber}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 700 }}>{day.name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{day.exercises.length} exercises • Balanced & equipment-filtered</div>
-                  </div>
-                </button>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <button
-                    onClick={() => handleQuickStart(day, Math.floor(Math.random() * 50) + 1)}
-                    title="Start with varied exercises"
-                    style={{ background: 'var(--bg-glass)', border: '1px solid var(--border-bright)', color: 'var(--text-secondary)', borderRadius: 10, padding: '8px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
-                  >
-                    <Shuffle size={12} /> Vary
-                  </button>
+            {activeDays.map((day, i) => {
+              const isNextUp = i === nextUpIdx;
+              return (
+                <motion.div key={day.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15 + i * 0.04 }}
+                  className="card"
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left',
+                    border: isNextUp ? '1.5px solid rgba(16,232,154,0.45)' : '1px solid var(--border-subtle)',
+                    minHeight: 64, padding: '12px 16px',
+                  }}>
                   <button
                     onClick={() => handleQuickStart(day, 0)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', textAlign: 'left' }}
                   >
-                    <ChevronRight size={18} />
+                    <div style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--gradient-fire)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14, color: 'white', fontFamily: "'JetBrains Mono'" }}>
+                      D{day.dayNumber}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span>{day.name}</span>
+                        {isNextUp && (
+                          <span className="badge" style={{ background: 'rgba(16,232,154,0.14)', color: 'var(--accent-green)', border: '1px solid rgba(16,232,154,0.3)', fontSize: 9, fontWeight: 800, letterSpacing: 0.5 }}>
+                            NEXT UP
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{day.exercises.length} exercises • Balanced & equipment-filtered</div>
+                    </div>
                   </button>
-                </div>
-              </motion.div>
-            ))}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button
+                      onClick={() => handleQuickStart(day, Math.floor(Math.random() * 50) + 1)}
+                      title="Start with varied exercises"
+                      style={{ background: 'var(--bg-glass)', border: '1px solid var(--border-bright)', color: 'var(--text-secondary)', borderRadius: 10, padding: '8px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                    >
+                      <Shuffle size={12} /> Vary
+                    </button>
+                    <button
+                      onClick={() => handleQuickStart(day, 0)}
+                      aria-label={`Start ${day.name}`}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
+                    >
+                      <ChevronRight size={18} />
+                    </button>
+                  </div>
+                </motion.div>
+              );
+            })}
           </div>
         </motion.div>
       )}
 
-
-
       {/* Feature Cards */}
       {showFeatureCards !== false && (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}
-          style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 24 }}>
+          style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16 }}>
           {[
             { icon: Dumbbell, label: 'Exercises', count: exerciseCount, color: 'var(--accent-red)', tab: 'exercises' as const },
             { icon: BarChart3, label: 'Progress & Body Map', count: stats.totalWorkouts, color: 'var(--accent-purple)', tab: 'progress' as const },

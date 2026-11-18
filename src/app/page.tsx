@@ -20,6 +20,14 @@ import { useWorkoutStore } from '@/lib/store/workoutStore';
 import { useReminderStore } from '@/lib/store/reminderStore';
 import { Play, Pause, Maximize2 } from 'lucide-react';
 
+const TAB_TITLES: Record<string, string> = {
+  home: 'IronForge — Dashboard',
+  plans: 'IronForge — Workout Plans',
+  exercises: 'IronForge — Exercise Library',
+  progress: 'IronForge — Progress & 3D Body Map',
+  profile: 'IronForge — Settings & Tools',
+};
+
 export default function App() {
   const { activeTab, setActiveTab, showSeedingScreen, setShowSeedingScreen, setSeedingProgress } = useUIStore();
   const { setIsSeeded, setIsLoading, loadFromProfile, animationLevel } = useUserStore();
@@ -58,26 +66,20 @@ export default function App() {
     setShowSeedingScreen(true);
     setSeedingProgress(5, 'Initializing...');
 
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+
     try {
       let activeDb = db;
-      if (forceReset || attempt > 1) {
+      if (forceReset) {
         setSeedingProgress(8, 'Resetting database...');
-        activeDb = await resetDB();
+        activeDb = await resetDB(true);
       } else {
-        try {
-          await activeDb.open();
-        } catch (openErr) {
-          console.warn('Initial open failed, resetting:', openErr);
-          activeDb = await resetDB();
-        }
+        await activeDb.open();
       }
 
-      let profiles: any[] = [];
-      try {
-        profiles = await activeDb.userProfile.toArray();
-      } catch {
-        profiles = [];
-      }
+      let profiles = await activeDb.userProfile.toArray();
 
       if (profiles.length > 0 && profiles[0].isSeeded) {
         let didRunCatalogMigration = false;
@@ -195,6 +197,28 @@ export default function App() {
     doInit(false);
   }, [doInit]);
 
+  // Support initial URL tab deep-linking (?tab=plans, ?tab=exercises, ?tab=progress, ?tab=profile, ?tab=home)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab');
+    if (
+      tabParam === 'home' ||
+      tabParam === 'plans' ||
+      tabParam === 'exercises' ||
+      tabParam === 'progress' ||
+      tabParam === 'profile'
+    ) {
+      setActiveTab(tabParam);
+    }
+  }, [setActiveTab]);
+
+  // Update document.title dynamically when activeTab changes
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.title = TAB_TITLES[activeTab] || 'IronForge — Dashboard';
+  }, [activeTab]);
+
   useEffect(() => {
     navStateRef.current = { activeTab, workoutActive, workoutMinimized, showComplete };
   }, [activeTab, workoutActive, workoutMinimized, showComplete]);
@@ -242,6 +266,7 @@ export default function App() {
 
     const onPopState = () => {
       const current = navStateRef.current;
+      const isNativeApp = Boolean((window as any).Capacitor?.isNativePlatform?.() || (window as any).IronForgeNative);
 
       if (current.showComplete) {
         // Workout is already saved when entering WorkoutCompletePage.
@@ -257,7 +282,7 @@ export default function App() {
       } else if (current.activeTab !== 'home') {
         setActiveTab('home');
         pushSentinel();
-      } else {
+      } else if (isNativeApp) {
         const now = Date.now();
         const withinWindow = now - lastBackPressRef.current < 1800;
 
@@ -309,7 +334,7 @@ export default function App() {
     endWorkout();
     setShowComplete(false);
     setActiveTab('home');
-  }, [endWorkout, minimizeWorkout, setActiveTab]);
+  }, [endWorkout, setActiveTab]);
 
   if ((showSeedingScreen || !isInitialized) && !initError) {
     return <SeedingScreen onRetry={() => doInit(true)} />;
@@ -346,19 +371,25 @@ export default function App() {
               justifyContent: 'space-between', borderBottom: '1px solid rgba(255,61,90,0.2)',
             }}>
               <span style={{ fontSize: 12, color: 'var(--accent-red)', fontWeight: 600, flex: 1, marginRight: 10 }}>{initError}</span>
-              <button onClick={() => doInit(true)} style={{
-                background: 'var(--gradient-fire)', border: 'none', color: 'white',
-                padding: '8px 18px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-              }}>Reset & Retry</button>
+              <button
+                onClick={() => doInit(true)}
+                aria-label="Reset database and retry initialization"
+                style={{
+                  background: 'var(--gradient-fire)', border: 'none', color: 'white',
+                  padding: '8px 18px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                }}
+              >
+                Reset & Retry
+              </button>
             </div>
           )}
           {showExitHint && (
-            <div className="app-inline-toast app-inline-toast--neutral">
+            <div role="status" aria-live="polite" className="app-inline-toast app-inline-toast--neutral">
               Press back again to exit
             </div>
           )}
           {showCatalogUpdateToast && (
-            <div className="app-inline-toast app-inline-toast--success">
+            <div role="status" aria-live="polite" className="app-inline-toast app-inline-toast--success">
               Catalog updated: GIFs prioritized, plans balanced & body map upgraded!
             </div>
           )}

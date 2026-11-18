@@ -11,15 +11,6 @@ export function getYoutubeSearchUrl(exerciseName: string): string {
 }
 
 /**
- * Generate a YouTube embed URL that shows search results
- * For inline display in the app
- */
-export function getYoutubeEmbedSearch(exerciseName: string): string {
-  const query = encodeURIComponent(`${exerciseName} form guide`);
-  return `https://www.youtube.com/embed?listType=search&list=${query}`;
-}
-
-/**
  * Curated YouTube channel search — searches within top fitness channels
  * for the most trusted form guides
  */

@@ -66,7 +66,7 @@ export class IronForgeDB extends Dexie {
       exercises: '++id, externalId, name, *primaryMuscles, equipment, category, level',
       workoutPlans: '++id, name, category, isCustom, isActive, createdAt',
       workoutDays: '++id, planId, dayNumber',
-      workoutSessions: '++id, planId, dayId, startedAt, completedAt, isComplete',
+      workoutSessions: '++id, planId, dayId, startedAt, completedAt, isComplete, planName',
       sessionExercises: '++id, sessionId, exerciseId, orderIndex',
       sets: '++id, sessionExerciseId, sessionId, exerciseId, completedAt',
       personalRecords: '++id, exerciseId, date, estimated1RM',
@@ -75,7 +75,24 @@ export class IronForgeDB extends Dexie {
       nutritionLogs: '++id, date, meal',
       waterLogs: '++id, date',
       userProfile: '++id',
-      exerciseSwaps: '++id, planName, dayName',
+      exerciseSwaps: '++id, planName, dayName, [planName+dayName], originalExerciseName, newExerciseId, swappedAt',
+      workoutReminders: '++id, dayOfWeek, isEnabled',
+    });
+
+    this.version(6).stores({
+      exercises: '++id, externalId, name, *primaryMuscles, equipment, category, level',
+      workoutPlans: '++id, name, category, isCustom, isActive, createdAt',
+      workoutDays: '++id, planId, dayNumber',
+      workoutSessions: '++id, startedAt, completedAt, isComplete, planName',
+      sessionExercises: '++id, sessionId, exerciseId, orderIndex',
+      sets: '++id, sessionExerciseId, sessionId, exerciseId, completedAt',
+      personalRecords: '++id, exerciseId, date, estimated1RM',
+      bodyWeight: '++id, date',
+      measurements: '++id, date',
+      nutritionLogs: '++id, date, meal',
+      waterLogs: '++id, date',
+      userProfile: '++id',
+      exerciseSwaps: '++id, planName, dayName, [planName+dayName], originalExerciseName, newExerciseId, swappedAt',
       workoutReminders: '++id, dayOfWeek, isEnabled',
     });
   }
@@ -91,25 +108,28 @@ export function getDB(): IronForgeDB {
 }
 
 // Reset the DB instance (for retry after failures)
-export async function resetDB(): Promise<IronForgeDB> {
+export async function resetDB(allowDestructiveDelete = false): Promise<IronForgeDB> {
   if (dbInstance) {
     try { dbInstance.close(); } catch {}
   }
   dbInstance = null;
-  // Delete and recreate if version mismatch causes problems
   try {
     const newDb = getDB();
     await newDb.open();
     return newDb;
   } catch (err) {
-    console.error('DB open failed, attempting delete + recreate:', err);
-    try {
-      await Dexie.delete('IronForgeDB');
-    } catch {}
-    dbInstance = null;
-    const freshDb = getDB();
-    await freshDb.open();
-    return freshDb;
+    if (allowDestructiveDelete === true) {
+      console.error('DB open failed, attempting delete + recreate:', err);
+      try {
+        await Dexie.delete('IronForgeDB');
+      } catch {}
+      dbInstance = null;
+      const freshDb = getDB();
+      await freshDb.open();
+      return freshDb;
+    }
+    console.error('DB open failed without destructive delete permission:', err);
+    throw err;
   }
 }
 

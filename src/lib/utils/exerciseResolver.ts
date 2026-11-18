@@ -433,8 +433,8 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     keywords: ['face pull', 'rear delt', 'reverse fly', 'band pull apart', 'external rotation'],
     preferredNames: [
       'cable rear delt row (with rope)',
-      'cable kneeling rear delt row (with rope) (male)',
-      'dumbbell rear delt row_shoulder',
+      'cable kneeling rear delt row (with rope)',
+      'dumbbell rear delt row',
       'dumbbell seated bent-over rear delt raise',
       'barbell rear delt row',
       'band standing rear delt row',
@@ -871,8 +871,8 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     keywords: ['glute bridge', 'hip thrust', 'pelvic tilt'],
     preferredNames: [
       'barbell glute bridge',
-      'barbell glute bridge two legs on bench (male)',
-      'glute bridge two legs on bench (male)',
+      'barbell glute bridge two legs on bench',
+      'glute bridge two legs on bench',
       'low glute bridge on floor',
       'single leg glute bridge',
     ],
@@ -883,7 +883,7 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     keywords: ['glute bridge', 'hip thrust', 'bridge'],
     preferredNames: [
       'low glute bridge on floor',
-      'glute bridge two legs on bench (male)',
+      'glute bridge two legs on bench',
       'glute bridge march',
       'single leg glute bridge',
       'barbell glute bridge',
@@ -1025,7 +1025,7 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     preferredNames: [
       'jump squat',
       'sissy squat',
-      'single-leg squat (pistol) male',
+      'single-leg squat (pistol)',
       'Bodyweight Squat',
     ],
     avoidKeywords: ['barbell', 'dumbbell', 'cable', 'smith', 'stretch'],
@@ -1096,7 +1096,7 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
   'jumping jack': {
     muscles: ['cardio', 'cardiovascular system'],
     keywords: ['jumping jack', 'star jump', 'astride jumps', 'skater'],
-    preferredNames: ['astride jumps (male)', 'star jump (male)', 'semi squat jump (male)', 'jack burpee'],
+    preferredNames: ['astride jumps', 'star jump', 'semi squat jump', 'jack burpee'],
   },
   'high knees': {
     muscles: ['cardio', 'cardiovascular system', 'quads'],
@@ -1160,11 +1160,160 @@ const MOVEMENT_PROFILES: Record<string, MovementProfile> = {
     ],
     isStretch: true,
   },
+  'muscle-up': {
+    muscles: ['lats', 'back', 'chest', 'triceps'],
+    keywords: ['muscle-up', 'muscle up', 'pull-up', 'chin-up'],
+    preferredNames: [
+      'muscle-up (on vertical bar)',
+      'muscle up',
+      'kipping muscle up',
+      'pull-up',
+      'wide grip pull-up',
+      'chest dip on straight bar',
+    ],
+    avoidKeywords: ['crunch', 'leg'],
+  },
+  'handstand push-up': {
+    muscles: ['shoulders', 'delts', 'triceps'],
+    keywords: ['handstand', 'pike', 'shoulder', 'push-up'],
+    preferredNames: [
+      'handstand push-up',
+      'Handstand Push-Ups',
+      'handstand',
+      'pike-to-cobra push-up',
+      'decline push-up',
+    ],
+    avoidKeywords: ['crunch', 'leg'],
+  },
+  'planche': {
+    muscles: ['shoulders', 'delts', 'chest', 'abs'],
+    keywords: ['planche', 'lean planche', 'frog planche', 'push-up'],
+    preferredNames: [
+      'lean planche',
+      'frog planche',
+      'straddle planche',
+      'full planche',
+      'full planche push-up',
+      'pike-to-cobra push-up',
+      'decline push-up',
+    ],
+    avoidKeywords: ['crunch', 'leg'],
+  },
+  'front lever': {
+    muscles: ['lats', 'back', 'abs'],
+    keywords: ['front lever', 'back lever', 'inverted row', 'pull-up'],
+    preferredNames: [
+      'front lever',
+      'front lever reps',
+      'back lever',
+      'inverted row',
+      'pull-up',
+      'chin-up',
+    ],
+    avoidKeywords: ['lever chest', 'lever seated', 'lever kneeling', 'lever lying', 'crunch'],
+  },
+  'back lever': {
+    muscles: ['lats', 'back', 'shoulders', 'abs'],
+    keywords: ['back lever', 'front lever', 'inverted row', 'chin-up'],
+    preferredNames: [
+      'back lever',
+      'front lever',
+      'inverted row',
+      'chin-up',
+      'pull-up',
+    ],
+    avoidKeywords: ['lever chest', 'lever seated', 'lever kneeling', 'lever lying', 'crunch'],
+  },
+  'l-sit': {
+    muscles: ['abs', 'abdominals', 'triceps', 'quads'],
+    keywords: ['l-sit', 'hanging pike', 'hanging leg raise', 'hanging straight leg raise'],
+    preferredNames: [
+      'l-sit on floor',
+      'hanging straight leg raise',
+      'hanging pike',
+      'hanging leg raise',
+      'jackknife sit-up',
+    ],
+    avoidKeywords: ['calf'],
+  },
+  'archer push up': {
+    muscles: ['chest', 'pectorals', 'triceps', 'shoulders'],
+    keywords: ['archer', 'wide hand push up', 'decline push-up', 'push-up'],
+    preferredNames: [
+      'archer push up',
+      'wide hand push up',
+      'decline push-up',
+      'deep push-up',
+      'push-up',
+    ],
+    avoidKeywords: ['crunch', 'sit-up'],
+  },
+  'archer pull up': {
+    muscles: ['lats', 'back', 'biceps'],
+    keywords: ['archer pull up', 'wide grip pull-up', 'pull-up', 'chin-up'],
+    preferredNames: [
+      'archer pull up',
+      'wide grip pull-up',
+      'pull-up',
+      'mixed grip chin-up',
+      'one arm chin-up',
+      'chin-up',
+    ],
+    avoidKeywords: ['crunch', 'leg'],
+  },
+  'straight bar dip': {
+    muscles: ['chest', 'triceps', 'shoulders'],
+    keywords: ['chest dip on straight bar', 'chest dip', 'triceps dip', 'dip'],
+    preferredNames: [
+      'chest dip on straight bar',
+      'wide-grip chest dip on high parallel bars',
+      'chest dip',
+      'triceps dip',
+      'bench dip on floor',
+    ],
+    avoidKeywords: ['leg', 'crunch'],
+  },
+  'pistol squat': {
+    muscles: ['quads', 'quadriceps', 'glutes', 'hamstrings'],
+    keywords: ['pistol', 'single leg squat', 'split squat', 'lunge'],
+    preferredNames: [
+      'single leg squat (pistol)',
+      'split squats',
+      'walking lunge',
+      'forward lunge',
+      'bodyweight squat',
+    ],
+    avoidKeywords: ['barbell', 'dumbbell', 'smith', 'cable'],
+  },
+  'hanging pike': {
+    muscles: ['abs', 'abdominals'],
+    keywords: ['hanging pike', 'hanging straight leg raise', 'hanging leg raise', 'jackknife'],
+    preferredNames: [
+      'hanging pike',
+      'hanging straight leg raise',
+      'hanging leg raise',
+      'hanging oblique knee raise',
+      'jackknife sit-up',
+    ],
+    avoidKeywords: ['calf'],
+  },
+  'scapula dips': {
+    muscles: ['triceps', 'chest', 'traps', 'shoulders'],
+    keywords: ['scapula dips', 'incline scapula push up', 'dip', 'push-up'],
+    preferredNames: [
+      'scapula dips',
+      'incline scapula push up',
+      'chest dip',
+      'triceps dip',
+      'bench dip on floor',
+    ],
+    avoidKeywords: ['leg'],
+  },
   'calf stretch': {
     muscles: ['calves'],
     keywords: ['calf stretch', 'gastrocnemius', 'achilles', 'calves stretch'],
     preferredNames: [
-      'seated calf stretch (male)',
+      'seated calf stretch',
       'calf stretch with hands against wall',
       'Standing Gastrocnemius Calf Stretch',
       'Seated Calf Stretch',
@@ -1594,8 +1743,14 @@ export function analyzePlanMuscleBalance(
     if (/squat|lunge|leg press|leg extension|leg curl|hamstring|deadlift|romanian|glute|hip thrust|calf|quad|step-up|hip stretch/.test(joined)) {
       return 'legs';
     }
-    if (/plank|crunch|leg raise|mountain climber|ab |abs|abdominals|oblique|sit-up|dead bug|russian twist|woodchop/.test(joined)) {
+    if (/plank|l-sit|hanging pike|jackknife|side bridge|crunch|leg raise|knee raise|mountain climber|ab |abs|abdominals|oblique|sit-up|dead bug|russian twist|woodchop/.test(joined)) {
       return 'core';
+    }
+    if (/diamond push|close-grip push|triceps dip|bench dip|scapula dip|close grip chin|one arm chin/.test(clean)) {
+      return 'arms';
+    }
+    if (/front lever|back lever|muscle-up|muscle up|archer pull|row|pull up|pull-up|chin up|chin-up|pulldown|face pull|reverse fly|shrug|back extension|superman/.test(clean)) {
+      return 'pull';
     }
     if (/curl|tricep|skull crusher|pushdown|preacher|kickback|bicep|forearm/.test(joined)) {
       return 'arms';

@@ -1,7 +1,7 @@
 {
   "name": "IronForge",
   "short_name": "IronForge",
-  "description": "World-class workout tracker with 870+ exercises",
+  "description": "World-class offline workout tracker with 2,240+ exercises, animated GIF demos, and 25 pro programs",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0A0A0F",

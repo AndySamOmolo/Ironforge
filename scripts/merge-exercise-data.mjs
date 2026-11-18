@@ -126,7 +126,7 @@ function canonicalTokenKey(name = '') {
 function crossLinkGifsAndBackupImages(list) {
   for (const ex of list) {
     if (typeof ex.name === 'string') {
-      ex.name = ex.name.replace(/в°/g, '°').replace(/\ball fours squad stretch\b/gi, 'all fours quad stretch').replace(/\s*\((?:male|female)\)\s*$/i, '').trim();
+      ex.name = ex.name.replace(/в°/g, '°').replace(/\ball fours squad stretch\b/gi, 'all fours quad stretch').replace(/_shoulder\b/gi, '').replace(/\s*(?:\((?:male|female)\)|\b(?:male|female))\s*$/i, '').trim();
     }
     if (Array.isArray(ex.instructions)) {
       ex.instructions = ex.instructions.map((s) => String(s).replace(/в°/g, '°'));

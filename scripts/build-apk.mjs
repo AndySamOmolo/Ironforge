@@ -73,29 +73,37 @@ console.log(`  ✅ Android SDK: ${androidHome}`);
 console.log('\n📋 Step 2: Merging exercise dataset & assets...');
 run('npm run merge:exercise-data');
 
-// Step 3: Configure Next.js for static export
+// Step 3 & 4: Configure Next.js for static export and build (restore next.config.ts in finally)
 console.log('\n📋 Step 3: Configuring static export...');
 
 const nextConfigPath = join(ROOT, 'next.config.ts');
 const originalConfig = readFileSync(nextConfigPath, 'utf-8');
-let nextConfig = originalConfig;
+let nextConfigModified = false;
 
-if (!nextConfig.includes("output: 'export'")) {
-  if (nextConfig.includes('output:')) {
-    nextConfig = nextConfig.replace(/output:\s*['"][^'"]*['"]/, "output: 'export'");
-  } else {
-    nextConfig = nextConfig.replace(
-      /const nextConfig(?:[^=]+)?=\s*\{/,
-      "$& \n  output: 'export',"
-    );
+try {
+  let nextConfig = originalConfig;
+  if (!nextConfig.includes("output: 'export'")) {
+    if (nextConfig.includes('output:')) {
+      nextConfig = nextConfig.replace(/output:\s*['"][^'"]*['"]/, "output: 'export'");
+    } else {
+      nextConfig = nextConfig.replace(
+        /const nextConfig(?:[^=]+)?=\s*\{/,
+        "$& \n  output: 'export',"
+      );
+    }
+    writeFileSync(nextConfigPath, nextConfig);
+    nextConfigModified = true;
+    console.log('  ✅ Added output: "export" to next.config.ts');
   }
-  writeFileSync(nextConfigPath, nextConfig);
-  console.log('  ✅ Added output: "export" to next.config.ts');
-}
 
-// Step 4: Build the Next.js app
-console.log('\n📋 Step 4: Building Next.js app...');
-run('npm run build');
+  console.log('\n📋 Step 4: Building Next.js app...');
+  run('npm run build');
+} finally {
+  if (nextConfigModified) {
+    writeFileSync(nextConfigPath, originalConfig);
+    console.log('  ✅ Restored original next.config.ts');
+  }
+}
 
 // Step 5: Initialize Capacitor if not done
 if (!existsSync(join(ROOT, 'capacitor.config.ts')) && !existsSync(join(ROOT, 'capacitor.config.json'))) {
@@ -124,7 +132,7 @@ if (!existsSync(join(ROOT, 'android'))) {
 console.log('\n📋 Step 5: Syncing assets to Android...');
 run('npx cap sync android');
 
-// Step 8: Build debug APK
+// Step 8: Build APK
 console.log('\n📋 Step 6: Building APK...');
 
 const gradlew = process.platform === 'win32'
@@ -142,13 +150,19 @@ try {
   process.exit(1);
 }
 
-const apkPath = join(ROOT, 'android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
+const releaseApkPath = join(ROOT, 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk');
+const debugApkPath = join(ROOT, 'android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
+const apkPath = existsSync(releaseApkPath) ? releaseApkPath : debugApkPath;
 const rootApkPath = join(ROOT, 'IronForge.apk');
 const rootDebugApkPath = join(ROOT, 'IronForge-debug.apk');
 
 if (existsSync(apkPath)) {
   copyFileSync(apkPath, rootApkPath);
-  copyFileSync(apkPath, rootDebugApkPath);
+  if (existsSync(debugApkPath)) {
+    copyFileSync(debugApkPath, rootDebugApkPath);
+  } else {
+    copyFileSync(apkPath, rootDebugApkPath);
+  }
   console.log(`
 ╔══════════════════════════════════════════════════╗
 ║  ✅ APK Built & Copied to Root Directory!       ║
@@ -159,5 +173,5 @@ if (existsSync(apkPath)) {
 ╚══════════════════════════════════════════════════╝
   `);
 } else {
-  console.log('\n⚠️  Build completed but APK not found at expected path.');
+  console.log('\n⚠️  Build completed but neither app-release.apk nor app-debug.apk was found at expected path.');
 }

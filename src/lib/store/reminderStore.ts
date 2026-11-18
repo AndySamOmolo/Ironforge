@@ -18,7 +18,12 @@ interface ReminderState {
 }
 
 async function showWorkoutNotification(title: string, body: string, tag: string): Promise<void> {
-  if (typeof window === 'undefined' || typeof Notification === 'undefined') return;
+  if (typeof window === 'undefined') return;
+  try {
+    const w = window as unknown as { IronForgeNative?: { showNotification?: (t: string, b: string) => boolean } };
+    if (w.IronForgeNative?.showNotification?.(title, body)) return;
+  } catch {}
+  if (typeof Notification === 'undefined') return;
   try {
     new Notification(title, {
       body,
@@ -66,6 +71,9 @@ export const useReminderStore = create<ReminderState>((set, get) => ({
     try {
       await db.workoutReminders.add({ ...reminder, createdAt: new Date() });
       await get().loadReminders();
+      if (reminder.isEnabled && !get().intervalId) {
+        get().startBackgroundCheck();
+      }
     } catch {}
   },
 
@@ -80,6 +88,13 @@ export const useReminderStore = create<ReminderState>((set, get) => ({
     try {
       await db.workoutReminders.delete(id);
       await get().loadReminders();
+      if (!get().reminders.some(r => r.isEnabled)) {
+        const intervalId = get().intervalId;
+        if (intervalId) {
+          clearInterval(intervalId);
+          set({ intervalId: null });
+        }
+      }
     } catch {}
   },
 
@@ -87,10 +102,26 @@ export const useReminderStore = create<ReminderState>((set, get) => ({
     const r = get().reminders.find(rem => rem.id === id);
     if (r) {
       await get().updateReminder(id, { isEnabled: !r.isEnabled });
+      if (!get().reminders.some(rem => rem.isEnabled)) {
+        const intervalId = get().intervalId;
+        if (intervalId) {
+          clearInterval(intervalId);
+          set({ intervalId: null });
+        }
+      } else if (!get().intervalId) {
+        get().startBackgroundCheck();
+      }
     }
   },
 
   requestPermission: async () => {
+    if (typeof window !== 'undefined') {
+      const w = window as unknown as { IronForgeNative?: { showNotification?: (t: string, b: string) => boolean } };
+      if (typeof w.IronForgeNative?.showNotification === 'function') {
+        set({ permissionGranted: true });
+        return true;
+      }
+    }
     if (typeof Notification === 'undefined') return false;
     if (Notification.permission === 'granted') {
       set({ permissionGranted: true });
@@ -109,9 +140,13 @@ export const useReminderStore = create<ReminderState>((set, get) => ({
   startBackgroundCheck: () => {
     const existing = get().intervalId;
     if (existing) return;
+    if (!get().reminders.some(r => r.isEnabled)) return;
 
     const checkAndFire = async () => {
-      if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+      const hasNativeBridge =
+        typeof window !== 'undefined' &&
+        typeof (window as unknown as { IronForgeNative?: { showNotification?: unknown } }).IronForgeNative?.showNotification === 'function';
+      if (!hasNativeBridge && (typeof Notification === 'undefined' || Notification.permission !== 'granted')) return;
       const now = new Date();
       const dayOfWeek = now.getDay();
       const hour = now.getHours();
@@ -119,15 +154,18 @@ export const useReminderStore = create<ReminderState>((set, get) => ({
 
       const reminders = get().reminders.filter(r => r.isEnabled);
       for (const r of reminders) {
-        if (r.dayOfWeek !== dayOfWeek || r.timeHour !== hour || r.timeMinute !== minute) continue;
+        const nowMins = hour * 60 + minute;
+        const remMins = r.timeHour * 60 + r.timeMinute;
+        if (r.dayOfWeek !== dayOfWeek || nowMins < remMins || nowMins >= remMins + 15) continue;
         if (r.lastFiredAt) {
           const lastFired = new Date(r.lastFiredAt);
+          const lastFiredMins = lastFired.getHours() * 60 + lastFired.getMinutes();
           if (
             lastFired.getFullYear() === now.getFullYear() &&
             lastFired.getMonth() === now.getMonth() &&
             lastFired.getDate() === now.getDate() &&
-            lastFired.getHours() === now.getHours() &&
-            lastFired.getMinutes() === now.getMinutes()
+            lastFiredMins >= remMins &&
+            lastFiredMins < remMins + 15
           ) {
             continue;
           }

@@ -9,6 +9,7 @@ import type { WorkoutSession, PersonalRecord } from '@/lib/types';
 import { estimate1RM } from '@/lib/utils/progressionEngine';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid, AreaChart, Area, LineChart, Line } from 'recharts';
 import MuscleHeatmap from '@/components/ui/MuscleHeatmap';
+import CustomSelect from '@/components/ui/CustomSelect';
 
 type TabId = 'overview' | 'strength' | 'records' | 'body' | 'history';
 
@@ -40,54 +41,11 @@ export default function ProgressPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [exerciseChartId, setExerciseChartId] = useState<number | null>(null);
   const [exerciseChartData, setExerciseChartData] = useState<{ date: string; weight: number; est1RM: number; volume: number }[]>([]);
-  const [loggedExercises, setLoggedExercises] = useState<{ id: number; name: string; count: number }[]>([]);
+  const [loggedExercises, setLoggedExercises] = useState<{ id: number; name: string; count: number; equipment?: string; muscle?: string; isBenchmark?: boolean }[]>([]);
   const PAGE_SIZE = 15;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   useEffect(() => { loadData(); }, []);
-
-  const loadData = async () => {
-    const allSessions = await db.workoutSessions.orderBy('startedAt').reverse().toArray();
-    setSessions(allSessions.filter(s => s.isComplete));
-    const allPRs = await db.personalRecords.orderBy('date').reverse().toArray();
-    setPrs(allPRs);
-
-    try {
-      const [allSets, exercises] = await Promise.all([
-        db.sets.toArray(),
-        db.exercises.toArray(),
-      ]);
-      const countByEx = new Map<number, number>();
-      for (const s of allSets) {
-        if (s.exerciseId) countByEx.set(s.exerciseId, (countByEx.get(s.exerciseId) || 0) + 1);
-      }
-      const exList = exercises
-        .filter(e => e.id != null)
-        .map(e => ({ id: e.id!, name: e.name, count: countByEx.get(e.id!) || 0 }))
-        .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-      setLoggedExercises(exList.slice(0, 150));
-      if (exList.length > 0 && exList[0].count > 0 && !exerciseChartId) {
-        loadExerciseChart(exList[0].id);
-      }
-    } catch {}
-  };
-
-  const loadSessionDetail = useCallback(async (session: WorkoutSession) => {
-    if (!session.id) return;
-    try {
-      const sets = await db.sets.where('sessionId').equals(session.id).toArray();
-      const exerciseIds = [...new Set(sets.map(s => s.exerciseId))];
-      const exercises = await db.exercises.where('id').anyOf(exerciseIds).toArray();
-      const exMap = new Map(exercises.map(e => [e.id!, e.name]));
-
-      const grouped: Record<number, { name: string; sets: { weight: number; reps: number; setNumber: number; isPR?: boolean }[] }> = {};
-      sets.forEach(s => {
-        if (!grouped[s.exerciseId]) grouped[s.exerciseId] = { name: exMap.get(s.exerciseId) || 'Exercise', sets: [] };
-        grouped[s.exerciseId].sets.push({ weight: s.weight, reps: s.reps, setNumber: s.setNumber, isPR: s.isPR });
-      });
-      Object.values(grouped).forEach(g => g.sets.sort((a, b) => a.setNumber - b.setNumber));
-      setSessionDetail({ session, exercises: Object.values(grouped) });
-    } catch { setSessionDetail(null); }
-  }, []);
 
   const loadExerciseChart = useCallback(async (exerciseId: number) => {
     setExerciseChartId(exerciseId);
@@ -120,17 +78,99 @@ export default function ProgressPage() {
 
       setExerciseChartData(data);
       setExerciseChartId(exerciseId);
-    } catch {}
+    } catch (err) {
+      console.warn('Failed to load exercise progression chart:', err);
+    }
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const [allSessions, allPRs, allSets, exercises] = await Promise.all([
+        db.workoutSessions.orderBy('startedAt').reverse().toArray(),
+        db.personalRecords.orderBy('date').reverse().toArray(),
+        db.sets.toArray(),
+        db.exercises.toArray(),
+      ]);
+      setSessions(allSessions.filter(s => s.isComplete));
+      setPrs(allPRs);
+
+      const countByEx = new Map<number, number>();
+      for (const s of allSets) {
+        if (s.exerciseId) countByEx.set(s.exerciseId, (countByEx.get(s.exerciseId) || 0) + 1);
+      }
+      const BENCHMARK_NAMES = new Set([
+        'barbell bench press',
+        'barbell full squat',
+        'barbell deadlift',
+        'pull-up',
+        'barbell seated overhead press',
+        'dumbbell incline bench press',
+        'chest dip',
+        'chin-up',
+        'barbell romanian deadlift',
+        'barbell bent over row',
+        'single leg squat (pistol)',
+        'muscle-up (on vertical bar)',
+      ]);
+      const exList = exercises
+        .filter(e => e.id != null)
+        .map(e => {
+          const lower = e.name.toLowerCase();
+          return {
+            id: e.id!,
+            name: e.name,
+            count: countByEx.get(e.id!) || 0,
+            equipment: e.equipment || 'body weight',
+            muscle: e.primaryMuscles?.[0] || e.category || 'strength',
+            isBenchmark: BENCHMARK_NAMES.has(lower),
+          };
+        })
+        .sort((a, b) => {
+          if (b.count !== a.count) return b.count - a.count;
+          if (a.isBenchmark !== b.isBenchmark) return a.isBenchmark ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
+      setLoggedExercises(exList.slice(0, 220));
+      if (exList.length > 0 && !exerciseChartId) {
+        loadExerciseChart(exList[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to load progress data:', err);
+    }
+  };
+
+  const loadSessionDetail = useCallback(async (session: WorkoutSession) => {
+    if (!session.id) return;
+    try {
+      const sets = await db.sets.where('sessionId').equals(session.id).toArray();
+      const exerciseIds = [...new Set(sets.map(s => s.exerciseId))];
+      const exercises = await db.exercises.where('id').anyOf(exerciseIds).toArray();
+      const exMap = new Map(exercises.map(e => [e.id!, e.name]));
+
+      const grouped: Record<number, { name: string; sets: { weight: number; reps: number; setNumber: number; isPR?: boolean }[] }> = {};
+      sets.forEach(s => {
+        if (!grouped[s.exerciseId]) grouped[s.exerciseId] = { name: exMap.get(s.exerciseId) || 'Exercise', sets: [] };
+        grouped[s.exerciseId].sets.push({ weight: s.weight, reps: s.reps, setNumber: s.setNumber, isPR: s.isPR });
+      });
+      Object.values(grouped).forEach(g => g.sets.sort((a, b) => a.setNumber - b.setNumber));
+      setSessionDetail({ session, exercises: Object.values(grouped) });
+    } catch { setSessionDetail(null); }
   }, []);
 
   const handleDeleteSession = async (id: number) => {
-    await db.workoutSessions.delete(id);
-    await db.sessionExercises.where('sessionId').equals(id).delete();
-    await db.sets.where('sessionId').equals(id).delete();
-    await db.personalRecords.where('sessionId').equals(id).delete();
-    setDeleteConfirm(null);
-    setExpandedSession(null);
-    loadData();
+    try {
+      await db.transaction('rw', [db.workoutSessions, db.sessionExercises, db.sets, db.personalRecords], async () => {
+        await db.workoutSessions.delete(id);
+        await db.sessionExercises.where('sessionId').equals(id).delete();
+        await db.sets.where('sessionId').equals(id).delete();
+        await db.personalRecords.where('sessionId').equals(id).delete();
+      });
+      setDeleteConfirm(null);
+      setExpandedSession(null);
+      loadData();
+    } catch (err) {
+      console.error('Failed to delete workout session:', err);
+    }
   };
 
   const filteredHistory = useMemo(() => {
@@ -259,7 +299,7 @@ export default function ProgressPage() {
   return (
     <div className="page-container">
       {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 16 }}>
+      <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
           <div className="icon-badge" style={{ background: 'rgba(0,229,160,0.1)', width: 38, height: 38, borderRadius: 10 }}>
             <BarChart3 size={18} color="var(--accent-green)" />
@@ -412,18 +452,19 @@ export default function ProgressPage() {
               <div style={{ display: 'flex', gap: 3, justifyContent: 'center' }}>
                 {calendarWeeks.map((week, wi) => (
                   <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    {week.map((day, di) => {
-                      const isSel = selectedCalendarDate === day.date;
+                    {week.map((cell, di) => {
+                      const isSel = selectedCalendarDate === cell.date;
                       return (
                         <button
                           key={di}
-                          onClick={() => setSelectedCalendarDate(isSel ? null : day.date)}
-                          title={`${day.date}: ${day.count} workout${day.count !== 1 ? 's' : ''}`}
+                          onClick={() => setSelectedCalendarDate(isSel ? null : cell.date)}
+                          title={`${cell.date}: ${cell.count} workout${cell.count !== 1 ? 's' : ''}`}
+                          aria-label={`${cell.date}: ${cell.count} workout${cell.count !== 1 ? 's' : ''}`}
                           style={{
-                            width: 16, height: 16, borderRadius: 3.5, padding: 0, cursor: 'pointer',
-                            background: day.count === 0 ? 'var(--bg-glass)' : day.count === 1 ? 'var(--accent-green)' : 'var(--accent-red)',
-                            opacity: day.count === 0 ? 0.24 : 0.65 + Math.min(day.count * 0.2, 0.35),
-                            border: isSel ? '1.5px solid #ffffff' : day.isToday ? '1.5px solid var(--accent-purple)' : 'none',
+                            width: 16, height: 16, minHeight: 28, borderRadius: 3.5, padding: 0, cursor: 'pointer',
+                            background: cell.count === 0 ? 'var(--bg-glass)' : cell.count === 1 ? 'var(--accent-green)' : 'var(--accent-red)',
+                            opacity: cell.count === 0 ? 0.24 : 0.65 + Math.min(cell.count * 0.2, 0.35),
+                            border: isSel ? '1.5px solid #ffffff' : cell.isToday ? '1.5px solid var(--accent-purple)' : 'none',
                           }}
                         />
                       );
@@ -573,33 +614,100 @@ export default function ProgressPage() {
       {/* ════════ STRENGTH ════════ */}
       {tab === 'strength' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <div className="card" style={{ marginBottom: 16, padding: 16 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Exercise Strength & Estimated 1RM Progression</h3>
-            <select onChange={(e) => { const id = parseInt(e.target.value); if (id) loadExerciseChart(id); }}
+          <div className="card" style={{ marginBottom: 14, padding: 16, overflow: 'visible', zIndex: 30 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
+              <div>
+                <h3 style={{ fontSize: 15, fontWeight: 800 }}>Exercise Strength &amp; 1RM Progression</h3>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                  Search or pick any lift to inspect top weight &amp; estimated 1RM trends
+                </div>
+              </div>
+              <div className="icon-badge" style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.25)' }}>
+                <TrendingUp size={16} color="var(--accent-purple)" />
+              </div>
+            </div>
+
+            <CustomSelect
+              searchable
+              searchPlaceholder="Search exercises by name, equipment or muscle..."
+              ariaLabel="Select exercise for strength progression chart"
               value={exerciseChartId || ''}
-              style={{ width: '100%', padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 13, marginBottom: 12, outline: 'none' }}>
-              <option value="">Select an exercise...</option>
-              {loggedExercises.map(ex => (
-                <option key={ex.id} value={ex.id}>
-                  {ex.name.replace(/\b\w/g, c => c.toUpperCase())}{ex.count > 0 ? ` (${ex.count} sets logged)` : ''}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => {
+                const id = parseInt(val, 10);
+                if (id) loadExerciseChart(id);
+              }}
+              placeholder="Select an exercise..."
+              icon={<Dumbbell size={15} />}
+              style={{ marginBottom: 10 }}
+              options={loggedExercises.map((ex) => ({
+                value: ex.id,
+                label: ex.name.replace(/\b\w/g, (c) => c.toUpperCase()),
+                sublabel: `${ex.equipment || 'body weight'} • ${ex.muscle || 'strength'}`.replace(/\b\w/g, (c) => c.toUpperCase()),
+                badge: ex.count > 0 ? `${ex.count} sets` : ex.isBenchmark ? 'Benchmark' : undefined,
+                badgeColor: ex.count > 0 ? 'var(--accent-green)' : 'var(--accent-purple)',
+              }))}
+            />
+
+            {/* Quick Benchmark Lift Chips */}
+            {loggedExercises.length > 0 && (
+              <div className="chip-scroll" style={{ marginBottom: 12, paddingBottom: 4 }}>
+                {loggedExercises.slice(0, 6).map((ex) => {
+                  const isActive = exerciseChartId === ex.id;
+                  return (
+                    <button
+                      key={ex.id}
+                      type="button"
+                      onClick={() => loadExerciseChart(ex.id)}
+                      className={`filter-chip ${isActive ? 'active' : ''}`}
+                      style={{ fontSize: 10.5, padding: '5px 10px', minHeight: 30, textTransform: 'capitalize' }}
+                    >
+                      {ex.name}
+                      {ex.count > 0 && (
+                        <span style={{ fontSize: 9, opacity: 0.85, fontWeight: 800 }}>• {ex.count}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {exerciseChartData.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 12 }}>
+                <div style={{ padding: '8px 6px', borderRadius: 10, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
+                  <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Peak Weight</div>
+                  <div className="font-mono" style={{ fontSize: 14, fontWeight: 800, color: 'var(--accent-red)', marginTop: 2 }}>
+                    {Math.max(...exerciseChartData.map((d) => d.weight))} {unitLabel}
+                  </div>
+                </div>
+                <div style={{ padding: '8px 6px', borderRadius: 10, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
+                  <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Best Est. 1RM</div>
+                  <div className="font-mono" style={{ fontSize: 14, fontWeight: 800, color: 'var(--accent-green)', marginTop: 2 }}>
+                    {Math.max(...exerciseChartData.map((d) => d.est1RM))} {unitLabel}
+                  </div>
+                </div>
+                <div style={{ padding: '8px 6px', borderRadius: 10, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
+                  <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Logged Days</div>
+                  <div className="font-mono" style={{ fontSize: 14, fontWeight: 800, color: 'var(--accent-cyan)', marginTop: 2 }}>
+                    {exerciseChartData.length}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {exerciseChartData.length > 1 && (
               <>
                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8, textTransform: 'capitalize' }}>
-                  Max Weight & Est. 1RM ({unitLabel}) — {selectedExerciseName}
+                  Max Weight &amp; Est. 1RM ({unitLabel}) — {selectedExerciseName}
                 </div>
                 <div style={{ height: 190 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={exerciseChartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                       <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} />
                       <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={35} />
                       <Tooltip contentStyle={{ background: 'var(--bg-sheet)', border: '1px solid var(--border-bright)', borderRadius: 12, fontSize: 12 }} />
-                      <Line type="monotone" dataKey="est1RM" name="Est. 1RM" stroke="#10E89A" strokeWidth={2} dot={{ r: 4, fill: '#10E89A' }} />
-                      <Line type="monotone" dataKey="weight" name="Top Weight" stroke="#FF3B5C" strokeWidth={2} dot={{ r: 4, fill: '#FF3B5C' }} />
+                      <Line type="monotone" dataKey="est1RM" name="Est. 1RM" stroke="#10E89A" strokeWidth={2.5} dot={{ r: 4, fill: '#10E89A' }} />
+                      <Line type="monotone" dataKey="weight" name="Top Weight" stroke="#FF3B5C" strokeWidth={2.5} dot={{ r: 4, fill: '#FF3B5C' }} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -607,8 +715,21 @@ export default function ProgressPage() {
             )}
 
             {exerciseChartData.length <= 1 && exerciseChartId && (
-              <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>
-                Log at least 2 sessions with this exercise to display a trend line.
+              <div
+                style={{
+                  textAlign: 'center',
+                  padding: '16px 14px',
+                  borderRadius: 12,
+                  background: 'var(--bg-input)',
+                  border: '1px dashed var(--border-bright)',
+                  color: 'var(--text-secondary)',
+                  fontSize: 12.5,
+                }}
+              >
+                <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: 3, textTransform: 'capitalize' }}>
+                  {selectedExerciseName || 'Selected Exercise'}
+                </div>
+                Log at least 2 workout sessions with this exercise to plot your strength &amp; 1RM trend line.
               </div>
             )}
           </div>
@@ -660,7 +781,7 @@ export default function ProgressPage() {
                 <div className="stat-label">Total Personal Records</div>
                 <div className="stat-value" style={{ color: 'var(--accent-yellow)', fontSize: 28 }}>{prs.length}</div>
               </div>
-              {prs.map((pr, i) => (
+              {prs.slice(0, visibleCount).map((pr, i) => (
                 <motion.div key={pr.id || i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }}
                   className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, rgba(255,209,102,0.15), rgba(255,140,66,0.1))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -676,6 +797,15 @@ export default function ProgressPage() {
                   </div>
                 </motion.div>
               ))}
+              {prs.length > visibleCount && (
+                <button
+                  onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
+                  className="btn-secondary"
+                  style={{ minHeight: 44, borderRadius: 12, fontSize: 13, fontWeight: 700 }}
+                >
+                  Load More PRs ({prs.length - visibleCount} remaining)
+                </button>
+              )}
             </div>
           )}
         </motion.div>

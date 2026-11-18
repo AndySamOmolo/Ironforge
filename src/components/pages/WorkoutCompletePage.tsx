@@ -109,7 +109,9 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
             setPrevSession({ volume: old.totalVolume, sets: old.totalSets, duration: old.duration });
           }
         }
-      } catch {}
+      } catch (err) {
+        console.warn('Failed to load workout completion metadata:', err);
+      }
     };
     load();
   }, [exercises, dayName]);
@@ -180,18 +182,25 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
             notes: mergedNotes,
           });
         }
-      } catch {}
+      } catch (err) {
+        console.warn('Failed to save session rating/notes:', err);
+      }
     }
     endWorkout();
     onFinish();
   }, [sessionId, rating, sessionNote, endWorkout, onFinish]);
 
   return (
-    <div style={{
-      minHeight: '100dvh', background: 'var(--bg-primary)',
-      display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'center', padding: '24px 20px', position: 'relative', overflow: 'hidden',
-    }}>
+    <div
+      className="active-workout-container"
+      style={{
+        minHeight: '100vh',
+        background: 'var(--bg-primary)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', padding: '24px 20px', position: 'relative', overflow: 'hidden',
+      }}
+    >
+      <style>{`.active-workout-container { min-height: 100vh; min-height: 100dvh; }`}</style>
       <canvas ref={canvasRef} style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 10 }} />
 
       {/* Top Back / Done bar */}
@@ -203,7 +212,12 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
         >
           <ArrowLeft size={14} /> Home
         </button>
-        <span className="badge" style={{ background: 'rgba(16,232,154,0.1)', color: 'var(--accent-green)', border: '1px solid rgba(16,232,154,0.25)', fontSize: 10 }}>
+        <span
+          role="status"
+          aria-live="polite"
+          className="badge"
+          style={{ background: 'rgba(16,232,154,0.1)', color: 'var(--accent-green)', border: '1px solid rgba(16,232,154,0.25)', fontSize: 10 }}
+        >
           ✓ Workout Saved
         </span>
       </div>

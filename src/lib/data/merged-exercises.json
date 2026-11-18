@@ -26443,7 +26443,7 @@
   },
   {
     "exerciseId": "nqs5HGV",
-    "name": "single leg squat (pistol) male",
+    "name": "single leg squat (pistol)",
     "gifUrl": "/exercises/nqs5HGV.gif",
     "targetMuscles": [
       "glutes"
@@ -39797,7 +39797,7 @@
   },
   {
     "exerciseId": "EKXOMEh",
-    "name": "dumbbell rear delt row_shoulder",
+    "name": "dumbbell rear delt row",
     "gifUrl": "/exercises/EKXOMEh.gif",
     "targetMuscles": [
       "delts"

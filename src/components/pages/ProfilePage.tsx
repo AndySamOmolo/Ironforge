@@ -10,8 +10,11 @@ import {
 import { useReminderStore } from '@/lib/store/reminderStore';
 import { db } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
+import { useWorkoutStore } from '@/lib/store/workoutStore';
 import type { BodyWeight, BodyMeasurement, WaterLog } from '@/lib/types';
 import { ALL_EQUIPMENT, EQUIPMENT_PRESETS } from '@/lib/utils/exerciseResolver';
+import { calculatePlates } from '@/lib/utils/plateCalculator';
+import CustomSelect from '@/components/ui/CustomSelect';
 import {
   THEME_OPTIONS,
   CUSTOM_ACCENT_OPTIONS,
@@ -93,19 +96,21 @@ export default function ProfilePage() {
   };
 
   const addMeasurement = async () => {
-    const bf = parseFloat(measForm.bodyFat);
-    const waist = parseFloat(measForm.waist);
-    const chest = parseFloat(measForm.chest);
-    const arms = parseFloat(measForm.arms);
-    const thighs = parseFloat(measForm.thighs);
-    if ([bf, waist, chest, arms, thighs].every(v => isNaN(v) || v <= 0)) return;
+    const clampVal = (v: number, min: number, max: number) =>
+      !isNaN(v) && v > 0 ? Math.min(max, Math.max(min, v)) : undefined;
+    const bf = clampVal(parseFloat(measForm.bodyFat), 1, 75);
+    const waist = clampVal(parseFloat(measForm.waist), 1, 300);
+    const chest = clampVal(parseFloat(measForm.chest), 1, 300);
+    const arms = clampVal(parseFloat(measForm.arms), 1, 300);
+    const thighs = clampVal(parseFloat(measForm.thighs), 1, 300);
+    if ([bf, waist, chest, arms, thighs].every(v => v === undefined)) return;
     await db.measurements.add({
       date: new Date(),
-      bodyFat: !isNaN(bf) && bf > 0 ? bf : undefined,
-      waist: !isNaN(waist) && waist > 0 ? waist : undefined,
-      chest: !isNaN(chest) && chest > 0 ? chest : undefined,
-      arms: !isNaN(arms) && arms > 0 ? arms : undefined,
-      thighs: !isNaN(thighs) && thighs > 0 ? thighs : undefined,
+      bodyFat: bf,
+      waist,
+      chest,
+      arms,
+      thighs,
     });
     setMeasForm({ bodyFat: '', waist: '', chest: '', arms: '', thighs: '' });
     loadMeasurements();
@@ -130,16 +135,18 @@ export default function ProfilePage() {
 
   const updateWater = async (delta: number) => {
     const todayKey = getLocalTodayKey();
-    const current = todayWater || { date: todayKey, glasses: 0, targetGlasses: 8 };
-    const nextGlasses = Math.max(0, current.glasses + delta);
-    const existing = await db.waterLogs.where('date').equals(todayKey).first();
-    if (existing?.id) {
-      await db.waterLogs.update(existing.id, { glasses: nextGlasses });
-      setTodayWater({ ...existing, glasses: nextGlasses });
-    } else {
-      const id = await db.waterLogs.add({ date: todayKey, glasses: nextGlasses, targetGlasses: current.targetGlasses || 8 });
-      setTodayWater({ id, date: todayKey, glasses: nextGlasses, targetGlasses: current.targetGlasses || 8 });
-    }
+    await db.transaction('rw', db.waterLogs, async () => {
+      const existing = await db.waterLogs.where('date').equals(todayKey).first();
+      const nextGlasses = Math.max(0, (existing?.glasses ?? 0) + delta);
+      const targetGlasses = existing?.targetGlasses || todayWater?.targetGlasses || 8;
+      if (existing?.id) {
+        await db.waterLogs.update(existing.id, { glasses: nextGlasses });
+        setTodayWater({ ...existing, glasses: nextGlasses });
+      } else {
+        const id = await db.waterLogs.add({ date: todayKey, glasses: nextGlasses, targetGlasses });
+        setTodayWater({ id, date: todayKey, glasses: nextGlasses, targetGlasses });
+      }
+    });
   };
 
   const loadBodyWeights = async () => {
@@ -207,6 +214,7 @@ export default function ProfilePage() {
   };
 
   const resetAppearance = () => {
+    if (!confirm('Reset all appearance settings to default?')) return;
     loadFromProfile(DEFAULT_APPEARANCE);
     applyAppearanceToDOM(DEFAULT_APPEARANCE);
     saveProfileFields(DEFAULT_APPEARANCE);
@@ -251,32 +259,65 @@ export default function ProfilePage() {
   const handleFactoryReset = async () => {
     if (!confirm('This will delete ALL data including workouts, body weight, and preferences. Continue?')) return;
     if (!confirm('Are you absolutely sure? This cannot be undone.')) return;
+    try {
+      window.localStorage.removeItem('ironforge_active_workout_v1');
+      window.localStorage.removeItem('ironforge_appearance_v1');
+      window.localStorage.clear();
+      (window as any).IronForgeNative?.clearCachedBackups?.();
+    } catch {}
     await db.delete();
     window.location.reload();
   };
 
   const exportData = async () => {
     try {
-      const allPlans = await db.workoutPlans.toArray();
+      const [
+        allPlans,
+        allDays,
+        sessions,
+        sessionExercises,
+        sets,
+        bodyWeight,
+        measurements,
+        waterLogs,
+        nutritionLogs,
+        workoutReminders,
+        profile,
+        prs,
+        swaps,
+      ] = await Promise.all([
+        db.workoutPlans.toArray(),
+        db.workoutDays.toArray(),
+        db.workoutSessions.toArray(),
+        db.sessionExercises.toArray(),
+        db.sets.toArray(),
+        db.bodyWeight.toArray(),
+        db.measurements.toArray(),
+        db.waterLogs.toArray(),
+        db.nutritionLogs.toArray(),
+        db.workoutReminders.toArray(),
+        db.userProfile.toArray(),
+        db.personalRecords.toArray(),
+        db.exerciseSwaps.toArray(),
+      ]);
       const customPlans = allPlans.filter(p => p.isCustom);
       const customPlanIds = new Set(customPlans.map(p => p.id).filter(Boolean));
-      const allDays = await db.workoutDays.toArray();
       const data = {
         version: 3,
         exportedAt: new Date().toISOString(),
-        sessions: await db.workoutSessions.toArray(),
-        sessionExercises: await db.sessionExercises.toArray(),
-        sets: await db.sets.toArray(),
-        bodyWeight: await db.bodyWeight.toArray(),
-        measurements: await db.measurements.toArray(),
-        waterLogs: await db.waterLogs.toArray(),
-        nutritionLogs: await db.nutritionLogs.toArray(),
-        workoutReminders: await db.workoutReminders.toArray(),
-        profile: await db.userProfile.toArray(),
-        prs: await db.personalRecords.toArray(),
+        sessions,
+        sessionExercises,
+        sets,
+        bodyWeight,
+        measurements,
+        waterLogs,
+        nutritionLogs,
+        workoutReminders,
+        profile,
+        prs,
         customPlans,
         workoutDays: allDays.filter(d => customPlanIds.has(d.planId)),
-        swaps: await db.exerciseSwaps.toArray(),
+        swaps,
       };
       const filename = `ironforge-backup-${new Date().toISOString().split('T')[0]}.json`;
       const jsonStr = JSON.stringify(data, null, 2);
@@ -329,119 +370,163 @@ export default function ProfilePage() {
         return Number.isFinite(n) ? Math.min(max, Math.max(0, n)) : fallback;
       };
 
-      if (Array.isArray(data.sessions) && data.sessions.length > 0) {
-        const normalized = data.sessions.map((s: any) => ({
-          ...s,
-          planName: String(s.planName || 'Workout').slice(0, 120),
-          dayName: String(s.dayName || 'Session').slice(0, 120),
-          startedAt: safeDate(s.startedAt || s.startTime),
-          completedAt: (s.completedAt || s.endTime) ? safeDate(s.completedAt || s.endTime) : undefined,
-          duration: safeNum(s.duration, 0, 86400),
-          totalVolume: safeNum(s.totalVolume, 0, 10000000),
-          totalSets: safeNum(s.totalSets, 0, 1000),
-          totalReps: safeNum(s.totalReps, 0, 50000),
-          isComplete: Boolean(s.isComplete ?? true),
-        }));
-        await db.workoutSessions.bulkPut(normalized);
-      }
-      if (Array.isArray(data.sessionExercises) && data.sessionExercises.length > 0) {
-        await db.sessionExercises.bulkPut(data.sessionExercises);
-      }
-      if (Array.isArray(data.sets) && data.sets.length > 0) {
-        const normalizedSets = data.sets.map((s: any) => ({
-          ...s,
-          weight: safeNum(s.weight, 0, 1500),
-          reps: safeNum(s.reps, 0, 999),
-          completedAt: s.completedAt ? safeDate(s.completedAt) : undefined,
-        }));
-        await db.sets.bulkPut(normalizedSets);
-      }
-      if (Array.isArray(data.bodyWeight) && data.bodyWeight.length > 0) {
-        await db.bodyWeight.bulkPut(
-          data.bodyWeight.map((b: any) => ({
-            ...b,
-            weight: safeNum(b.weight, 70, 500),
-            date: safeDate(b.date),
-          }))
-        );
-      }
-      if (Array.isArray(data.measurements) && data.measurements.length > 0) {
-        await db.measurements.bulkPut(
-          data.measurements.map((m: any) => ({
-            ...m,
-            date: safeDate(m.date),
-          }))
-        );
-      }
-      if (Array.isArray(data.waterLogs) && data.waterLogs.length > 0) {
-        await db.waterLogs.bulkPut(data.waterLogs);
-      }
-      if (Array.isArray(data.nutritionLogs) && data.nutritionLogs.length > 0) {
-        await db.nutritionLogs.bulkPut(data.nutritionLogs);
-      }
-      if (Array.isArray(data.workoutReminders) && data.workoutReminders.length > 0) {
-        await db.workoutReminders.bulkPut(data.workoutReminders);
-        void useReminderStore.getState().loadReminders();
-      }
-      if (Array.isArray(data.prs) && data.prs.length > 0) {
-        await db.personalRecords.bulkPut(
-          data.prs.map((p: any) => ({
-            ...p,
-            weight: safeNum(p.weight, 0, 1500),
-            reps: safeNum(p.reps, 0, 999),
-            estimated1RM: safeNum(p.estimated1RM, 0, 2500),
-            date: safeDate(p.date || p.achievedAt),
-          }))
-        );
-      }
-      if (Array.isArray(data.customPlans) && data.customPlans.length > 0) {
-        const daysList = Array.isArray(data.workoutDays) ? data.workoutDays : [];
-        for (const cp of data.customPlans) {
-          const oldPlanId = cp.id;
-          const existing = await db.workoutPlans.where('name').equals(String(cp.name || 'Custom Plan')).first();
-          const newPlanId = existing?.id
-            ? existing.id
-            : await db.workoutPlans.add({
-                ...cp,
-                id: undefined,
-                isCustom: true,
-                isActive: false,
-                createdAt: safeDate(cp.createdAt),
-                updatedAt: safeDate(cp.updatedAt),
-              });
-          const planDaysForCustom = daysList.filter((d: any) => d.planId === oldPlanId);
-          if (planDaysForCustom.length > 0) {
-            await db.workoutDays.where('planId').equals(newPlanId).delete();
-            for (const day of planDaysForCustom) {
-              await db.workoutDays.add({
-                ...day,
-                id: undefined,
-                planId: newPlanId,
-              });
+      let mergedProfileToApply: any = null;
+
+      await db.transaction('rw', db.tables, async () => {
+        if (Array.isArray(data.sessions) && data.sessions.length > 0) {
+          const normalized = data.sessions.map((s: any) => ({
+            ...s,
+            planName: String(s.planName || 'Workout').slice(0, 120),
+            dayName: String(s.dayName || 'Session').slice(0, 120),
+            startedAt: safeDate(s.startedAt || s.startTime),
+            completedAt: (s.completedAt || s.endTime) ? safeDate(s.completedAt || s.endTime) : undefined,
+            duration: safeNum(s.duration, 0, 86400),
+            totalVolume: safeNum(s.totalVolume, 0, 10000000),
+            totalSets: safeNum(s.totalSets, 0, 1000),
+            totalReps: safeNum(s.totalReps, 0, 50000),
+            isComplete: Boolean(s.isComplete ?? true),
+          }));
+          await db.workoutSessions.bulkPut(normalized);
+        }
+        if (Array.isArray(data.sessionExercises) && data.sessionExercises.length > 0) {
+          await db.sessionExercises.bulkPut(data.sessionExercises);
+        }
+        if (Array.isArray(data.sets) && data.sets.length > 0) {
+          const normalizedSets = data.sets.map((s: any) => ({
+            ...s,
+            weight: safeNum(s.weight, 0, 1500),
+            reps: safeNum(s.reps, 0, 999),
+            completedAt: s.completedAt ? safeDate(s.completedAt) : undefined,
+          }));
+          await db.sets.bulkPut(normalizedSets);
+        }
+        if (Array.isArray(data.bodyWeight) && data.bodyWeight.length > 0) {
+          await db.bodyWeight.bulkPut(
+            data.bodyWeight.map((b: any) => ({
+              ...b,
+              weight: safeNum(b.weight, 70, 500),
+              date: safeDate(b.date),
+            }))
+          );
+        }
+        if (Array.isArray(data.measurements) && data.measurements.length > 0) {
+          await db.measurements.bulkPut(
+            data.measurements.map((m: any) => ({
+              ...m,
+              date: safeDate(m.date),
+              bodyFat: m.bodyFat != null ? Math.min(75, Math.max(1, safeNum(m.bodyFat, 15, 75))) : undefined,
+              waist: m.waist != null ? Math.min(300, Math.max(1, safeNum(m.waist, 80, 300))) : undefined,
+              chest: m.chest != null ? Math.min(300, Math.max(1, safeNum(m.chest, 100, 300))) : undefined,
+              arms: m.arms != null ? Math.min(300, Math.max(1, safeNum(m.arms, 35, 300))) : undefined,
+              thighs: m.thighs != null ? Math.min(300, Math.max(1, safeNum(m.thighs, 55, 300))) : undefined,
+            }))
+          );
+        }
+        if (Array.isArray(data.waterLogs) && data.waterLogs.length > 0) {
+          await db.waterLogs.bulkPut(
+            data.waterLogs.map((w: any) => {
+              const dObj = safeDate(w.date);
+              const dateStr =
+                typeof w.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(w.date)
+                  ? w.date
+                  : `${dObj.getFullYear()}-${String(dObj.getMonth() + 1).padStart(2, '0')}-${String(dObj.getDate()).padStart(2, '0')}`;
+              return {
+                ...w,
+                date: dateStr,
+                glasses: safeNum(w.glasses, 0, 100),
+                targetGlasses: safeNum(w.targetGlasses, 8, 100),
+              };
+            })
+          );
+        }
+        if (Array.isArray(data.nutritionLogs) && data.nutritionLogs.length > 0) {
+          await db.nutritionLogs.bulkPut(
+            data.nutritionLogs.map((n: any) => ({
+              ...n,
+              date: safeDate(n.date),
+            }))
+          );
+        }
+        if (Array.isArray(data.workoutReminders) && data.workoutReminders.length > 0) {
+          await db.workoutReminders.bulkPut(
+            data.workoutReminders.map((r: any) => ({
+              ...r,
+              createdAt: safeDate(r.createdAt),
+              lastFiredAt: r.lastFiredAt ? safeDate(r.lastFiredAt) : undefined,
+            }))
+          );
+        }
+        if (Array.isArray(data.prs) && data.prs.length > 0) {
+          await db.personalRecords.bulkPut(
+            data.prs.map((p: any) => ({
+              ...p,
+              weight: safeNum(p.weight, 0, 1500),
+              reps: safeNum(p.reps, 0, 999),
+              estimated1RM: safeNum(p.estimated1RM, 0, 2500),
+              date: safeDate(p.date || p.achievedAt),
+            }))
+          );
+        }
+        if (Array.isArray(data.customPlans) && data.customPlans.length > 0) {
+          const daysList = Array.isArray(data.workoutDays) ? data.workoutDays : [];
+          for (const cp of data.customPlans) {
+            const oldPlanId = cp.id;
+            const existing = await db.workoutPlans.where('name').equals(String(cp.name || 'Custom Plan')).first();
+            const newPlanId = existing?.id
+              ? existing.id
+              : await db.workoutPlans.add({
+                  ...cp,
+                  id: undefined,
+                  isCustom: true,
+                  isActive: false,
+                  createdAt: safeDate(cp.createdAt),
+                  updatedAt: safeDate(cp.updatedAt),
+                });
+            const planDaysForCustom = daysList.filter((d: any) => d.planId === oldPlanId);
+            if (planDaysForCustom.length > 0) {
+              await db.workoutDays.where('planId').equals(newPlanId).delete();
+              for (const day of planDaysForCustom) {
+                await db.workoutDays.add({
+                  ...day,
+                  id: undefined,
+                  planId: newPlanId,
+                });
+              }
             }
           }
         }
+        if (Array.isArray(data.swaps) && data.swaps.length > 0) {
+          await db.exerciseSwaps.bulkPut(
+            data.swaps.map((sw: any) => ({
+              ...sw,
+              newGifUrl:
+                typeof sw.newGifUrl === 'string' &&
+                (sw.newGifUrl.startsWith('/exercises/') || sw.newGifUrl.startsWith('/exercise-images/'))
+                  ? sw.newGifUrl
+                  : undefined,
+              swappedAt: safeDate(sw.swappedAt),
+            }))
+          );
+        }
+        if (Array.isArray(data.profile) && data.profile[0]) {
+          const importedProfile = data.profile[0];
+          const existingProfiles = await db.userProfile.toArray();
+          const targetId = existingProfiles[0]?.id;
+          mergedProfileToApply = {
+            ...importedProfile,
+            ...(targetId ? { id: targetId } : {}),
+            isSeeded: true,
+          };
+          await db.userProfile.put(mergedProfileToApply);
+        }
+      });
+
+      if (mergedProfileToApply) {
+        loadFromProfile(mergedProfileToApply);
+        applyAppearanceToDOM(mergedProfileToApply);
       }
-      if (Array.isArray(data.swaps) && data.swaps.length > 0) {
-        await db.exerciseSwaps.bulkPut(
-          data.swaps.map((sw: any) => ({
-            ...sw,
-            swappedAt: safeDate(sw.swappedAt),
-          }))
-        );
-      }
-      if (Array.isArray(data.profile) && data.profile[0]) {
-        const importedProfile = data.profile[0];
-        const existingProfiles = await db.userProfile.toArray();
-        const targetId = existingProfiles[0]?.id;
-        const mergedProfile = {
-          ...importedProfile,
-          ...(targetId ? { id: targetId } : {}),
-          isSeeded: true,
-        };
-        await db.userProfile.put(mergedProfile);
-        loadFromProfile(mergedProfile);
-        applyAppearanceToDOM(mergedProfile);
+      if (Array.isArray(data.workoutReminders) && data.workoutReminders.length > 0) {
+        void useReminderStore.getState().loadReminders();
       }
       loadBodyWeights();
       loadMeasurements();
@@ -476,20 +561,44 @@ export default function ProfilePage() {
       aria-checked={enabled}
       aria-label={label || 'Toggle setting'}
       onClick={onToggle}
-      style={{ width: 48, height: 26, borderRadius: 13, border: 'none', background: enabled ? 'var(--accent-green)' : 'var(--bg-input)', cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
-      <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'white', position: 'absolute', top: 3, left: enabled ? 25 : 3, transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+      style={{
+        width: 46,
+        height: 26,
+        borderRadius: 999,
+        border: enabled ? '1px solid rgba(16,232,154,0.45)' : '1px solid var(--border-bright)',
+        background: enabled ? 'var(--gradient-mint)' : 'var(--bg-input)',
+        boxShadow: enabled ? '0 0 12px rgba(16,232,154,0.25)' : 'inset 0 1px 3px rgba(0,0,0,0.35)',
+        cursor: 'pointer',
+        position: 'relative',
+        transition: 'all 0.22s ease',
+        flexShrink: 0,
+      }}
+    >
+      <div
+        style={{
+          width: 20,
+          height: 20,
+          borderRadius: '50%',
+          background: '#ffffff',
+          position: 'absolute',
+          top: 2,
+          left: enabled ? 22 : 2,
+          transition: 'left 0.22s cubic-bezier(0.22, 1, 0.36, 1)',
+          boxShadow: '0 2px 5px rgba(0,0,0,0.35)',
+        }}
+      />
     </button>
   );
 
   const SettingRow = ({ icon: Icon, iconColor, label, description, children, stacked = false }: { icon: any; iconColor: string; label: string; description?: string; children: React.ReactNode; stacked?: boolean }) => (
-    <div className="card" style={{ display: 'flex', flexDirection: stacked ? 'column' : 'row', alignItems: stacked ? 'stretch' : 'center', justifyContent: 'space-between', gap: stacked ? 10 : 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
-        <div style={{ width: 36, height: 36, borderRadius: 10, background: `color-mix(in srgb, ${iconColor} 12%, transparent)`, border: `1px solid color-mix(in srgb, ${iconColor} 22%, transparent)`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <Icon size={16} color={iconColor} />
+    <div className="card" style={{ padding: '12px 14px', display: 'flex', flexDirection: stacked ? 'column' : 'row', alignItems: stacked ? 'stretch' : 'center', justifyContent: 'space-between', gap: stacked ? 10 : 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 11, flex: 1, minWidth: 0 }}>
+        <div style={{ width: 34, height: 34, borderRadius: 10, background: `color-mix(in srgb, ${iconColor} 14%, transparent)`, border: `1px solid color-mix(in srgb, ${iconColor} 26%, transparent)`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Icon size={15} color={iconColor} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>{label}</div>
-          {description && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{description}</div>}
+          <div style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.25 }}>{label}</div>
+          {description && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.3 }}>{description}</div>}
         </div>
       </div>
       <div style={{ width: stacked ? '100%' : 'auto', flexShrink: 0 }}>
@@ -500,15 +609,15 @@ export default function ProfilePage() {
 
   return (
     <div className="page-container">
-      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 20 }}>
-        <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em' }}>
+      <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 12 }}>
+        <h1 className="font-display" style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
           <span className="gradient-text">Settings</span>
         </h1>
-        <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>Customize your equipment, appearance & workout engine</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 3 }}>Customize your equipment, appearance &amp; workout engine</p>
       </motion.div>
 
       {/* Tab Bar */}
-      <div className="chip-scroll" style={{ marginBottom: 20, paddingBottom: 4 }}>
+      <div className="chip-scroll" style={{ marginBottom: 14, paddingBottom: 4 }}>
         {([
           { id: 'profile' as const, label: '👤 Profile & Gear' },
           { id: 'appearance' as const, label: '🎨 Appearance' },
@@ -627,30 +736,40 @@ export default function ProfilePage() {
 
       {/* ======== APPEARANCE TAB ======== */}
       {activeTab === 'appearance' && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-          {/* Live Preview Banner */}
-          <div className="card hero-gradient" style={{ padding: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <span className="badge" style={{ background: 'rgba(16,232,154,0.12)', color: 'var(--accent-green)', border: '1px solid rgba(16,232,154,0.25)', fontSize: 10 }}>
-                <Sparkles size={10} /> Live Preview
-              </span>
-              <button onClick={resetAppearance} className="btn-ghost" style={{ fontSize: 11, padding: '4px 10px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <RotateCcw size={12} /> Reset Defaults
+        <>
+          {/* Sticky Live Preview Banner — stays pinned at top while scrolling all appearance controls */}
+          <div className="card hero-gradient live-preview-sticky" style={{ padding: '12px 14px', marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className="badge" style={{ background: 'rgba(16,232,154,0.14)', color: 'var(--accent-green)', border: '1px solid rgba(16,232,154,0.32)', fontSize: 10, fontWeight: 800, padding: '3px 9px' }}>
+                  <Sparkles size={10} /> Live Preview • Pinned
+                </span>
+                <span className="filter-chip active" style={{ fontSize: 9.5, padding: '2px 8px', minHeight: 22, pointerEvents: 'none' }}>
+                  Accent
+                </span>
+              </div>
+              <button onClick={resetAppearance} className="btn-ghost" style={{ fontSize: 11, padding: '4px 8px', minHeight: 28, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <RotateCcw size={11} /> Reset Defaults
               </button>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <div>
-                <h3 className="font-display" style={{ fontSize: 17, fontWeight: 800 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <h3 className="font-display" style={{ fontSize: 16.5, fontWeight: 800, lineHeight: 1.2 }}>
                   <span className="gradient-text">IronForge Studio</span>
                 </h3>
-                <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-                  Theme: <strong style={{ textTransform: 'capitalize' }}>{theme}</strong> • Card: <strong style={{ textTransform: 'capitalize' }}>{cardStyle}</strong> • Button: <strong style={{ textTransform: 'capitalize' }}>{buttonStyle}</strong>
+                <p style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  Theme: <strong style={{ textTransform: 'capitalize', color: 'var(--text-primary)' }}>{theme}</strong> • Card: <strong style={{ textTransform: 'capitalize', color: 'var(--text-primary)' }}>{cardStyle}</strong> • Button: <strong style={{ textTransform: 'capitalize', color: 'var(--text-primary)' }}>{buttonStyle}</strong> • Font: <strong style={{ textTransform: 'capitalize', color: 'var(--text-primary)' }}>{font}</strong>
                 </p>
               </div>
-              <div className="font-mono" style={{ fontSize: 19, fontWeight: 800, color: 'var(--accent-green)' }}>100kg</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                <div className="font-mono" style={{ fontSize: 17, fontWeight: 800, color: 'var(--accent-green)' }}>
+                  {unitSystem === 'metric' ? '100kg' : '225lbs'}
+                </div>
+              </div>
             </div>
           </div>
+
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
           {/* Theme Selector (24 Themes) */}
           <div>
@@ -749,9 +868,9 @@ export default function ProfilePage() {
             <div className="section-label" style={{ marginBottom: 10 }}>Numbers & Metrics Font</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
               {[
-                { id: 'mono', label: 'Monospace', sample: '125.5 kg', ff: 'var(--font-jetbrains), monospace' },
-                { id: 'display', label: 'Athletic', sample: '125.5 kg', ff: 'var(--font-space-grotesk), sans-serif' },
-                { id: 'sans', label: 'Match UI', sample: '125.5 kg', ff: 'inherit' },
+                { id: 'mono', label: 'Monospace', sample: unitSystem === 'metric' ? '125.5 kg' : '275.5 lbs', ff: 'var(--font-jetbrains), monospace' },
+                { id: 'display', label: 'Athletic', sample: unitSystem === 'metric' ? '125.5 kg' : '275.5 lbs', ff: 'var(--font-space-grotesk), sans-serif' },
+                { id: 'sans', label: 'Match UI', sample: unitSystem === 'metric' ? '125.5 kg' : '275.5 lbs', ff: 'inherit' },
               ].map(opt => (
                 <button key={opt.id} onClick={() => updateAppearance({ numberFont: opt.id })}
                   style={{
@@ -1128,7 +1247,8 @@ export default function ProfilePage() {
             <Toggle enabled={showFeatureCards} onToggle={() => updateWorkoutSetting('showFeatureCards', !showFeatureCards)} />
           </SettingRow>
 
-        </motion.div>
+          </motion.div>
+        </>
       )}
 
       {/* ======== WORKOUT TAB ======== */}
@@ -1219,7 +1339,7 @@ export default function ProfilePage() {
             <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
               <input value={newWeight} onChange={e => setNewWeight(e.target.value)} placeholder={`Weight (${unitSystem === 'metric' ? 'kg' : 'lbs'})`} type="number" step="0.1"
                 style={{ flex: 1, padding: '12px 14px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', fontFamily: 'inherit', minHeight: 46 }} />
-              <button onClick={addBodyWeight} style={{ padding: '12px 18px', background: 'var(--gradient-mint)', border: 'none', borderRadius: 12, color: 'white', fontWeight: 700, cursor: 'pointer', minHeight: 46 }}>
+              <button onClick={addBodyWeight} aria-label="Log body weight" style={{ padding: '12px 18px', background: 'var(--gradient-mint)', border: 'none', borderRadius: 12, color: 'white', fontWeight: 700, cursor: 'pointer', minHeight: 46 }}>
                 <Plus size={16} />
               </button>
             </div>
@@ -1231,9 +1351,18 @@ export default function ProfilePage() {
               </svg>
             )}
             {bodyWeights.slice(0, 5).map(bw => (
-              <div key={bw.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
+              <div key={bw.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
                 <span style={{ color: 'var(--text-secondary)' }}>{new Date(bw.date).toLocaleDateString()}</span>
-                <span className="font-mono" style={{ fontWeight: 700 }}>{bw.weight} {bw.unit}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span className="font-mono" style={{ fontWeight: 700 }}>{bw.weight} {bw.unit}</span>
+                  <button
+                    aria-label="Delete entry"
+                    onClick={async () => { if (bw.id) { await db.bodyWeight.delete(bw.id); loadBodyWeights(); } }}
+                    style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center' }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -1287,7 +1416,7 @@ export default function ProfilePage() {
                 💧 Daily Hydration
               </h3>
               <span className="font-mono" style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent-cyan)' }}>
-                {todayWater?.glasses || 0} / {todayWater?.targetGlasses || 8} glasses ({((todayWater?.glasses || 0) * 0.25).toFixed(2)}L)
+                {todayWater?.glasses || 0} / {todayWater?.targetGlasses || 8} glasses ({unitSystem === 'metric' ? `${((todayWater?.glasses || 0) * 0.25).toFixed(2)}L` : `${(todayWater?.glasses || 0) * 8} fl oz`})
               </span>
             </div>
             <div className="progress-bar" style={{ height: 8, marginBottom: 12 }}>
@@ -1312,7 +1441,7 @@ export default function ProfilePage() {
                 className="btn-primary"
                 style={{ width: '100%', minHeight: 44, borderRadius: 10, fontSize: 12, fontWeight: 700, background: 'var(--gradient-ocean)', color: '#fff', textShadow: 'none', boxShadow: 'none', padding: '10px 12px' }}
               >
-                + 1 Glass (250ml)
+                + 1 Glass ({unitSystem === 'metric' ? '250ml' : '8 oz'})
               </button>
             </div>
           </div>
@@ -1337,18 +1466,28 @@ export default function ProfilePage() {
                 <Plus size={14} /> Log
               </button>
             </div>
-            {measurements.slice(0, 5).map((m, idx) => (
-              <div key={m.id || idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
-                <span style={{ color: 'var(--text-secondary)' }}>{new Date(m.date).toLocaleDateString()}</span>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {m.bodyFat && <span className="font-mono" style={{ color: 'var(--accent-yellow)' }}>{m.bodyFat}% BF</span>}
-                  {m.chest && <span className="font-mono">C: {m.chest}</span>}
-                  {m.waist && <span className="font-mono">W: {m.waist}</span>}
-                  {m.arms && <span className="font-mono">A: {m.arms}</span>}
-                  {m.thighs && <span className="font-mono">T: {m.thighs}</span>}
+            {measurements.slice(0, 5).map((m, idx) => {
+              const measUnit = unitSystem === 'metric' ? 'cm' : 'in';
+              return (
+                <div key={m.id || idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>{new Date(m.date).toLocaleDateString()}</span>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {m.bodyFat && <span className="font-mono" style={{ color: 'var(--accent-yellow)' }}>{m.bodyFat}% BF</span>}
+                    {m.chest && <span className="font-mono">C: {m.chest}{measUnit}</span>}
+                    {m.waist && <span className="font-mono">W: {m.waist}{measUnit}</span>}
+                    {m.arms && <span className="font-mono">A: {m.arms}{measUnit}</span>}
+                    {m.thighs && <span className="font-mono">T: {m.thighs}{measUnit}</span>}
+                    <button
+                      aria-label="Delete entry"
+                      onClick={async () => { if (m.id) { await db.measurements.delete(m.id); loadMeasurements(); } }}
+                      style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center' }}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </motion.div>
       )}
@@ -1376,6 +1515,15 @@ export default function ProfilePage() {
             </div>
           </div>
 
+          <div className="card" style={{ padding: 16, border: '1px solid rgba(16,232,154,0.2)' }}>
+            <h3 style={{ fontSize: 14, fontWeight: 800, marginBottom: 8, color: 'var(--accent-green)' }}>
+              🔒 Privacy &amp; Data Policy
+            </h3>
+            <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+              All workout sessions, sets, personal records, body weight, measurements, hydration logs, and appearance preferences are stored <strong>100% locally on your device</strong> inside <code>IronForgeDB</code> (IndexedDB) and <code>localStorage</code>. Zero analytics, telemetry, or personal data is ever transmitted to external servers. External YouTube tutorial links only open when explicitly clicked. You can export a full JSON backup or permanently erase all stored data at any time below.
+            </p>
+          </div>
+
           <button className="card" onClick={exportData} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', width: '100%', textAlign: 'left', border: '1px solid rgba(16,232,154,0.15)' }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(16,232,154,0.1)', border: '1px solid rgba(16,232,154,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Download size={16} color="var(--accent-green)" />
@@ -1399,10 +1547,13 @@ export default function ProfilePage() {
 
           <button className="card" onClick={async () => {
             if (!confirm('Delete all workout sessions? Exercise library will be kept.')) return;
-            await db.workoutSessions.clear();
-            await db.sets.clear();
-            await db.sessionExercises.clear();
-            await db.personalRecords.clear();
+            await db.transaction('rw', [db.workoutSessions, db.sets, db.sessionExercises, db.personalRecords], async () => {
+              await db.workoutSessions.clear();
+              await db.sets.clear();
+              await db.sessionExercises.clear();
+              await db.personalRecords.clear();
+            });
+            useWorkoutStore.getState().endWorkout();
             loadDBStats();
           }} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', width: '100%', textAlign: 'left', border: '1px solid rgba(251,191,36,0.15)' }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1428,7 +1579,7 @@ export default function ProfilePage() {
             <div className="font-display gradient-text" style={{ fontSize: 18, fontWeight: 800, letterSpacing: 2, marginBottom: 4 }}>IRONFORGE</div>
             <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>v5.2.0 • Precision Engineered</div>
             <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 4 }}>
-              {(dbStats.exercises || 2243).toLocaleString()} Exercises • {dbStats.plans || 16} Programs • {THEME_OPTIONS.length} Themes
+              {(dbStats.exercises || 2243).toLocaleString()} Exercises • {dbStats.plans || 25} Programs • {THEME_OPTIONS.length} Themes
             </div>
           </div>
         </motion.div>
@@ -1442,7 +1593,7 @@ function ReminderSection() {
   const { reminders, loadReminders, addReminder, deleteReminder, toggleReminder, requestPermission, permissionGranted, startBackgroundCheck } = useReminderStore();
   const [showAdd, setShowAdd] = useState(false);
   const [newDay, setNewDay] = useState(1);
-  const [newHour, setNewHour] = useState(8);
+  const [newHour, setNewHour] = useState(18);
   const [newMinute, setNewMinute] = useState(0);
   const [newLabel, setNewLabel] = useState('Workout time!');
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -1453,97 +1604,375 @@ function ReminderSection() {
   const handleAdd = async () => {
     if (!permissionGranted) {
       const granted = await requestPermission();
-      if (!granted) return;
+      if (!granted) {
+        alert('Notification permission was denied. Please enable notifications in your browser or device settings to save reminders.');
+        return;
+      }
     }
-    await addReminder({ dayOfWeek: newDay, timeHour: newHour, timeMinute: newMinute, isEnabled: true, label: newLabel });
+    await addReminder({ dayOfWeek: newDay, timeHour: newHour, timeMinute: newMinute, isEnabled: true, label: newLabel.trim() || 'Workout time!' });
     setShowAdd(false);
     startBackgroundCheck();
   };
 
+  const handleQuickPreset = async (hour: number, minute: number, label: string) => {
+    if (!permissionGranted) {
+      const granted = await requestPermission();
+      if (!granted) {
+        setNewHour(hour);
+        setNewMinute(minute);
+        setNewLabel(label);
+        setShowAdd(true);
+        return;
+      }
+    }
+    const todayDow = new Date().getDay();
+    await addReminder({ dayOfWeek: todayDow, timeHour: hour, timeMinute: minute, isEnabled: true, label });
+    startBackgroundCheck();
+  };
+
   return (
-    <div style={{ marginTop: 12 }}>
-      <div className="section-label" style={{ marginBottom: 10 }}>🔔 Workout Reminders</div>
-      {!permissionGranted && (
-        <div className="card" style={{ padding: 12, marginBottom: 10, border: '1px dashed rgba(251,191,36,0.3)' }}>
-          <div style={{ fontSize: 12, color: 'var(--accent-yellow)', fontWeight: 600, marginBottom: 4 }}>Notifications not enabled</div>
-          <button onClick={requestPermission} className="btn-primary" style={{ fontSize: 11, padding: '6px 14px', minHeight: 32, borderRadius: 8, width: 'auto', color: '#fff', textShadow: 'none', boxShadow: 'none' }}>
-            <Bell size={12} /> Enable Notifications
-          </button>
-        </div>
-      )}
-
-      {reminders.length === 0 && (
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10, padding: '12px 0' }}>
-          No reminders set. Add one to get notified before your workouts.
-        </div>
-      )}
-
-      {reminders.map(r => (
-        <div key={r.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, opacity: r.isEnabled ? 1 : 0.5 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: r.isEnabled ? 'rgba(16,232,154,0.1)' : 'var(--bg-glass)', border: `1px solid ${r.isEnabled ? 'rgba(16,232,154,0.2)' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Bell size={14} color={r.isEnabled ? 'var(--accent-green)' : 'var(--text-muted)'} />
+    <div className="card" style={{ padding: '14px 15px', marginTop: 4, overflow: 'visible', border: '1px solid var(--border-subtle)' }}>
+      {/* Unified Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: 'rgba(251, 191, 36, 0.12)',
+              border: '1px solid rgba(251, 191, 36, 0.28)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <Bell size={16} color="var(--accent-yellow)" />
           </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 700 }}>{dayNames[r.dayOfWeek]} at {String(r.timeHour).padStart(2, '0')}:{String(r.timeMinute).padStart(2, '0')}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{r.label}</div>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 800 }}>Workout Reminders</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
+              {reminders.length > 0
+                ? `${reminders.filter((r) => r.isEnabled).length} active training alert${reminders.filter((r) => r.isEnabled).length !== 1 ? 's' : ''}`
+                : 'Schedule recurring training alerts'}
+            </div>
+          </div>
+        </div>
+        {!showAdd && (
+          <button
+            type="button"
+            onClick={() => setShowAdd(true)}
+            className="btn-secondary"
+            style={{
+              padding: '7px 12px',
+              minHeight: 34,
+              borderRadius: 10,
+              fontSize: 11.5,
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              border: '1px solid var(--border-bright)',
+            }}
+          >
+            <Plus size={13} color="var(--accent-purple)" /> Add
+          </button>
+        )}
+      </div>
+
+      {/* Sleek Horizontal Permission Banner */}
+      {!permissionGranted && (
+        <div
+          style={{
+            padding: '10px 12px',
+            marginBottom: 12,
+            borderRadius: 12,
+            background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.1) 0%, rgba(255, 61, 90, 0.08) 100%)',
+            border: '1px solid rgba(251, 191, 36, 0.28)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+          }}
+        >
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 12, color: 'var(--accent-yellow)', fontWeight: 800 }}>Notifications Paused</div>
+            <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 1 }}>
+              Allow device alerts so reminders fire on time
+            </div>
           </div>
           <button
             type="button"
-            role="switch"
-            aria-checked={r.isEnabled}
-            aria-label={`Toggle reminder ${r.label}`}
-            onClick={() => r.id && toggleReminder(r.id)}
-            style={{ width: 48, height: 26, borderRadius: 13, border: 'none', background: r.isEnabled ? 'var(--accent-green)' : 'var(--bg-input)', cursor: 'pointer', position: 'relative' as const, flexShrink: 0 }}>
-            <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'white', position: 'absolute' as const, top: 3, left: r.isEnabled ? 25 : 3, transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
-          </button>
-          <button aria-label={`Delete reminder ${r.label}`} onClick={() => r.id && deleteReminder(r.id)} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: 4 }}>
-            <X size={14} />
+            onClick={requestPermission}
+            className="btn-primary"
+            style={{
+              width: 'auto',
+              minHeight: 34,
+              padding: '6px 12px',
+              borderRadius: 9,
+              fontSize: 11,
+              fontWeight: 800,
+              flexShrink: 0,
+              textTransform: 'none',
+            }}
+          >
+            <Bell size={12} /> Enable
           </button>
         </div>
-      ))}
+      )}
 
-      {showAdd ? (
-        <div className="card" style={{ padding: 14, marginTop: 8, border: '1px solid var(--accent-purple)' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>New Reminder</div>
+      {/* Quick 1-Tap Presets when empty */}
+      {reminders.length === 0 && !showAdd && (
+        <div
+          style={{
+            padding: '12px',
+            borderRadius: 12,
+            background: 'var(--bg-input)',
+            border: '1px solid var(--border-subtle)',
+          }}
+        >
+          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', fontWeight: 600, marginBottom: 8 }}>
+            No reminders scheduled yet. Tap a preset or create a custom alert:
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
+            {[
+              { icon: '🌅', title: 'Morning Session', time: '07:00', h: 7, m: 0 },
+              { icon: '☀️', title: 'Lunch Express', time: '12:30', h: 12, m: 30 },
+              { icon: '🔥', title: 'Evening Lift', time: '18:00', h: 18, m: 0 },
+              { icon: '🌙', title: 'Night Session', time: '20:30', h: 20, m: 30 },
+            ].map((p) => (
+              <button
+                key={p.time}
+                type="button"
+                onClick={() => handleQuickPreset(p.h, p.m, p.title)}
+                style={{
+                  padding: '8px 10px',
+                  borderRadius: 10,
+                  background: 'var(--bg-glass)',
+                  border: '1px solid var(--border-bright)',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 6,
+                  textAlign: 'left',
+                  fontFamily: 'inherit',
+                }}
+              >
+                <span style={{ fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span>{p.icon}</span> {p.title}
+                </span>
+                <span className="font-mono" style={{ fontSize: 10, fontWeight: 800, color: 'var(--accent-green)' }}>
+                  {p.time}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Existing Reminders List */}
+      {reminders.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {reminders.map((r) => (
+            <div
+              key={r.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '10px 12px',
+                borderRadius: 12,
+                background: 'var(--bg-input)',
+                border: r.isEnabled ? '1px solid rgba(16,232,154,0.28)' : '1px solid var(--border-subtle)',
+                opacity: r.isEnabled ? 1 : 0.6,
+              }}
+            >
+              <div
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 9,
+                  background: r.isEnabled ? 'rgba(16,232,154,0.12)' : 'var(--bg-glass)',
+                  border: `1px solid ${r.isEnabled ? 'rgba(16,232,154,0.25)' : 'var(--border)'}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <Bell size={14} color={r.isEnabled ? 'var(--accent-green)' : 'var(--text-muted)'} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 800 }}>
+                  {dayNames[r.dayOfWeek]} •{' '}
+                  <span className="font-mono" style={{ color: 'var(--accent-green)' }}>
+                    {String(r.timeHour).padStart(2, '0')}:{String(r.timeMinute).padStart(2, '0')}
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {r.label}
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={r.isEnabled}
+                aria-label={`Toggle reminder ${r.label}`}
+                onClick={() => r.id && toggleReminder(r.id)}
+                style={{
+                  width: 44,
+                  height: 24,
+                  borderRadius: 999,
+                  border: r.isEnabled ? '1px solid rgba(16,232,154,0.45)' : '1px solid var(--border-bright)',
+                  background: r.isEnabled ? 'var(--gradient-mint)' : 'var(--bg-glass)',
+                  cursor: 'pointer',
+                  position: 'relative',
+                  flexShrink: 0,
+                }}
+              >
+                <div
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: '50%',
+                    background: 'white',
+                    position: 'absolute',
+                    top: 2,
+                    left: r.isEnabled ? 21 : 2,
+                    transition: 'left 0.2s',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                  }}
+                />
+              </button>
+              <button
+                type="button"
+                aria-label={`Delete reminder ${r.label}`}
+                onClick={() => r.id && deleteReminder(r.id)}
+                style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: 4, display: 'flex' }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Custom Reminder Builder with CustomSelect */}
+      {showAdd && (
+        <div
+          style={{
+            padding: 13,
+            marginTop: reminders.length > 0 ? 10 : 0,
+            borderRadius: 12,
+            background: 'var(--bg-input)',
+            border: '1px solid var(--accent-purple)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 800 }}>New Custom Reminder</div>
+            <button
+              type="button"
+              onClick={() => setShowAdd(false)}
+              aria-label="Close reminder form"
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex' }}
+            >
+              <X size={15} />
+            </button>
+          </div>
           <div style={{ marginBottom: 10 }}>
-            <div className="section-label" style={{ marginBottom: 6 }}>Day</div>
-            <div style={{ display: 'flex', gap: 4 }}>
+            <div className="section-label" style={{ marginBottom: 6 }}>Day of Week</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
               {dayNames.map((d, i) => (
-                <button key={i} onClick={() => setNewDay(i)} style={{
-                  flex: 1, padding: '8px 2px', borderRadius: 8, border: newDay === i ? 'none' : '1px solid var(--border)',
-                  background: newDay === i ? 'var(--gradient-fire)' : 'transparent', color: newDay === i ? 'white' : 'var(--text-muted)',
-                  fontSize: 10, fontWeight: 700, cursor: 'pointer',
-                }}>{d}</button>
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setNewDay(i)}
+                  style={{
+                    padding: '8px 2px',
+                    borderRadius: 8,
+                    border: newDay === i ? 'none' : '1px solid var(--border-bright)',
+                    background: newDay === i ? 'var(--gradient-fire)' : 'var(--bg-glass)',
+                    color: newDay === i ? 'white' : 'var(--text-secondary)',
+                    fontSize: 10.5,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {d}
+                </button>
               ))}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-            <div style={{ flex: 1 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+            <div>
               <div className="section-label" style={{ marginBottom: 4 }}>Hour</div>
-              <select value={newHour} onChange={e => setNewHour(parseInt(e.target.value))} style={{ width: '100%', padding: 8, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 13, outline: 'none' }}>
-                {Array.from({ length: 24 }, (_, i) => <option key={i} value={i}>{String(i).padStart(2, '0')}</option>)}
-              </select>
+              <CustomSelect
+                compact
+                ariaLabel="Reminder hour"
+                value={newHour}
+                onChange={(val) => setNewHour(parseInt(val, 10))}
+                options={Array.from({ length: 24 }, (_, i) => ({
+                  value: i,
+                  label: `${String(i).padStart(2, '0')}:00`,
+                  badge: i < 12 ? 'AM' : 'PM',
+                }))}
+              />
             </div>
-            <div style={{ flex: 1 }}>
+            <div>
               <div className="section-label" style={{ marginBottom: 4 }}>Minute</div>
-              <select value={newMinute} onChange={e => setNewMinute(parseInt(e.target.value))} style={{ width: '100%', padding: 8, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 13, outline: 'none' }}>
-                {[0, 15, 30, 45].map(m => <option key={m} value={m}>{String(m).padStart(2, '0')}</option>)}
-              </select>
+              <CustomSelect
+                compact
+                ariaLabel="Reminder minute"
+                value={newMinute}
+                onChange={(val) => setNewMinute(parseInt(val, 10))}
+                options={[0, 15, 30, 45].map((m) => ({
+                  value: m,
+                  label: `:${String(m).padStart(2, '0')} min`,
+                }))}
+              />
             </div>
           </div>
           <div style={{ marginBottom: 10 }}>
-            <div className="section-label" style={{ marginBottom: 4 }}>Label</div>
-            <input value={newLabel} onChange={e => setNewLabel(e.target.value)} style={{ width: '100%', padding: 8, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 13, outline: 'none' }} />
+            <div className="section-label" style={{ marginBottom: 4 }}>Reminder Note</div>
+            <input
+              value={newLabel}
+              onChange={(e) => setNewLabel(e.target.value)}
+              placeholder="e.g. Push Day — Hit the bar!"
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                background: 'var(--bg-glass)',
+                border: '1px solid var(--border-bright)',
+                borderRadius: 10,
+                color: 'var(--text-primary)',
+                fontSize: 13,
+                outline: 'none',
+                fontFamily: 'inherit',
+              }}
+            />
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={handleAdd} className="btn-primary" style={{ flex: 1, minHeight: 40, borderRadius: 10, fontSize: 12, fontWeight: 700, color: '#fff', textShadow: 'none', boxShadow: 'none' }}>Save</button>
-            <button onClick={() => setShowAdd(false)} className="btn-secondary" style={{ flex: 1, minHeight: 40, borderRadius: 10, fontSize: 12 }}>Cancel</button>
+            <button
+              type="button"
+              onClick={handleAdd}
+              className="btn-primary"
+              style={{ flex: 1, minHeight: 40, borderRadius: 10, fontSize: 12, fontWeight: 800, textTransform: 'none' }}
+            >
+              Save Reminder
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAdd(false)}
+              className="btn-secondary"
+              style={{ flex: 1, minHeight: 40, borderRadius: 10, fontSize: 12 }}
+            >
+              Cancel
+            </button>
           </div>
         </div>
-      ) : (
-        <button onClick={() => setShowAdd(true)} className="btn-secondary" style={{ width: '100%', minHeight: 44, borderRadius: 12, fontSize: 13, fontWeight: 700, marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-          <Plus size={14} /> Add Reminder
-        </button>
       )}
     </div>
   );
@@ -1553,11 +1982,11 @@ function ReminderSection() {
 function PlateCalculator({ barWeight, unit }: { barWeight: number; unit: string }) {
   const [targetWeight, setTargetWeight] = useState('');
   const unitSys = unit === 'imperial' ? 'imperial' : 'metric';
+  const targetNum = parseFloat(targetWeight);
   const plateResult = useMemo(() => {
-    const target = parseFloat(targetWeight);
-    if (isNaN(target) || target <= barWeight) return null;
-    return calculatePlates(Math.min(1500, target), barWeight, unitSys);
-  }, [targetWeight, barWeight, unitSys]);
+    if (isNaN(targetNum) || targetNum < barWeight) return null;
+    return calculatePlates(Math.min(1500, targetNum), barWeight, unitSys);
+  }, [targetNum, barWeight, unitSys]);
 
   const expandedVisualPlates = useMemo(() => {
     if (!plateResult) return [];
@@ -1577,9 +2006,14 @@ function PlateCalculator({ barWeight, unit }: { barWeight: number; unit: string 
       </h3>
       <input value={targetWeight} onChange={e => setTargetWeight(e.target.value)} placeholder={`Target weight (${unit === 'metric' ? 'kg' : 'lbs'})`} type="number" max={1500}
         style={{ width: '100%', padding: '12px 14px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', fontFamily: 'inherit', marginBottom: 12, minHeight: 46 }} />
+      {plateResult && targetNum === barWeight && (
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600 }}>
+          Empty bar (no plates needed)
+        </div>
+      )}
       {plateResult && plateResult.perSide.length > 0 && (
         <div>
-          <div className="section-label" style={{ marginBottom: 8 }}>Each side ({((Math.min(1500, parseFloat(targetWeight)) - barWeight) / 2).toFixed(1)} {unit === 'metric' ? 'kg' : 'lbs'}/side)</div>
+          <div className="section-label" style={{ marginBottom: 8 }}>Each side ({((Math.min(1500, targetNum) - barWeight) / 2).toFixed(1)} {unit === 'metric' ? 'kg' : 'lbs'}/side)</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '12px 0', overflowX: 'auto' }}>
             <div style={{ height: 8, width: 60, background: '#666', borderRadius: 2, flexShrink: 0 }} />
             {expandedVisualPlates.map((p, i) => (
@@ -1595,6 +2029,11 @@ function PlateCalculator({ barWeight, unit }: { barWeight: number; unit: string 
               </span>
             ))}
           </div>
+        </div>
+      )}
+      {plateResult && !plateResult.isExact && (
+        <div style={{ fontSize: 11, color: 'var(--accent-yellow)', fontWeight: 600, marginTop: 8 }}>
+          Closest loadable weight: {plateResult.totalWeight} {unit === 'metric' ? 'kg' : 'lbs'}
         </div>
       )}
     </div>

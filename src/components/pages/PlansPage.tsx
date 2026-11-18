@@ -15,16 +15,19 @@ import {
   resolveWorkoutDayExercises,
   generateSmartWorkout,
   analyzePlanMuscleBalance,
+  type PlanMuscleBalanceSummary,
 } from '@/lib/utils/exerciseResolver';
 import ExerciseMedia from '@/components/ui/ExerciseMedia';
+import CustomSelect from '@/components/ui/CustomSelect';
 
 const CATEGORY_COLORS: Record<string, string> = {
   Hypertrophy: 'var(--accent-purple)',
+  Calisthenics: 'var(--accent-green)',
   Strength: 'var(--accent-blue)',
   Powerlifting: 'var(--accent-red)',
   Athletic: 'var(--accent-cyan)',
   Cardio: 'var(--accent-orange)',
-  Bodyweight: 'var(--accent-green)',
+  Bodyweight: 'var(--accent-lime)',
   Mobility: 'var(--accent-cyan)',
   Custom: 'var(--accent-pink)',
 };
@@ -139,10 +142,12 @@ export default function PlansPage() {
   };
 
   const activatePlan = async (planId: number) => {
-    const all = await db.workoutPlans.toArray();
-    for (const p of all) {
-      if (p.id) await db.workoutPlans.update(p.id, { isActive: p.id === planId });
-    }
+    await db.transaction('rw', db.workoutPlans, async () => {
+      const all = await db.workoutPlans.toArray();
+      for (const p of all) {
+        if (p.id) await db.workoutPlans.update(p.id, { isActive: p.id === planId });
+      }
+    });
     loadPlansAndCatalog();
   };
 
@@ -261,6 +266,16 @@ export default function PlansPage() {
     return plans.filter(p => p.category === categoryFilter);
   }, [plans, categoryFilter]);
 
+  const balanceByPlanId = useMemo(() => {
+    const map: Record<number, PlanMuscleBalanceSummary> = {};
+    for (const p of plans) {
+      if (p.id && planDays[p.id]?.length) {
+        map[p.id] = analyzePlanMuscleBalance(planDays[p.id], allExercises);
+      }
+    }
+    return map;
+  }, [plans, planDays, allExercises]);
+
   const availableExerciseCount = useMemo(() => {
     if (allExercises.length === 0) return 0;
     return allExercises.filter(e => matchesUserEquipment(e, selectedEquipment)).length;
@@ -269,7 +284,7 @@ export default function PlansPage() {
   return (
     <div className="page-container">
       {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 18 }}>
+      <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
           <div>
             <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em' }}>
@@ -396,125 +411,284 @@ export default function PlansPage() {
       </div>
 
       {/* Plans List */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {filteredPlans.map((plan, i) => {
           const isExpanded = expandedPlan === plan.id;
           const days = planDays[plan.id!] || [];
-          const catColor = CATEGORY_COLORS[plan.category] || 'var(--text-muted)';
+          const catColor = CATEGORY_COLORS[plan.category] || 'var(--accent-purple)';
           const diff = DIFFICULTY_LABELS[plan.difficulty] || DIFFICULTY_LABELS.intermediate;
-          const balance = days.length > 0 ? analyzePlanMuscleBalance(days, allExercises) : null;
+          const balance = plan.id ? balanceByPlanId[plan.id] || null : null;
 
           return (
-            <motion.div key={plan.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
-              <div className="card" style={{ padding: 0, overflow: 'hidden', border: plan.isActive ? '1px solid rgba(16,232,154,0.3)' : '1px solid var(--border-subtle)' }}>
+            <motion.div key={plan.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.025 }}>
+              <div
+                className="card"
+                style={{
+                  padding: 0,
+                  overflow: 'hidden',
+                  border: plan.isActive
+                    ? '1.5px solid color-mix(in srgb, var(--accent-green) 45%, transparent)'
+                    : '1px solid var(--border-subtle)',
+                  boxShadow: plan.isActive
+                    ? '0 10px 30px rgba(0, 0, 0, 0.35), 0 0 20px rgba(16, 232, 154, 0.08)'
+                    : undefined,
+                }}
+              >
                 {plan.isActive && (
-                  <div style={{ background: 'var(--gradient-mint)', padding: '5px 0', textAlign: 'center', fontSize: 10, fontWeight: 800, color: 'white', letterSpacing: 1.2, textTransform: 'uppercase' }}>
-                    ✓ Active Plan
-                  </div>
+                  <div style={{ height: 3, width: '100%', background: 'var(--gradient-mint)' }} />
                 )}
-                <button onClick={() => togglePlan(plan.id!)} style={{
-                  width: '100%', padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--text-primary)', minHeight: 80,
-                }}>
-                  <div style={{ flex: 1, paddingRight: 10 }}>
-                    <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 6, letterSpacing: '-0.01em' }}>{plan.name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 10 }}>{plan.description}</div>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: balance ? 10 : 0 }}>
-                      <span className="badge" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', fontSize: 10 }}>
-                        📅 {plan.daysPerWeek}d/week
-                      </span>
-                      <span className="badge" style={{ background: diff.bg, color: diff.color, border: `1px solid color-mix(in srgb, ${diff.color} 22%, transparent)`, fontSize: 10, textTransform: 'capitalize' }}>
-                        ☆ {plan.difficulty}
-                      </span>
-                      <span className="badge" style={{ background: `color-mix(in srgb, ${catColor} 12%, transparent)`, color: catColor, border: `1px solid color-mix(in srgb, ${catColor} 24%, transparent)`, fontSize: 10 }}>
-                        {plan.category}
-                      </span>
-                      {balance && (
-                        <span className="badge" style={{ background: 'rgba(16,232,154,0.08)', color: 'var(--accent-green)', border: '1px solid rgba(16,232,154,0.2)', fontSize: 10 }}>
-                          ⚖️ {balance.balanceScore}% Balanced • {balance.totalSets} sets/wk
+                <button
+                  onClick={() => togglePlan(plan.id!)}
+                  style={{
+                    width: '100%',
+                    padding: '15px 16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'stretch',
+                    background: plan.isActive
+                      ? 'radial-gradient(ellipse 90% 60% at 50% 0%, rgba(16,232,154,0.07), transparent 75%)'
+                      : 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  {/* Top Metadata Bar */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      {plan.isActive && (
+                        <span
+                          className="badge"
+                          style={{
+                            background: 'rgba(16,232,154,0.14)',
+                            color: 'var(--accent-green)',
+                            border: '1px solid rgba(16,232,154,0.35)',
+                            fontSize: 10,
+                            fontWeight: 800,
+                            padding: '3px 9px',
+                            letterSpacing: 0.4,
+                          }}
+                        >
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-green)', boxShadow: '0 0 6px var(--accent-green)' }} />
+                          ACTIVE PLAN
                         </span>
                       )}
+                      <span
+                        className="badge"
+                        style={{
+                          background: `color-mix(in srgb, ${catColor} 14%, transparent)`,
+                          color: catColor,
+                          border: `1px solid color-mix(in srgb, ${catColor} 28%, transparent)`,
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: '3px 9px',
+                        }}
+                      >
+                        {plan.category}
+                      </span>
+                      <span
+                        className="badge"
+                        style={{
+                          background: diff.bg,
+                          color: diff.color,
+                          border: `1px solid color-mix(in srgb, ${diff.color} 25%, transparent)`,
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: '3px 9px',
+                          textTransform: 'capitalize',
+                        }}
+                      >
+                        ★ {plan.difficulty}
+                      </span>
                     </div>
-
-                    {/* Visual Body-Part Balance Bar */}
-                    {balance && (
-                      <div>
-                        <div style={{ display: 'flex', height: 5, borderRadius: 999, overflow: 'hidden', background: 'rgba(255,255,255,0.05)', gap: 1 }}>
-                          {balance.categories.filter(c => c.sets > 0).map(c => (
-                            <div key={c.id} style={{ flex: c.sets, background: c.color }} title={`${c.label}: ${c.percentage}%`} />
-                          ))}
-                        </div>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 5 }}>
-                          {balance.categories.filter(c => c.sets > 0).map(c => (
-                            <span key={c.id} style={{ fontSize: 9, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                              <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.color }} />
-                              {c.label} {c.percentage}%
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    <div
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 8,
+                        background: isExpanded ? 'color-mix(in srgb, var(--accent-purple) 18%, transparent)' : 'var(--bg-input)',
+                        border: '1px solid var(--border-subtle)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <motion.div animate={{ rotate: isExpanded ? 90 : 0 }} transition={{ duration: 0.2 }} style={{ display: 'flex' }}>
+                        <ChevronRight size={15} color={isExpanded ? 'var(--accent-purple)' : 'var(--text-secondary)'} />
+                      </motion.div>
+                    </div>
                   </div>
-                  <motion.div animate={{ rotate: isExpanded ? 90 : 0 }} transition={{ duration: 0.2 }}>
-                    <ChevronRight size={18} color="var(--text-muted)" />
-                  </motion.div>
+
+                  {/* Plan Title & Description */}
+                  <div className="font-display" style={{ fontSize: 17, fontWeight: 800, marginBottom: 4, letterSpacing: '-0.015em' }}>
+                    {plan.name}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.45, marginBottom: 12 }}>
+                    {plan.description}
+                  </div>
+
+                  {/* 3-Column Program Telemetry Strip */}
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(3, 1fr)',
+                      gap: 6,
+                      marginBottom: balance ? 10 : 0,
+                    }}
+                  >
+                    <div style={{ padding: '7px 8px', borderRadius: 10, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)' }}>
+                      <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>Schedule</div>
+                      <div className="font-mono" style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text-primary)', marginTop: 2 }}>
+                        {plan.daysPerWeek}d / week
+                      </div>
+                    </div>
+                    <div style={{ padding: '7px 8px', borderRadius: 10, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)' }}>
+                      <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>Volume</div>
+                      <div className="font-mono" style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--accent-cyan)', marginTop: 2 }}>
+                        {balance ? `${balance.totalSets} sets/wk` : `${days.length || plan.daysPerWeek} days`}
+                      </div>
+                    </div>
+                    <div style={{ padding: '7px 8px', borderRadius: 10, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)' }}>
+                      <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>Symmetry</div>
+                      <div className="font-mono" style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--accent-green)', marginTop: 2 }}>
+                        {balance ? `${balance.balanceScore}% Balanced` : 'Balanced'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Visual Body-Part Balance Bar */}
+                  {balance && (
+                    <div style={{ padding: '8px 10px', borderRadius: 10, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
+                      <div style={{ display: 'flex', height: 6, borderRadius: 999, overflow: 'hidden', background: 'rgba(255,255,255,0.06)', gap: 2 }}>
+                        {balance.categories.filter(c => c.sets > 0).map(c => (
+                          <div key={c.id} style={{ flex: c.sets, background: c.color, borderRadius: 999 }} title={`${c.label}: ${c.percentage}%`} />
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+                        {balance.categories.filter(c => c.sets > 0).map(c => (
+                          <span key={c.id} style={{ fontSize: 9.5, fontWeight: 600, color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.color, flexShrink: 0 }} />
+                            {c.label} <strong style={{ color: 'var(--text-primary)' }}>{c.percentage}%</strong>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </button>
 
                 <AnimatePresence>
                   {isExpanded && (
                     <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                      style={{ overflow: 'hidden', borderTop: '1px solid var(--border)' }}>
-                      <div style={{ padding: 16 }}>
-                        {days.map((day, j) => {
+                      style={{ overflow: 'hidden', borderTop: '1px solid var(--border-subtle)', background: 'color-mix(in srgb, var(--bg-primary) 45%, transparent)' }}>
+                      <div style={{ padding: '14px 14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {days.map((day) => {
                           const resolvedNames = previewDayExercises(plan, day);
                           return (
-                            <div key={day.id} style={{ padding: '14px 0', borderBottom: j < days.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 10 }}>
-                                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--gradient-fire)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, color: 'white', flexShrink: 0, marginTop: 1 }}>
-                                  D{day.dayNumber}
-                                </div>
-                                <div style={{ minWidth: 0, flex: 1 }}>
-                                  <div style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.3 }}>{day.name}</div>
-                                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                                    {day.exercises.length} exercises • GIF & equipment matched
+                            <div
+                              key={day.id}
+                              style={{
+                                padding: '13px',
+                                borderRadius: 14,
+                                background: 'color-mix(in srgb, var(--bg-elevated) 70%, transparent)',
+                                border: '1px solid var(--border-subtle)',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+                                  <div
+                                    className="font-mono"
+                                    style={{
+                                      width: 34,
+                                      height: 34,
+                                      borderRadius: 10,
+                                      background: 'var(--gradient-fire)',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      fontWeight: 800,
+                                      fontSize: 12,
+                                      color: 'white',
+                                      flexShrink: 0,
+                                      boxShadow: '0 3px 10px var(--glow-red)',
+                                    }}
+                                  >
+                                    D{day.dayNumber}
+                                  </div>
+                                  <div style={{ minWidth: 0, flex: 1 }}>
+                                    <div style={{ fontSize: 13.5, fontWeight: 800, lineHeight: 1.25 }}>{day.name}</div>
+                                    <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2 }}>
+                                      {day.exercises.length} exercises • GIF &amp; equipment matched
+                                    </div>
                                   </div>
                                 </div>
+                                <button
+                                  type="button"
+                                  onClick={() => shuffleDayExercises(plan.id!, day.dayNumber)}
+                                  title="Vary exercises from catalog"
+                                  style={{
+                                    background: 'var(--bg-input)',
+                                    border: '1px solid var(--border-bright)',
+                                    color: 'var(--text-secondary)',
+                                    borderRadius: 9,
+                                    padding: '6px 10px',
+                                    fontSize: 10.5,
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 4,
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  <Shuffle size={11} color="var(--accent-purple)" /> Vary
+                                </button>
                               </div>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 10 }}>
+
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 11 }}>
                                 {resolvedNames.map((exName, idx) => (
-                                  <span key={idx} style={{
-                                    fontSize: 10, padding: '4px 9px', borderRadius: 7,
-                                    background: 'var(--bg-glass)', border: '1px solid var(--border)',
-                                    color: 'var(--text-secondary)', textTransform: 'capitalize',
-                                  }}>
+                                  <span
+                                    key={idx}
+                                    style={{
+                                      fontSize: 10.5,
+                                      padding: '4px 9px',
+                                      borderRadius: 8,
+                                      background: 'var(--bg-input)',
+                                      border: '1px solid var(--border-subtle)',
+                                      color: 'var(--text-primary)',
+                                      textTransform: 'capitalize',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: 5,
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    <span className="font-mono" style={{ fontSize: 9, fontWeight: 800, color: 'var(--accent-purple)' }}>
+                                      {idx + 1}.
+                                    </span>
                                     {exName}
                                   </span>
                                 ))}
                               </div>
-                              <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 8 }}>
-                                <button
-                                  onClick={() => shuffleDayExercises(plan.id!, day.dayNumber)}
-                                  title="Vary exercises from catalog"
-                                  style={{
-                                    background: 'var(--bg-glass)', border: '1px solid var(--border-bright)', color: 'var(--text-secondary)',
-                                    borderRadius: 11, padding: '9px 14px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, minHeight: 38,
-                                  }}
-                                >
-                                  <Shuffle size={13} /> Vary Exercises
-                                </button>
-                                <motion.button
-                                  whileTap={{ scale: 0.96 }}
-                                  onClick={() => startDay(plan, day)}
-                                  style={{
-                                    background: 'var(--gradient-fire)', border: 'none', color: 'white', borderRadius: 11,
-                                    padding: '9px 16px', fontSize: 12, fontWeight: 800, cursor: 'pointer',
-                                    boxShadow: '0 4px 16px var(--glow-red)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                                    minHeight: 38,
-                                  }}>
-                                  <Play size={13} fill="white" /> Start Day {day.dayNumber}
-                                </motion.button>
-                              </div>
+
+                              <motion.button
+                                type="button"
+                                whileTap={{ scale: 0.97 }}
+                                onClick={() => startDay(plan, day)}
+                                className="btn-primary"
+                                style={{
+                                  borderRadius: 11,
+                                  padding: '10px 16px',
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                  minHeight: 40,
+                                  textTransform: 'none',
+                                  letterSpacing: 0.2,
+                                }}
+                              >
+                                <Play size={13} fill="currentColor" /> Start Day {day.dayNumber}
+                              </motion.button>
                             </div>
                           );
                         })}
@@ -605,7 +779,13 @@ export default function PlansPage() {
       </motion.div>
 
       <AnimatePresence>
-        {showBuilder && <CustomPlanBuilder onClose={() => { setShowBuilder(false); loadPlansAndCatalog(); }} equipment={selectedEquipment} />}
+        {showBuilder && (
+          <CustomPlanBuilder
+            onClose={() => { setShowBuilder(false); loadPlansAndCatalog(); }}
+            equipment={selectedEquipment}
+            allExercises={allExercises}
+          />
+        )}
       </AnimatePresence>
 
       <AnimatePresence>
@@ -648,12 +828,21 @@ function SmartWorkoutGeneratorModal({
   const [seed, setSeed] = useState(() => Date.now());
   const [saveName, setSaveName] = useState('');
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   const MUSCLE_CHOICES = [
     'chest', 'back', 'shoulders', 'biceps', 'triceps', 'quads', 'hamstrings', 'glutes', 'calves', 'abs', 'forearms', 'traps',
   ];
 
   const SPLIT_PRESETS = [
     { label: 'Full Body Balance', muscles: ['quads', 'hamstrings', 'chest', 'back', 'shoulders', 'biceps', 'triceps', 'abs'] },
+    { label: 'Calisthenics Skill & Bar', muscles: ['back', 'chest', 'shoulders', 'triceps', 'biceps', 'abs', 'quads'] },
     { label: 'Push (Chest/Delts/Tri)', muscles: ['chest', 'shoulders', 'triceps'] },
     { label: 'Pull (Back/Traps/Bi)', muscles: ['back', 'traps', 'biceps', 'forearms'] },
     { label: 'Legs & Core', muscles: ['quads', 'hamstrings', 'glutes', 'calves', 'abs'] },
@@ -703,43 +892,60 @@ function SmartWorkoutGeneratorModal({
 
   const handleSaveAsPlan = async () => {
     const name = saveName.trim() || `Smart ${selectedMuscles.slice(0, 2).join('/')} Plan`;
-    const planId = await db.workoutPlans.add({
-      name,
-      description: `Balanced smart plan for ${equipment.slice(0, 3).join(', ')} (${selectedMuscles.join(', ')})`,
-      category: 'Custom',
-      difficulty: 'intermediate',
-      daysPerWeek: 3,
-      isCustom: true,
-      isActive: false,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    } as any);
+    await db.transaction('rw', [db.workoutPlans, db.workoutDays], async () => {
+      const planId = await db.workoutPlans.add({
+        name,
+        description: `Balanced smart plan for ${equipment.slice(0, 3).join(', ')} (${selectedMuscles.join(', ')})`,
+        category: 'Custom',
+        difficulty: 'intermediate',
+        daysPerWeek: 3,
+        isCustom: true,
+        isActive: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any);
 
-    await db.workoutDays.add({
-      planId,
-      dayNumber: 1,
-      name: 'Balanced Session',
-      exercises: generatedList.map((ex, i) => ({
-        exerciseId: 0,
-        exerciseName: ex.name,
-        sets: ex.sets,
-        reps: ex.reps,
-        restTime: 90,
-        setType: 'normal',
-        order: i,
-      })),
-    } as any);
+      await db.workoutDays.add({
+        planId,
+        dayNumber: 1,
+        name: 'Balanced Session',
+        exercises: generatedList.map((ex, i) => ({
+          exerciseId: 0,
+          exerciseName: ex.name,
+          sets: ex.sets,
+          reps: ex.reps,
+          restTime: 90,
+          setType: 'normal',
+          order: i,
+        })),
+      } as any);
+    });
     onClose();
   };
 
   return (
-    <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+    <motion.div
+      className="modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Smart Balanced Generator"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+    >
       <motion.div className="modal-content" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()} style={{ maxHeight: '92dvh' }}>
         <div className="modal-handle" />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <h2 className="font-display" style={{ fontSize: 20, fontWeight: 800 }}>✨ Smart Balanced Generator</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
+          <button
+            onClick={onClose}
+            aria-label="Close modal"
+            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+          >
+            <X size={18} />
+          </button>
         </div>
         <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>
           Balances compound & isolation movements across target muscles using GIF-backed exercises for your {equipment.length} selected equipment items.
@@ -772,24 +978,33 @@ function SmartWorkoutGeneratorModal({
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14 }}>
           <div>
             <div className="section-label" style={{ marginBottom: 4 }}>Exercises</div>
-            <select value={exerciseCount} onChange={e => setExerciseCount(Number(e.target.value))}
-              style={{ width: '100%', padding: 10, borderRadius: 10, background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>
-              {[4, 5, 6, 7, 8, 10].map(n => <option key={n} value={n}>{n} exercises</option>)}
-            </select>
+            <CustomSelect
+              compact
+              ariaLabel="Number of exercises"
+              value={exerciseCount}
+              onChange={(val) => setExerciseCount(Number(val))}
+              options={[4, 5, 6, 7, 8, 10].map((n) => ({ value: n, label: `${n} exercises` }))}
+            />
           </div>
           <div>
             <div className="section-label" style={{ marginBottom: 4 }}>Sets</div>
-            <select value={setsCount} onChange={e => setSetsCount(Number(e.target.value))}
-              style={{ width: '100%', padding: 10, borderRadius: 10, background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>
-              {[2, 3, 4, 5].map(n => <option key={n} value={n}>{n} sets</option>)}
-            </select>
+            <CustomSelect
+              compact
+              ariaLabel="Sets per exercise"
+              value={setsCount}
+              onChange={(val) => setSetsCount(Number(val))}
+              options={[2, 3, 4, 5].map((n) => ({ value: n, label: `${n} sets` }))}
+            />
           </div>
           <div>
             <div className="section-label" style={{ marginBottom: 4 }}>Reps</div>
-            <select value={repsCount} onChange={e => setRepsCount(Number(e.target.value))}
-              style={{ width: '100%', padding: 10, borderRadius: 10, background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>
-              {[5, 8, 10, 12, 15].map(n => <option key={n} value={n}>{n} reps</option>)}
-            </select>
+            <CustomSelect
+              compact
+              ariaLabel="Reps per set"
+              value={repsCount}
+              onChange={(val) => setRepsCount(Number(val))}
+              options={[5, 8, 10, 12, 15].map((n) => ({ value: n, label: `${n} reps` }))}
+            />
           </div>
         </div>
 
@@ -833,17 +1048,40 @@ function SmartWorkoutGeneratorModal({
 }
 
 /* ===== CUSTOM PLAN BUILDER ===== */
-function CustomPlanBuilder({ onClose, equipment }: { onClose: () => void; equipment: string[] }) {
+function CustomPlanBuilder({
+  onClose,
+  equipment,
+  allExercises: initialExercises,
+}: {
+  onClose: () => void;
+  equipment: string[];
+  allExercises?: Exercise[];
+}) {
   const [planName, setPlanName] = useState('');
   const [days, setDays] = useState<{ name: string; exercises: { name: string; sets: number; reps: number }[] }[]>([{ name: 'Day 1', exercises: [] }]);
   const [currentDayIdx, setCurrentDayIdx] = useState(0);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [search, setSearch] = useState('');
-  const [allExercises, setAllExercises] = useState<Exercise[]>([]);
+  const [allExercises, setAllExercises] = useState<Exercise[]>(initialExercises || []);
 
   useEffect(() => {
-    db.exercises.toArray().then(setAllExercises);
-  }, []);
+    if (initialExercises && initialExercises.length > 0) {
+      setAllExercises(initialExercises);
+    } else {
+      db.exercises.toArray().then(setAllExercises);
+    }
+  }, [initialExercises]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showExercisePicker) setShowExercisePicker(false);
+        else onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, showExercisePicker]);
 
   const filteredExercises = useMemo(() => {
     let filtered = allExercises.filter(e => matchesUserEquipment(e, equipment));
@@ -912,31 +1150,60 @@ function CustomPlanBuilder({ onClose, equipment }: { onClose: () => void; equipm
     setCurrentDayIdx(days.length);
   };
 
+  const removeDay = (dayIdx: number) => {
+    if (days.length <= 1) return;
+    setDays(prev => prev.filter((_, i) => i !== dayIdx));
+    setCurrentDayIdx(prev => Math.max(0, Math.min(prev, days.length - 2)));
+  };
+
   const savePlan = async () => {
     if (!planName.trim()) return;
-    const planId = await db.workoutPlans.add({
-      name: planName, description: 'Custom balanced workout plan', category: 'Custom',
-      difficulty: 'intermediate', daysPerWeek: days.length, isCustom: true,
-      isActive: false, createdAt: new Date(), updatedAt: new Date(),
-    } as any);
-    for (const day of days) {
-      await db.workoutDays.add({
-        planId, dayNumber: days.indexOf(day) + 1, name: day.name,
-        exercises: day.exercises.map((ex, i) => ({
-          exerciseId: 0, exerciseName: ex.name, sets: ex.sets, reps: ex.reps,
-          restTime: 90, setType: 'normal', order: i,
-        })),
+    const validDays = days.filter(d => d.exercises.length > 0);
+    if (validDays.length === 0) return;
+    await db.transaction('rw', [db.workoutPlans, db.workoutDays], async () => {
+      const planId = await db.workoutPlans.add({
+        name: planName.trim(), description: 'Custom balanced workout plan', category: 'Custom',
+        difficulty: 'intermediate', daysPerWeek: validDays.length, isCustom: true,
+        isActive: false, createdAt: new Date(), updatedAt: new Date(),
       } as any);
-    }
+      for (let i = 0; i < validDays.length; i++) {
+        const day = validDays[i];
+        await db.workoutDays.add({
+          planId, dayNumber: i + 1, name: day.name,
+          exercises: day.exercises.map((ex, idx) => ({
+            exerciseId: 0, exerciseName: ex.name, sets: ex.sets, reps: ex.reps,
+            restTime: 90, setType: 'normal', order: idx,
+          })),
+        } as any);
+      }
+    });
     onClose();
   };
 
   return (
-    <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+    <motion.div
+      className="modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Create Custom Plan"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+    >
       <motion.div className="modal-content" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 25, stiffness: 300 }} onClick={e => e.stopPropagation()} style={{ maxHeight: '92dvh' }}>
         <div className="modal-handle" />
-        <h2 className="font-display" style={{ fontSize: 20, fontWeight: 800, marginBottom: 16 }}>Create Custom Plan</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h2 className="font-display" style={{ fontSize: 20, fontWeight: 800 }}>Create Custom Plan</h2>
+          <button
+            onClick={onClose}
+            aria-label="Close modal"
+            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+          >
+            <X size={18} />
+          </button>
+        </div>
 
         <input value={planName} onChange={e => setPlanName(e.target.value)} placeholder="Plan name..."
           style={{ width: '100%', padding: '14px 16px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 14, color: 'var(--text-primary)', fontSize: 15, fontWeight: 600, outline: 'none', marginBottom: 16, fontFamily: 'inherit', minHeight: 48 }} />
@@ -947,12 +1214,25 @@ function CustomPlanBuilder({ onClose, equipment }: { onClose: () => void; equipm
               {day.name}
             </button>
           ))}
-          <button onClick={addDay} className="tab-btn" style={{ minWidth: 40 }}><Plus size={14} /></button>
+          <button onClick={addDay} aria-label="Add day" className="tab-btn" style={{ minWidth: 40 }}><Plus size={14} /></button>
         </div>
 
-        <input value={days[currentDayIdx]?.name || ''} onChange={e => {
-          setDays(prev => { const u = [...prev]; u[currentDayIdx] = { ...u[currentDayIdx], name: e.target.value }; return u; });
-        }} placeholder="Day name..." style={{ width: '100%', padding: '10px 14px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 13, outline: 'none', marginBottom: 12, fontFamily: 'inherit', minHeight: 44 }} />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+          <input value={days[currentDayIdx]?.name || ''} onChange={e => {
+            setDays(prev => { const u = [...prev]; u[currentDayIdx] = { ...u[currentDayIdx], name: e.target.value }; return u; });
+          }} placeholder="Day name..." style={{ flex: 1, padding: '10px 14px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 13, outline: 'none', fontFamily: 'inherit', minHeight: 44 }} />
+          {days.length > 1 && (
+            <button
+              type="button"
+              onClick={() => removeDay(currentDayIdx)}
+              className="btn-cancel"
+              aria-label="Delete Day"
+              style={{ padding: '10px 12px', borderRadius: 12, minHeight: 44, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}
+            >
+              <Trash2 size={14} /> Delete Day
+            </button>
+          )}
+        </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
           {days[currentDayIdx]?.exercises.map((ex, i) => (
@@ -979,7 +1259,7 @@ function CustomPlanBuilder({ onClose, equipment }: { onClose: () => void; equipm
                   title="Reps"
                 />
               </div>
-              <button onClick={() => removeExercise(currentDayIdx, i)} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: 4 }}><X size={16} /></button>
+              <button onClick={() => removeExercise(currentDayIdx, i)} aria-label={`Remove ${ex.name}`} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: 4 }}><X size={16} /></button>
             </div>
           ))}
         </div>
@@ -994,7 +1274,7 @@ function CustomPlanBuilder({ onClose, equipment }: { onClose: () => void; equipm
         </div>
 
         <button onClick={savePlan} className="btn-primary" style={{ borderRadius: 14, minHeight: 52 }} disabled={!planName.trim() || days.every(d => d.exercises.length === 0)}>
-          Save Plan
+          {!planName.trim() ? 'Enter a Plan Name to Save' : days.every(d => d.exercises.length === 0) ? 'Add at Least 1 Exercise to Save' : 'Save Plan'}
         </button>
 
         <AnimatePresence>
@@ -1003,32 +1283,44 @@ function CustomPlanBuilder({ onClose, equipment }: { onClose: () => void; equipm
               style={{ position: 'absolute', inset: 0, background: 'var(--bg-sheet)', borderRadius: 'var(--r-2xl) var(--r-2xl) 0 0', padding: 20, zIndex: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <h3 style={{ fontSize: 16, fontWeight: 800 }}>Pick Exercise ({filteredExercises.length} match equipment)</h3>
-                <button onClick={() => setShowExercisePicker(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', minWidth: 36, minHeight: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={18} /></button>
+                <button
+                  onClick={() => setShowExercisePicker(false)}
+                  aria-label="Close exercise picker"
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', minWidth: 36, minHeight: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <X size={18} />
+                </button>
               </div>
               <div style={{ position: 'relative', marginBottom: 12 }}>
                 <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 <input className="search-bar" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or muscle..." style={{ paddingLeft: 36 }} />
               </div>
               <div style={{ maxHeight: '50vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {filteredExercises.map(ex => (
-                  <button key={ex.id} onClick={() => addExercise(ex)} style={{
-                    display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px',
-                    background: 'var(--bg-glass)', border: '1px solid var(--border)', borderRadius: 12,
-                    cursor: 'pointer', textAlign: 'left', width: '100%', color: 'var(--text-primary)', minHeight: 56,
-                  }}>
-                    <ExerciseMedia
-                      gifUrl={ex.gifUrl}
-                      imageUrls={ex.imageUrls}
-                      images={ex.images}
-                      alt={ex.name}
-                      style={{ width: 40, height: 40, borderRadius: 10, objectFit: 'cover' }}
-                    />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>{ex.name}</div>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{ex.equipment} • {ex.primaryMuscles.join(', ')}</div>
-                    </div>
-                  </button>
-                ))}
+                {filteredExercises.length === 0 ? (
+                  <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                    No matching exercises found.
+                  </div>
+                ) : (
+                  filteredExercises.map(ex => (
+                    <button key={ex.id} onClick={() => addExercise(ex)} style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px',
+                      background: 'var(--bg-glass)', border: '1px solid var(--border)', borderRadius: 12,
+                      cursor: 'pointer', textAlign: 'left', width: '100%', color: 'var(--text-primary)', minHeight: 56,
+                    }}>
+                      <ExerciseMedia
+                        gifUrl={ex.gifUrl}
+                        imageUrls={ex.imageUrls}
+                        images={ex.images}
+                        alt={ex.name}
+                        style={{ width: 40, height: 40, borderRadius: 10, objectFit: 'cover' }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>{ex.name}</div>
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'capitalize' }}>{ex.equipment} • {ex.primaryMuscles.join(', ')}</div>
+                      </div>
+                    </button>
+                  ))
+                )}
               </div>
             </motion.div>
           )}

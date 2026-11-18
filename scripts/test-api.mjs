@@ -1,30 +1,72 @@
-// Test ExerciseDB API
-const run = async () => {
-  try {
-    const res = await fetch('http://localhost:3000/api/exercisedb?endpoint=exercises&limit=2&offset=0');
-    const data = await res.json();
-    if (Array.isArray(data) && data.length > 0) {
-      const keys = Object.keys(data[0]);
-      console.log('FIELDS:', keys.join(', '));
-      console.log('---');
-      for (const ex of data) {
-        console.log('name:', ex.name);
-        console.log('gifUrl:', ex.gifUrl);
-        console.log('gifPath:', ex.gifPath);
-        console.log('imageUrl:', ex.imageUrl);
-        // Check for any key containing 'gif' or 'image'
-        for (const k of keys) {
-          if (k.toLowerCase().includes('gif') || k.toLowerCase().includes('image') || k.toLowerCase().includes('url')) {
-            console.log(`  ${k}:`, String(ex[k]).substring(0, 80));
-          }
-        }
-        console.log('---');
-      }
-    } else {
-      console.log('Response:', JSON.stringify(data).substring(0, 500));
+#!/usr/bin/env node
+
+/**
+ * Offline validation script for merged-exercises.json and local media paths.
+ */
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.join(__dirname, '..');
+const MERGED_JSON_PATH = path.join(ROOT, 'src', 'lib', 'data', 'merged-exercises.json');
+const PUBLIC_DIR = path.join(ROOT, 'public');
+const HAS_EXTRACTED_GIFS = fs.existsSync(path.join(PUBLIC_DIR, 'exercises'));
+const HAS_EXTRACTED_IMAGES = fs.existsSync(path.join(PUBLIC_DIR, 'exercise-images'));
+
+const run = () => {
+  if (!fs.existsSync(MERGED_JSON_PATH)) {
+    console.error('❌ Missing dataset:', MERGED_JSON_PATH);
+    process.exit(1);
+  }
+
+  const exercises = JSON.parse(fs.readFileSync(MERGED_JSON_PATH, 'utf8'));
+  if (!Array.isArray(exercises) || exercises.length < 2240) {
+    console.error(`❌ Expected >= 2,240 exercises, found ${Array.isArray(exercises) ? exercises.length : 0}`);
+    process.exit(1);
+  }
+
+  let emptyInstructions = 0;
+  let invalidMediaPaths = 0;
+
+  for (const ex of exercises) {
+    if (!Array.isArray(ex.instructions) || ex.instructions.length === 0 || ex.instructions.every(s => !String(s || '').trim())) {
+      emptyInstructions += 1;
     }
-  } catch (e) {
-    console.error('Error:', e.message);
+
+    const gifUrl = ex.gifUrl ? String(ex.gifUrl).trim() : '';
+    const imageUrls = Array.isArray(ex.imageUrls) ? ex.imageUrls : [];
+
+    if (!gifUrl && imageUrls.length === 0) {
+      invalidMediaPaths += 1;
+      continue;
+    }
+
+    if (gifUrl) {
+      if (!gifUrl.startsWith('/exercises/') || !gifUrl.endsWith('.gif')) {
+        invalidMediaPaths += 1;
+      } else if (HAS_EXTRACTED_GIFS && !fs.existsSync(path.join(PUBLIC_DIR, gifUrl.replace(/^\/+/, '')))) {
+        invalidMediaPaths += 1;
+      }
+    }
+
+    for (const imgUrl of imageUrls) {
+      const cleanImg = String(imgUrl || '').trim();
+      if (!cleanImg.startsWith('/exercise-images/')) {
+        invalidMediaPaths += 1;
+      } else if (HAS_EXTRACTED_IMAGES && !fs.existsSync(path.join(PUBLIC_DIR, cleanImg.replace(/^\/+/, '')))) {
+        invalidMediaPaths += 1;
+      }
+    }
+  }
+
+  console.log(`✅ Verified ${exercises.length} exercises in src/lib/data/merged-exercises.json`);
+  console.log(`✅ Empty instructions: ${emptyInstructions}`);
+  console.log(`✅ Invalid media paths: ${invalidMediaPaths}`);
+
+  if (emptyInstructions > 0 || invalidMediaPaths > 0) {
+    process.exit(1);
   }
 };
+
 run();

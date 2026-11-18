@@ -3,6 +3,8 @@ import { SetType, type ActiveExercise } from '@/lib/types';
 
 const STORAGE_KEY = 'ironforge_active_workout_v1';
 
+let noteSaveTimeout: ReturnType<typeof setTimeout> | null = null;
+
 const SET_TYPE_ORDER: SetType[] = [
   SetType.Normal,
   SetType.Warmup,
@@ -122,7 +124,7 @@ interface WorkoutState {
   resetTimer: () => void;
 }
 
-export const useWorkoutStore = create<WorkoutState>((set) => ({
+export const useWorkoutStore = create<WorkoutState>((set, get) => ({
   isActive: false,
   isPaused: false,
   isMinimized: false,
@@ -143,6 +145,17 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
   newPRs: [],
 
   startWorkout: (planName, dayName, exercises) => {
+    const current = get();
+    if (current.isActive && typeof window !== 'undefined') {
+      const completedSets = current.exercises.reduce((acc, ex) => acc + ex.sets.filter(s => s.isComplete).length, 0);
+      if (completedSets > 0 && !window.confirm('You have an active workout in progress with completed sets. Replace it with a new workout?')) {
+        return;
+      }
+    }
+    if (noteSaveTimeout) {
+      clearTimeout(noteSaveTimeout);
+      noteSaveTimeout = null;
+    }
     const nextState = {
       isActive: true,
       isPaused: true,
@@ -214,6 +227,11 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
   },
 
   completeWorkoutSession: (id) => {
+    if (noteSaveTimeout) {
+      clearTimeout(noteSaveTimeout);
+      noteSaveTimeout = null;
+      saveSnapshot(get());
+    }
     saveSnapshot({ isActive: false });
     set({
       isActive: false,
@@ -228,6 +246,11 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
   },
 
   endWorkout: () => {
+    if (noteSaveTimeout) {
+      clearTimeout(noteSaveTimeout);
+      noteSaveTimeout = null;
+      saveSnapshot(get());
+    }
     saveSnapshot({ isActive: false });
     set({
       isActive: false,
@@ -333,7 +356,13 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
     if (!state.exercises[exerciseIndex]) return {};
     const exercises = [...state.exercises];
     exercises[exerciseIndex] = { ...exercises[exerciseIndex], notes: note };
-    saveSnapshot({ ...state, exercises });
+    if (noteSaveTimeout) {
+      clearTimeout(noteSaveTimeout);
+    }
+    noteSaveTimeout = setTimeout(() => {
+      noteSaveTimeout = null;
+      saveSnapshot(get());
+    }, 250);
     return { exercises };
   }),
 

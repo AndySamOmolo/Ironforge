@@ -7,7 +7,8 @@ import { useUserStore } from '@/lib/store/userStore';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
 import { ALL_EQUIPMENT, generateSmartWorkout, resolveWorkoutDayExercises } from '@/lib/utils/exerciseResolver';
 import { calculateRecoveryPercentage } from '@/lib/activation/RecoveryTracker';
-import { MUSCLE_COLORS, SetType, type WorkoutSession } from '@/lib/types';
+import { resolveExerciseTargeting } from '@/lib/data/ExerciseTargetingDatabase';
+import { MUSCLE_COLORS, SetType, type WorkoutSession, type WorkoutSet, type Exercise } from '@/lib/types';
 
 type MuscleHeatmapProps = {
   sessions: WorkoutSession[];
@@ -767,6 +768,15 @@ const BACK_ANATOMY_PARTS: AnatomicalMusclePart[] = [
 
 const ALL_ANATOMY_PARTS = [...FRONT_ANATOMY_PARTS, ...BACK_ANATOMY_PARTS];
 
+const PARTS_BY_MUSCLE: Record<string, AnatomicalMusclePart[]> = ALL_ANATOMY_PARTS.reduce(
+  (acc, part) => {
+    if (!acc[part.muscle]) acc[part.muscle] = [];
+    acc[part.muscle].push(part);
+    return acc;
+  },
+  {} as Record<string, AnatomicalMusclePart[]>
+);
+
 const muscleAliases: Record<string, string> = {
   abs: 'abdominals',
   core: 'abdominals',
@@ -1178,6 +1188,8 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
   const { startWorkout } = useWorkoutStore();
   const unitLabel = unitSystem === 'metric' ? 'kg' : 'lbs';
 
+  const [cachedSets, setCachedSets] = useState<WorkoutSet[]>([]);
+  const [cachedExercisesById, setCachedExercisesById] = useState<Map<number, Exercise>>(new Map());
   const [muscleScores, setMuscleScores] = useState<Record<string, number>>({});
   const [partRawScores, setPartRawScores] = useState<Record<string, number>>({});
   const [muscleSetCounts, setMuscleSetCounts] = useState<Record<string, number>>({});
@@ -1198,134 +1210,186 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
     return sessions.filter(s => new Date(s.startedAt).getTime() >= threshold);
   }, [sessions, range]);
 
+  // Fetch sets and exercises from IndexedDB only when `sessions` changes (PERF-04)
   useEffect(() => {
-    const run = async () => {
+    let cancelled = false;
+    const fetchSessionData = async () => {
       const sessionIds = sessions.map(s => s.id).filter((id): id is number => typeof id === 'number');
-      const filteredSessionIds = new Set(
-        filteredSessions.map(s => s.id).filter((id): id is number => typeof id === 'number')
-      );
       if (!sessionIds.length) {
-        setMuscleScores({});
-        setPartRawScores({});
-        setMuscleSetCounts({});
-        setMuscleVolumes({});
-        setLastTrainedAt({});
-        setMuscleExerciseScores({});
+        if (!cancelled) {
+          setCachedSets([]);
+          setCachedExercisesById(new Map());
+        }
         return;
       }
 
       const sets = await db.sets.where('sessionId').anyOf(sessionIds).toArray();
       const exerciseIds = [...new Set(sets.map(set => set.exerciseId).filter((id): id is number => typeof id === 'number'))];
       if (!exerciseIds.length) {
-        setMuscleScores({});
-        setPartRawScores({});
+        if (!cancelled) {
+          setCachedSets([]);
+          setCachedExercisesById(new Map());
+        }
         return;
       }
 
       const exercises = await db.exercises.where('id').anyOf(exerciseIds).toArray();
-      const byId = new Map<number, (typeof exercises)[number]>();
+      if (cancelled) return;
+      const byId = new Map<number, Exercise>();
       exercises.forEach(ex => {
         if (typeof ex.id === 'number') byId.set(ex.id, ex);
       });
-
-      const scores: Record<string, number> = {};
-      const byPart: Record<string, number> = {};
-      const setCounts: Record<string, number> = {};
-      const volumes: Record<string, number> = {};
-      const trainedAt: Record<string, number> = {};
-      const details: Record<string, Record<string, number>> = {};
-      const sessionDateMap = new Map<number, number>();
-
-      sessions.forEach(session => {
-        if (typeof session.id === 'number') {
-          sessionDateMap.set(session.id, new Date(session.completedAt || session.startedAt).getTime());
-        }
-      });
-
-      for (const set of sets) {
-        const ex = byId.get(set.exerciseId);
-        if (!ex) continue;
-
-        const setTimestamp = set.completedAt
-          ? new Date(set.completedAt).getTime()
-          : (sessionDateMap.get(set.sessionId) || Date.now());
-        const setVol = Math.max(0, (set.weight || 0) * (set.reps || 0));
-        const loadFactor = Math.max(1, Math.sqrt(Math.max(1, setVol || (set.reps || 10) * 15)) / 3.2);
-        const primary = (ex.primaryMuscles || []).map(normalizeMuscleName);
-        const secondary = (ex.secondaryMuscles || []).map(normalizeMuscleName);
-        const exNameLower = ex.name.toLowerCase();
-
-        [...primary, ...secondary].forEach(m => {
-          trainedAt[m] = Math.max(trainedAt[m] || 0, setTimestamp);
-        });
-
-        if (!filteredSessionIds.has(set.sessionId)) continue;
-
-        primary.forEach(m => {
-          const score = 1.3 * loadFactor;
-          scores[m] = (scores[m] || 0) + score;
-          setCounts[m] = (setCounts[m] || 0) + 1;
-          volumes[m] = (volumes[m] || 0) + setVol;
-          if (!details[m]) details[m] = {};
-          details[m][ex.name] = (details[m][ex.name] || 0) + score;
-
-          // Distribute across anatomical heads based on exercise movement biomechanics
-          const matchingParts = ALL_ANATOMY_PARTS.filter(p => p.muscle === m);
-          matchingParts.forEach(part => {
-            let headBias = 1.0;
-            if (m === 'chest') {
-              if (exNameLower.includes('incline') && part.id.includes('upper')) headBias = 1.45;
-              else if ((exNameLower.includes('decline') || exNameLower.includes('dip')) && part.id.includes('lower')) headBias = 1.45;
-              else if (part.id.includes('middle')) headBias = 1.2;
-            } else if (m === 'shoulders') {
-              if ((exNameLower.includes('lateral') || exNameLower.includes('side') || exNameLower.includes('upright')) && part.id.includes('lateral')) headBias = 1.5;
-              else if ((exNameLower.includes('rear') || exNameLower.includes('reverse') || exNameLower.includes('face pull')) && part.id.includes('posterior')) headBias = 1.55;
-              else if (part.id.includes('anterior')) headBias = 1.25;
-            } else if (m === 'quadriceps') {
-              if ((exNameLower.includes('extension') || exNameLower.includes('sissy') || exNameLower.includes('lunge')) && part.id.includes('rectus')) headBias = 1.35;
-              else if ((exNameLower.includes('hack') || exNameLower.includes('front squat')) && part.id.includes('lateralis')) headBias = 1.35;
-              else if (part.id.includes('medialis')) headBias = 1.2;
-            } else if (m === 'triceps') {
-              if ((exNameLower.includes('overhead') || exNameLower.includes('skull')) && part.id.includes('long')) headBias = 1.45;
-              else if (exNameLower.includes('pushdown') && part.id.includes('lateral')) headBias = 1.4;
-            } else if (m === 'biceps') {
-              if ((exNameLower.includes('incline') || exNameLower.includes('hammer')) && part.id.includes('long')) headBias = 1.4;
-              else if ((exNameLower.includes('preacher') || exNameLower.includes('concentration')) && part.id.includes('short')) headBias = 1.4;
-            } else if (m === 'abdominals') {
-              if ((exNameLower.includes('leg raise') || exNameLower.includes('reverse crunch')) && part.id.includes('lower')) headBias = 1.45;
-              else if (exNameLower.includes('crunch') && part.id.includes('upper')) headBias = 1.35;
-            }
-            byPart[part.id] = (byPart[part.id] || 0) + score * headBias;
-          });
-        });
-
-        secondary.forEach(m => {
-          const score = 0.65 * loadFactor;
-          scores[m] = (scores[m] || 0) + score;
-          volumes[m] = (volumes[m] || 0) + Math.round(setVol * 0.45);
-          if (!details[m]) details[m] = {};
-          details[m][ex.name] = (details[m][ex.name] || 0) + score;
-
-          const matchingParts = ALL_ANATOMY_PARTS.filter(p => p.muscle === m);
-          matchingParts.forEach(part => {
-            byPart[part.id] = (byPart[part.id] || 0) + score;
-          });
-        });
-      }
-
-      setMuscleScores(scores);
-      setPartRawScores(byPart);
-      setMuscleSetCounts(setCounts);
-      setMuscleVolumes(volumes);
-      setLastTrainedAt(trainedAt);
-      setMuscleExerciseScores(details);
+      setCachedSets(sets);
+      setCachedExercisesById(byId);
     };
 
-    run().catch(() => {
+    fetchSessionData().catch(() => {
+      if (!cancelled) {
+        setCachedSets([]);
+        setCachedExercisesById(new Map());
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessions]);
+
+  // Compute scores from cached session sets whenever cachedSets or range/filteredSessions changes
+  useEffect(() => {
+    if (!cachedSets.length || !cachedExercisesById.size) {
       setMuscleScores({});
       setPartRawScores({});
+      setMuscleSetCounts({});
+      setMuscleVolumes({});
+      setLastTrainedAt({});
+      setMuscleExerciseScores({});
+      return;
+    }
+
+    const filteredSessionIds = new Set(
+      filteredSessions.map(s => s.id).filter((id): id is number => typeof id === 'number')
+    );
+
+    const scores: Record<string, number> = {};
+    const byPart: Record<string, number> = {};
+    const setCounts: Record<string, number> = {};
+    const volumes: Record<string, number> = {};
+    const trainedAt: Record<string, number> = {};
+    const details: Record<string, Record<string, number>> = {};
+    const sessionDateMap = new Map<number, number>();
+    const targetingCache = new Map<string, ReturnType<typeof resolveExerciseTargeting>>();
+
+    sessions.forEach(session => {
+      if (typeof session.id === 'number') {
+        sessionDateMap.set(session.id, new Date(session.completedAt || session.startedAt).getTime());
+      }
     });
-  }, [sessions, filteredSessions]);
+
+    for (const set of cachedSets) {
+      const ex = cachedExercisesById.get(set.exerciseId);
+      if (!ex) continue;
+
+      const setTimestamp = set.completedAt
+        ? new Date(set.completedAt).getTime()
+        : (sessionDateMap.get(set.sessionId) || Date.now());
+      const setVol = Math.max(0, (set.weight || 0) * (set.reps || 0));
+      const loadFactor = Math.max(1, Math.sqrt(Math.max(1, setVol || (set.reps || 10) * 15)) / 3.2);
+      const primary = (ex.primaryMuscles || []).map(normalizeMuscleName);
+      const secondary = (ex.secondaryMuscles || []).map(normalizeMuscleName);
+      const exNameLower = ex.name.toLowerCase();
+
+      if (!targetingCache.has(exNameLower)) {
+        targetingCache.set(exNameLower, resolveExerciseTargeting(ex.name));
+      }
+      const targeting = targetingCache.get(exNameLower) || null;
+
+      [...primary, ...secondary].forEach(m => {
+        trainedAt[m] = Math.max(trainedAt[m] || 0, setTimestamp);
+      });
+
+      if (!filteredSessionIds.has(set.sessionId)) continue;
+
+      primary.forEach(m => {
+        const score = 1.3 * loadFactor;
+        scores[m] = (scores[m] || 0) + score;
+        setCounts[m] = (setCounts[m] || 0) + 1;
+        volumes[m] = (volumes[m] || 0) + setVol;
+        if (!details[m]) details[m] = {};
+        details[m][ex.name] = (details[m][ex.name] || 0) + score;
+
+        // Distribute across anatomical heads based on exercise movement biomechanics
+        const matchingParts = PARTS_BY_MUSCLE[m] || [];
+        matchingParts.forEach(part => {
+          let headBias = 1.0;
+          if (targeting) {
+            const matchedTarget = targeting.targets.find(t => {
+              if (t.regionId === part.id || part.id.startsWith(t.regionId)) return true;
+              const normalizedRegionId = t.regionId
+                .replace('_rectus_femoris_', '_rectus_')
+                .replace('_vastus_lateralis_', '_lateralis_');
+              if (normalizedRegionId === part.id) return true;
+              if (t.regionId === 'back_hamstrings_l' && part.id.startsWith('back_hamstrings_') && part.id.endsWith('_l')) return true;
+              if (t.regionId === 'back_hamstrings_r' && part.id.startsWith('back_hamstrings_') && part.id.endsWith('_r')) return true;
+              return false;
+            });
+            if (matchedTarget) {
+              headBias = Math.max(headBias, matchedTarget.coefficient * (targeting.biomechanics?.stabilizationFactor || 1));
+            }
+          }
+          if (m === 'chest') {
+            if (exNameLower.includes('incline') && part.id.includes('upper')) headBias = Math.max(headBias, 1.45);
+            else if ((exNameLower.includes('decline') || exNameLower.includes('dip')) && part.id.includes('lower')) headBias = Math.max(headBias, 1.45);
+            else if (part.id.includes('middle')) headBias = Math.max(headBias, 1.2);
+          } else if (m === 'shoulders') {
+            if ((exNameLower.includes('lateral') || exNameLower.includes('side') || exNameLower.includes('upright')) && part.id.includes('lateral')) headBias = Math.max(headBias, 1.5);
+            else if ((exNameLower.includes('rear') || exNameLower.includes('reverse') || exNameLower.includes('face pull')) && part.id.includes('posterior')) headBias = Math.max(headBias, 1.55);
+            else if (part.id.includes('anterior')) headBias = Math.max(headBias, 1.25);
+          } else if (m === 'quadriceps') {
+            if ((exNameLower.includes('extension') || exNameLower.includes('sissy') || exNameLower.includes('lunge')) && part.id.includes('rectus')) headBias = Math.max(headBias, 1.35);
+            else if ((exNameLower.includes('hack') || exNameLower.includes('front squat')) && part.id.includes('lateralis')) headBias = Math.max(headBias, 1.35);
+            else if (part.id.includes('medialis')) headBias = Math.max(headBias, 1.2);
+          } else if (m === 'triceps') {
+            if ((exNameLower.includes('overhead') || exNameLower.includes('skull')) && part.id.includes('long')) headBias = Math.max(headBias, 1.45);
+            else if (exNameLower.includes('pushdown') && part.id.includes('lateral')) headBias = Math.max(headBias, 1.4);
+          } else if (m === 'biceps') {
+            if ((exNameLower.includes('incline') || exNameLower.includes('hammer')) && part.id.includes('long')) headBias = Math.max(headBias, 1.4);
+            else if ((exNameLower.includes('preacher') || exNameLower.includes('concentration')) && part.id.includes('short')) headBias = Math.max(headBias, 1.4);
+          } else if (m === 'abdominals') {
+            if ((exNameLower.includes('leg raise') || exNameLower.includes('reverse crunch')) && part.id.includes('lower')) headBias = Math.max(headBias, 1.45);
+            else if (exNameLower.includes('crunch') && part.id.includes('upper')) headBias = Math.max(headBias, 1.35);
+          }
+          byPart[part.id] = (byPart[part.id] || 0) + score * headBias;
+        });
+      });
+
+      secondary.forEach(m => {
+        const score = 0.65 * loadFactor;
+        scores[m] = (scores[m] || 0) + score;
+        volumes[m] = (volumes[m] || 0) + Math.round(setVol * 0.45);
+        if (!details[m]) details[m] = {};
+        details[m][ex.name] = (details[m][ex.name] || 0) + score;
+
+        const matchingParts = PARTS_BY_MUSCLE[m] || [];
+        matchingParts.forEach(part => {
+          let secBias = 1.0;
+          if (targeting) {
+            const matchedTarget = targeting.targets.find(t => t.regionId === part.id || part.id.startsWith(t.regionId));
+            if (matchedTarget) {
+              secBias = Math.max(secBias, matchedTarget.coefficient);
+            }
+          }
+          byPart[part.id] = (byPart[part.id] || 0) + score * secBias;
+        });
+      });
+    }
+
+    setMuscleScores(scores);
+    setPartRawScores(byPart);
+    setMuscleSetCounts(setCounts);
+    setMuscleVolumes(volumes);
+    setLastTrainedAt(trainedAt);
+    setMuscleExerciseScores(details);
+  }, [cachedSets, cachedExercisesById, sessions, filteredSessions]);
 
   const normalizedByMuscle = useMemo(() => {
     const entries = Object.entries(muscleScores);
@@ -1402,8 +1466,7 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
   const selectedMuscleParts = useMemo(() => {
     if (!selectedMuscle) return [];
     const seenHeads = new Set<string>();
-    return ALL_ANATOMY_PARTS.filter(p => {
-      if (p.muscle !== selectedMuscle) return false;
+    return (PARTS_BY_MUSCLE[selectedMuscle] || []).filter(p => {
       const baseHead = p.headLabel.replace(/\s*\([LR]\)$/i, '');
       if (seenHeads.has(baseHead)) return false;
       seenHeads.add(baseHead);
@@ -1467,9 +1530,9 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
       <div className="card hero-gradient" style={{ padding: 16 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
           <div>
-            <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 2 }}>3D Ecorché Anatomical Body Map</h3>
+            <h2 style={{ fontSize: 18, fontWeight: 800, marginBottom: 2 }}>3D Ecorché Anatomical Body Map</h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: 11 }}>
-              54 sculpted muscle heads with pennation fiber striations, recovery readiness & symmetry diagnostics
+              68 sculpted anatomical regions (36 muscle heads) with pennation fiber striations, recovery readiness & symmetry diagnostics
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -1607,9 +1670,9 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <h4 style={{ fontSize: 17, fontWeight: 800, textTransform: 'capitalize' }}>
+                <h3 style={{ fontSize: 17, fontWeight: 800, textTransform: 'capitalize' }}>
                   {selectedPart ? selectedPart.headLabel : selectedMuscle}
-                </h4>
+                </h3>
                 <span className="badge" style={{ background: 'rgba(139,92,246,0.12)', color: 'var(--accent-purple)', fontSize: 10 }}>
                   {selectedPart ? selectedPart.latinName : MUSCLE_METADATA[selectedMuscle].latin}
                 </span>
