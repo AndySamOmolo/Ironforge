@@ -49,8 +49,9 @@ const MACHINE_BIOMECH: ExerciseBiomechanics = {
 };
 
 const PATTERNS: ExercisePattern[] = [
+  // 1. Incline Chest Presses & Incline Push-Ups (must precede generic bench/dumbbell press)
   {
-    pattern: /(incline\s+bench|incline\s+press|low\s+incline\s+press)/i,
+    pattern: /(incline.*(?:bench|press|push-?up|fly|flye)|low\s+incline\s+press)/i,
     targeting: {
       targets: targets(
         ['front_chest_upper_l', 1.3, true],
@@ -67,8 +68,61 @@ const PATTERNS: ExercisePattern[] = [
       biomechanics: FREE_WEIGHT_BIOMECH,
     },
   },
+  // 2. Overhead / Shoulder / Arnold / Military / Pike Presses (must precede generic dumbbell/barbell press)
   {
-    pattern: /(flat\s+bench|bench\s+press|dumbbell\s+press|barbell\s+press)/i,
+    pattern: /(overhead\s+press|shoulder\s+press|military\s+press|push\s+press|arnold.*press|pike\s+push-?up|handstand\s+push-?up)/i,
+    targeting: {
+      targets: targets(
+        ['front_shoulder_anterior_l', 1.2, true],
+        ['front_shoulder_anterior_r', 1.2, true],
+        ['front_shoulder_lateral_l', 1.05, true],
+        ['front_shoulder_lateral_r', 1.05, true],
+        ['back_triceps_long_l', 0.85, false],
+        ['back_triceps_long_r', 0.85, false],
+        ['front_abs_middle', 0.6, false],
+        ['front_obliques_l', 0.45, false],
+        ['front_obliques_r', 0.45, false]
+      ),
+      biomechanics: FREE_WEIGHT_BIOMECH,
+    },
+  },
+  // 3. Decline Chest Presses
+  {
+    pattern: /(decline.*(?:bench|press|push-?up|fly|flye))/i,
+    targeting: {
+      targets: targets(
+        ['front_chest_lower_l', 1.25, true],
+        ['front_chest_lower_r', 1.25, true],
+        ['front_chest_middle_l', 0.85, false],
+        ['front_chest_middle_r', 0.85, false],
+        ['front_chest_upper_l', 0.45, false],
+        ['front_chest_upper_r', 0.45, false],
+        ['back_triceps_long_l', 0.68, false],
+        ['back_triceps_long_r', 0.68, false]
+      ),
+      biomechanics: FREE_WEIGHT_BIOMECH,
+    },
+  },
+  // 4. Triceps Extensions, Pushdowns, Skull Crushers, Dips & Diamond Push-Ups
+  {
+    pattern: /(triceps?\s+pushdown|rope\s+pushdown|cable\s+pushdown|skull\s*crusher|overhead\s+triceps?|triceps?\s+extension|diamond\s+push-?up|\bdips?\b)/i,
+    targeting: {
+      targets: targets(
+        ['back_triceps_long_l', 1.15, true],
+        ['back_triceps_long_r', 1.15, true],
+        ['back_triceps_lateral_l', 1.1, true],
+        ['back_triceps_lateral_r', 1.1, true],
+        ['back_triceps_medial_l', 0.95, false],
+        ['back_triceps_medial_r', 0.95, false],
+        ['front_chest_lower_l', 0.5, false],
+        ['front_chest_lower_r', 0.5, false]
+      ),
+      biomechanics: MACHINE_BIOMECH,
+    },
+  },
+  // 5. Flat Chest Bench Presses, Flyes, Crossovers & Standard Push-Ups
+  {
+    pattern: /(flat\s+bench|bench\s+press|dumbbell\s+press|barbell\s+press|chest\s+press|cable\s+fly|dumbbell\s+fly|cable\s+crossover|pec\s+deck|\bpush-?ups?\b)/i,
     targeting: {
       targets: targets(
         ['front_chest_middle_l', 1.15, true],
@@ -85,53 +139,22 @@ const PATTERNS: ExercisePattern[] = [
       biomechanics: FREE_WEIGHT_BIOMECH,
     },
   },
+  // 6. Lateral & Front Deltoid Raises
   {
-    pattern: /(decline\s+bench|decline\s+press)/i,
-    targeting: {
-      targets: targets(
-        ['front_chest_lower_l', 1.25, true],
-        ['front_chest_lower_r', 1.25, true],
-        ['front_chest_middle_l', 0.85, false],
-        ['front_chest_middle_r', 0.85, false],
-        ['front_chest_upper_l', 0.45, false],
-        ['front_chest_upper_r', 0.45, false],
-        ['back_triceps_long_l', 0.68, false],
-        ['back_triceps_long_r', 0.68, false]
-      ),
-      biomechanics: FREE_WEIGHT_BIOMECH,
-    },
-  },
-  {
-    pattern: /(overhead\s+press|shoulder\s+press|military\s+press|push\s+press)/i,
-    targeting: {
-      targets: targets(
-        ['front_shoulder_anterior_l', 1.2, true],
-        ['front_shoulder_anterior_r', 1.2, true],
-        ['front_shoulder_lateral_l', 1.05, true],
-        ['front_shoulder_lateral_r', 1.05, true],
-        ['back_triceps_long_l', 0.85, false],
-        ['back_triceps_long_r', 0.85, false],
-        ['front_abs_middle', 0.6, false],
-        ['front_obliques_l', 0.45, false],
-        ['front_obliques_r', 0.45, false]
-      ),
-      biomechanics: FREE_WEIGHT_BIOMECH,
-    },
-  },
-  {
-    pattern: /(lateral\s+raise|side\s+raise)/i,
+    pattern: /(lateral\s+raise|side\s+raise|front\s+raise|deltoid\s+raise)/i,
     targeting: {
       targets: targets(
         ['front_shoulder_lateral_l', 1.35, true],
         ['front_shoulder_lateral_r', 1.35, true],
         ['back_shoulder_posterior_l', 0.45, false],
         ['back_shoulder_posterior_r', 0.45, false],
-        ['front_shoulder_anterior_l', 0.4, false],
-        ['front_shoulder_anterior_r', 0.4, false]
+        ['front_shoulder_anterior_l', 0.65, false],
+        ['front_shoulder_anterior_r', 0.65, false]
       ),
       biomechanics: MACHINE_BIOMECH,
     },
   },
+  // 7. Rear Delts & Face Pulls
   {
     pattern: /(rear\s+delt|reverse\s+fly|face\s+pull)/i,
     targeting: {
@@ -145,8 +168,9 @@ const PATTERNS: ExercisePattern[] = [
       biomechanics: MACHINE_BIOMECH,
     },
   },
+  // 8. Vertical Pulling, Pullovers & Straight-Arm Pulldowns
   {
-    pattern: /(pull\s*up|chin\s*up|lat\s*pull\s*down)/i,
+    pattern: /(pull\s*-?\s*up|chin\s*-?\s*up|lat\s*pull\s*down|straight\s+arm\s+pulldown|pullover)/i,
     targeting: {
       targets: targets(
         ['back_lats_upper_l', 1.2, true],
@@ -163,8 +187,9 @@ const PATTERNS: ExercisePattern[] = [
       biomechanics: FREE_WEIGHT_BIOMECH,
     },
   },
+  // 9. Horizontal Rows (including Inverted Row)
   {
-    pattern: /(barbell\s+row|dumbbell\s+row|t-?bar\s+row|seated\s+row|cable\s+row|machine\s+row)/i,
+    pattern: /(barbell\s+row|dumbbell\s+row|t-?bar\s+row|seated\s+row|cable\s+row|machine\s+row|inverted\s+row|bent\s+over\s+row|pendlay\s+row)/i,
     targeting: {
       targets: targets(
         ['back_middle_rhomboids', 1.2, true],
@@ -180,8 +205,9 @@ const PATTERNS: ExercisePattern[] = [
       biomechanics: FREE_WEIGHT_BIOMECH,
     },
   },
+  // 10. Deadlifts, Kettlebell Swings, Back Extensions & Supermans
   {
-    pattern: /(deadlift|romanian\s+deadlift|rdl|stiff\s+leg\s+deadlift)/i,
+    pattern: /(deadlift|romanian\s+deadlift|rdl|stiff\s+leg\s+deadlift|kettlebell\s+swing|back\s+extension|hyperextension|\bsuperman\b|good\s+morning)/i,
     targeting: {
       targets: targets(
         ['back_hamstrings_l', 1.2, true],
@@ -203,8 +229,9 @@ const PATTERNS: ExercisePattern[] = [
       },
     },
   },
+  // 11. Squats, Lunges, Split Squats, Step-Ups & Leg Press
   {
-    pattern: /(squat|front\s+squat|back\s+squat|goblet\s+squat|hack\s+squat|leg\s+press)/i,
+    pattern: /(squat|front\s+squat|back\s+squat|goblet\s+squat|hack\s+squat|leg\s+press|\blunges?\b|walking\s+lunge|step-?up|burpee|high\s+knees|jumping\s+jack)/i,
     targeting: {
       targets: targets(
         ['front_quads_rectus_femoris_l', 1.2, true],
@@ -222,8 +249,9 @@ const PATTERNS: ExercisePattern[] = [
       biomechanics: FREE_WEIGHT_BIOMECH,
     },
   },
+  // 12. Leg Extension
   {
-    pattern: /(leg\s+extension)/i,
+    pattern: /(leg\s+extension|quad\s+stretch)/i,
     targeting: {
       targets: targets(
         ['front_quads_rectus_femoris_l', 1.3, true],
@@ -234,8 +262,9 @@ const PATTERNS: ExercisePattern[] = [
       biomechanics: MACHINE_BIOMECH,
     },
   },
+  // 13. Leg Curl / Hamstrings (must precede generic curl)
   {
-    pattern: /(leg\s+curl|hamstring\s+curl|nordic\s+curl)/i,
+    pattern: /(leg\s+curl|hamstring\s+curl|nordic\s+curl|hamstring\s+stretch)/i,
     targeting: {
       targets: targets(
         ['back_hamstrings_l', 1.35, true],
@@ -246,8 +275,9 @@ const PATTERNS: ExercisePattern[] = [
       biomechanics: MACHINE_BIOMECH,
     },
   },
+  // 14. Hip Thrust & Glute Bridge
   {
-    pattern: /(hip\s+thrust|glute\s+bridge)/i,
+    pattern: /(hip\s+thrust|glute\s+bridge|hip\s+stretch)/i,
     targeting: {
       targets: targets(
         ['back_glutes_maximus_l', 1.35, true],
@@ -260,8 +290,9 @@ const PATTERNS: ExercisePattern[] = [
       biomechanics: FREE_WEIGHT_BIOMECH,
     },
   },
+  // 15. Calves
   {
-    pattern: /(calf\s+raise|standing\s+calf|seated\s+calf)/i,
+    pattern: /(calf\s+raise|standing\s+calf|seated\s+calf|calf\s+stretch)/i,
     targeting: {
       targets: targets(
         ['front_calves_l', 1.3, true],
@@ -272,8 +303,9 @@ const PATTERNS: ExercisePattern[] = [
       biomechanics: MACHINE_BIOMECH,
     },
   },
+  // 16. Biceps Curls (Barbell, Dumbbell, Incline, Hammer, Preacher, Concentration, EZ-Bar)
   {
-    pattern: /(biceps\s+curl|hammer\s+curl|preacher\s+curl|concentration\s+curl)/i,
+    pattern: /(biceps?\s+curl|barbell\s+curl|dumbbell\s+curl|incline\s+curl|hammer\s+curl|preacher\s+curl|concentration\s+curl|ez-?bar.*curl|spider\s+curl)/i,
     targeting: {
       targets: targets(
         ['front_biceps_long_l', 1.2, true],
@@ -286,24 +318,9 @@ const PATTERNS: ExercisePattern[] = [
       biomechanics: MACHINE_BIOMECH,
     },
   },
+  // 17. Planks & Isometric Core
   {
-    pattern: /(triceps\s+pushdown|skull\s*crusher|overhead\s+triceps|dip)/i,
-    targeting: {
-      targets: targets(
-        ['back_triceps_long_l', 1.15, true],
-        ['back_triceps_long_r', 1.15, true],
-        ['back_triceps_lateral_l', 1.1, true],
-        ['back_triceps_lateral_r', 1.1, true],
-        ['back_triceps_medial_l', 0.95, false],
-        ['back_triceps_medial_r', 0.95, false],
-        ['front_chest_lower_l', 0.5, false],
-        ['front_chest_lower_r', 0.5, false]
-      ),
-      biomechanics: MACHINE_BIOMECH,
-    },
-  },
-  {
-    pattern: /(plank|hollow\s+hold|ab\s+wheel|dead\s+bug|copenhagen\s+plank)/i,
+    pattern: /(plank|hollow\s+hold|ab\s+wheel|dead\s+bug|copenhagen\s+plank|mountain\s+climber)/i,
     targeting: {
       targets: targets(
         ['front_abs_upper', 1.1, true],
@@ -322,8 +339,9 @@ const PATTERNS: ExercisePattern[] = [
       },
     },
   },
+  // 18. Dynamic Abs & Leg Raises
   {
-    pattern: /(crunch|sit\s*up|leg\s+raise|hanging\s+knee\s+raise)/i,
+    pattern: /(crunch|sit\s*-?\s*up|leg\s+raise|hanging\s+knee\s+raise)/i,
     targeting: {
       targets: targets(
         ['front_abs_upper', 1.15, true],
@@ -335,6 +353,7 @@ const PATTERNS: ExercisePattern[] = [
       biomechanics: MACHINE_BIOMECH,
     },
   },
+  // 19. Obliques & Rotational Core
   {
     pattern: /(wood\s*chop|russian\s+twist|pallof\s+press|landmine\s+rotation)/i,
     targeting: {
@@ -354,8 +373,9 @@ const PATTERNS: ExercisePattern[] = [
       },
     },
   },
+  // 20. Shrugs & Shoulder Stretch
   {
-    pattern: /(shrug|barbell\s+shrug|dumbbell\s+shrug)/i,
+    pattern: /(shrug|barbell\s+shrug|dumbbell\s+shrug|shoulder\s+stretch)/i,
     targeting: {
       targets: targets(
         ['back_traps_upper', 1.35, true],

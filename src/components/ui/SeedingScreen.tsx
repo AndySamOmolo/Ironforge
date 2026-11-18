@@ -163,7 +163,7 @@ export default function SeedingScreen({ onRetry, error }: SeedingScreenProps) {
         transition={{ delay: 1.2 }}
         style={{ color: 'var(--text-muted)', fontSize: 11, position: 'absolute', bottom: 40, fontWeight: 500, letterSpacing: 1 }}
       >
-        2,240+ EXERCISES • ANIMATED DEMOS • 16 PRO PROGRAMS
+        2,240+ EXERCISES • ANIMATED DEMOS • 19 PRO PROGRAMS
       </motion.p>
     </div>
   );

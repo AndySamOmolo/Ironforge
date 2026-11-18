@@ -65,6 +65,30 @@ export interface UserState {
   loadFromProfile: (profile: Partial<UserState>) => void;
 }
 
+export function convertWeightBetweenSystems(
+  value: number,
+  fromSystem: 'metric' | 'imperial',
+  toSystem: 'metric' | 'imperial',
+  kind: 'bar' | 'dumbbell' | 'increment'
+): number {
+  if (fromSystem === toSystem) return value;
+  if (kind === 'bar') {
+    if (toSystem === 'imperial' && value === 20) return 45;
+    if (toSystem === 'metric' && value === 45) return 20;
+    const raw = toSystem === 'imperial' ? value * 2.20462 : value / 2.20462;
+    return Math.max(0, Math.round(raw / 2.5) * 2.5);
+  }
+  if (kind === 'dumbbell') {
+    if (toSystem === 'imperial' && value === 10) return 25;
+    if (toSystem === 'metric' && value === 25) return 10;
+    const raw = toSystem === 'imperial' ? value * 2.20462 : value / 2.20462;
+    return Math.max(0, Math.round(raw / 2.5) * 2.5);
+  }
+  if (toSystem === 'imperial' && value === 2.5) return 5;
+  if (toSystem === 'metric' && value === 5) return 2.5;
+  return value;
+}
+
 export const useUserStore = create<UserState>((set) => ({
   name: 'Athlete',
   unitSystem: 'metric',
@@ -113,7 +137,16 @@ export const useUserStore = create<UserState>((set) => ({
   isLoading: true,
 
   setName: (name) => set({ name }),
-  setUnitSystem: (unitSystem) => set({ unitSystem }),
+  setUnitSystem: (unitSystem) =>
+    set((state) => {
+      if (state.unitSystem === unitSystem) return { unitSystem };
+      return {
+        unitSystem,
+        barWeight: convertWeightBetweenSystems(state.barWeight, state.unitSystem, unitSystem, 'bar'),
+        dumbbellWeight: convertWeightBetweenSystems(state.dumbbellWeight, state.unitSystem, unitSystem, 'dumbbell'),
+        weightIncrement: convertWeightBetweenSystems(state.weightIncrement, state.unitSystem, unitSystem, 'increment'),
+      };
+    }),
   setBarWeight: (barWeight) => set({ barWeight }),
   setDumbbellWeight: (dumbbellWeight) => set({ dumbbellWeight }),
   setEquipment: (equipment) => set({ equipment: normalizeEquipmentList(equipment) }),

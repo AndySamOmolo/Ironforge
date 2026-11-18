@@ -94,7 +94,7 @@ export default function HomePage() {
   const [allExercises, setAllExercises] = useState<Exercise[]>([]);
   const [recentExerciseIds, setRecentExerciseIds] = useState<Set<number>>(new Set());
 
-  const unitLabel = unitSystem === 'metric' ? 'kg' : 'lb';
+  const unitLabel = unitSystem === 'metric' ? 'kg' : 'lbs';
 
   const todayQuote = useMemo(() => {
     const day = Math.floor(Date.now() / 86400000) % FITNESS_QUOTES.length;
@@ -359,13 +359,15 @@ export default function HomePage() {
     const weeks: { date: string; monthShort: string; summary: DayActivitySummary }[][] = [];
     const headers: { label: string; weekIndex: number }[] = [];
     const now = new Date();
+    // Anchor end of grid to Saturday of the current week so row d=0 is always Sun and d=6 is Sat
+    const endSaturday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (6 - now.getDay()));
     let lastMonth = '';
 
     for (let w = 15; w >= 0; w--) {
       const week: { date: string; monthShort: string; summary: DayActivitySummary }[] = [];
       for (let d = 0; d < 7; d++) {
-        const date = new Date(now);
-        date.setDate(date.getDate() - (w * 7 + (6 - d)));
+        const date = new Date(endSaturday);
+        date.setDate(endSaturday.getDate() - (w * 7 + (6 - d)));
         const key = toLocalDateKey(date);
         const monthShort = date.toLocaleDateString('en-US', { month: 'short' });
         const summary = activityByDate.get(key) || {

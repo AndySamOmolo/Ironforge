@@ -342,6 +342,8 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
           {[1, 2, 3, 4, 5].map(star => (
             <button
               key={star}
+              aria-label={`Rate workout ${star} out of 5 stars`}
+              aria-pressed={rating === star}
               onClick={() => setRating(star)}
               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
             >
@@ -360,6 +362,7 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
       {/* Action buttons */}
       <div style={{ width: '100%', maxWidth: 400, display: 'flex', gap: 10 }}>
         <button onClick={handleShare}
+          aria-label="Share workout summary"
           className="btn-secondary"
           style={{ minHeight: 52, borderRadius: 16, flex: '0 0 54px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {copied ? <Check size={18} color="var(--accent-green)" /> : <Share2 size={18} />}

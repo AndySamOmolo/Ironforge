@@ -2262,12 +2262,18 @@ html[data-num-font="sans"] .numpad-key {
   font-family: inherit !important;
 }
 
-/* Font Size & UI Scale (avoid CSS zoom on .page-container so fixed modals & touch hit-testing stay 100% accurate) */
-html[data-fontsize="xs"] { font-size: 13.5px; }
-html[data-fontsize="small"] { font-size: 14.5px; }
-html[data-fontsize="normal"] { font-size: 16px; }
-html[data-fontsize="large"] { font-size: 17.5px; }
-html[data-fontsize="xlarge"] { font-size: 19px; }
+/* Font Size & UI Scale — scales text & cards inside .page-container without creating a transform/filter containing block */
+html[data-fontsize="xs"] { font-size: 13.5px; --ui-font-scale: 0.88; }
+html[data-fontsize="small"] { font-size: 14.5px; --ui-font-scale: 0.94; }
+html[data-fontsize="normal"] { font-size: 16px; --ui-font-scale: 1; }
+html[data-fontsize="large"] { font-size: 17.5px; --ui-font-scale: 1.07; }
+html[data-fontsize="xlarge"] { font-size: 19px; --ui-font-scale: 1.14; }
+html[data-fontsize="xs"] .page-container > *,
+html[data-fontsize="small"] .page-container > *,
+html[data-fontsize="large"] .page-container > *,
+html[data-fontsize="xlarge"] .page-container > * {
+  zoom: var(--ui-font-scale, 1);
+}
 
 /* Header Style Options */
 html[data-header-style="solid"] .gradient-text {
@@ -2601,22 +2607,68 @@ html[data-glass-opacity="heavy"] .tab-bar {
 }
 
 /* ============================================
-   APPEARANCE OPTIONS: CONTRAST
+   APPEARANCE OPTIONS: CONTRAST (DARK & LIGHT AWARE)
    ============================================ */
-html[data-contrast="high"] {
+html[data-contrast="high"]:not([data-theme="daylight"]):not([data-theme="sand"]) {
   --text-primary: #FFFFFF;
-  --text-secondary: #D4D4E4;
-  --text-muted: #9A9AB2;
-  --border-subtle: rgba(255, 255, 255, 0.22);
-  --border-bright: rgba(255, 255, 255, 0.34);
+  --text-secondary: #E2E2F0;
+  --text-muted: #B0B0C8;
+  --border-subtle: rgba(255, 255, 255, 0.24);
+  --border-bright: rgba(255, 255, 255, 0.38);
 }
-html[data-contrast="max"] {
+html[data-contrast="max"]:not([data-theme="daylight"]):not([data-theme="sand"]) {
   --text-primary: #FFFFFF;
-  --text-secondary: #F0F0F8;
-  --text-muted: #C2C2D6;
-  --border: rgba(255, 255, 255, 0.25);
-  --border-subtle: rgba(255, 255, 255, 0.38);
-  --border-bright: rgba(255, 255, 255, 0.55);
+  --text-secondary: #F4F4FC;
+  --text-muted: #D2D2E6;
+  --border: rgba(255, 255, 255, 0.28);
+  --border-subtle: rgba(255, 255, 255, 0.42);
+  --border-bright: rgba(255, 255, 255, 0.60);
+}
+html[data-theme="daylight"][data-contrast="high"],
+html[data-theme="sand"][data-contrast="high"] {
+  --text-primary: #050811;
+  --text-secondary: #1E293B;
+  --text-muted: #334155;
+  --border-subtle: rgba(15, 23, 42, 0.28);
+  --border-bright: rgba(15, 23, 42, 0.45);
+}
+html[data-theme="daylight"][data-contrast="max"],
+html[data-theme="sand"][data-contrast="max"] {
+  --text-primary: #000000;
+  --text-secondary: #0F172A;
+  --text-muted: #1E293B;
+  --border: rgba(0, 0, 0, 0.32);
+  --border-subtle: rgba(0, 0, 0, 0.45);
+  --border-bright: rgba(0, 0, 0, 0.65);
+}
+
+/* Dark text on pastel/bright primary accents for WCAG AA button contrast */
+html[data-theme="arctic"] .btn-primary,
+html[data-theme="arctic"] .filter-chip.active,
+html[data-theme="arctic"] .tab-btn.active,
+html[data-theme="arctic"] .numpad-key.action,
+html[data-theme="noir"] .btn-primary,
+html[data-theme="noir"] .filter-chip.active,
+html[data-theme="noir"] .tab-btn.active,
+html[data-theme="noir"] .numpad-key.action,
+html[data-theme="gold"] .btn-primary,
+html[data-theme="gold"] .filter-chip.active,
+html[data-theme="gold"] .tab-btn.active,
+html[data-theme="gold"] .numpad-key.action,
+html[data-theme="zen"] .btn-primary,
+html[data-theme="zen"] .filter-chip.active,
+html[data-theme="zen"] .tab-btn.active,
+html[data-theme="zen"] .numpad-key.action,
+html[data-theme="nord"] .btn-primary,
+html[data-theme="nord"] .filter-chip.active,
+html[data-theme="nord"] .tab-btn.active,
+html[data-theme="nord"] .numpad-key.action,
+html[data-theme="lavender"] .btn-primary,
+html[data-theme="lavender"] .filter-chip.active,
+html[data-theme="lavender"] .tab-btn.active,
+html[data-theme="lavender"] .numpad-key.action {
+  color: #090A0F !important;
+  font-weight: 800;
 }
 html[data-contrast="high"] .card,
 html[data-contrast="max"] .card,
@@ -2629,17 +2681,34 @@ html[data-contrast="max"] .set-row {
 
 /* ============================================
    APPEARANCE OPTIONS: COLOR VISION MODES
+   (Applied to top-level containers instead of html root so position:fixed stays viewport-anchored)
    ============================================ */
-html[data-color-mode="protanopia"] {
+html[data-color-mode="protanopia"] .page-container,
+html[data-color-mode="protanopia"] .bottom-nav,
+html[data-color-mode="protanopia"] .modal-overlay,
+html[data-color-mode="protanopia"] .rest-timer-overlay,
+html[data-color-mode="protanopia"] .seeding-screen {
   filter: url(#protanopia-filter);
 }
-html[data-color-mode="deuteranopia"] {
+html[data-color-mode="deuteranopia"] .page-container,
+html[data-color-mode="deuteranopia"] .bottom-nav,
+html[data-color-mode="deuteranopia"] .modal-overlay,
+html[data-color-mode="deuteranopia"] .rest-timer-overlay,
+html[data-color-mode="deuteranopia"] .seeding-screen {
   filter: url(#deuteranopia-filter);
 }
-html[data-color-mode="tritanopia"] {
+html[data-color-mode="tritanopia"] .page-container,
+html[data-color-mode="tritanopia"] .bottom-nav,
+html[data-color-mode="tritanopia"] .modal-overlay,
+html[data-color-mode="tritanopia"] .rest-timer-overlay,
+html[data-color-mode="tritanopia"] .seeding-screen {
   filter: url(#tritanopia-filter);
 }
-html[data-color-mode="monochrome"] {
+html[data-color-mode="monochrome"] .page-container,
+html[data-color-mode="monochrome"] .bottom-nav,
+html[data-color-mode="monochrome"] .modal-overlay,
+html[data-color-mode="monochrome"] .rest-timer-overlay,
+html[data-color-mode="monochrome"] .seeding-screen {
   filter: grayscale(1) contrast(1.08);
 }
 

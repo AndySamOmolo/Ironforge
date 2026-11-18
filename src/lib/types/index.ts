@@ -149,7 +149,7 @@ export interface WorkoutSession {
   startedAt: Date;
   completedAt?: Date;
   duration: number; // seconds
-  totalVolume: number; // kg
+  totalVolume: number; // active unit system (kg or lbs)
   totalSets: number;
   totalReps: number;
   notes?: string;
@@ -311,6 +311,8 @@ export interface WorkoutReminder {
 export interface ActiveExercise {
   exerciseId: number;
   exerciseName: string;
+  originalExerciseName?: string;
+  notes?: string;
   imageUrl?: string;
   gifUrl?: string;
   mediaFrames?: string[];

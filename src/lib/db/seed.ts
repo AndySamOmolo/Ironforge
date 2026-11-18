@@ -21,7 +21,7 @@ interface ExerciseDBEntry {
   imageUrls?: string[];
 }
 
-export const EXERCISE_CATALOG_VERSION = 7;
+export const EXERCISE_CATALOG_VERSION = 8;
 
 export function cleanExerciseDisplayName(rawName: string): string {
   return (rawName || 'Unknown')
@@ -76,25 +76,29 @@ export async function seedDatabase(
   onProgress?.('Creating balanced workout programs...', 85);
   await ensureWorkoutPrograms();
 
-  // Seed user profile
+  // Seed user profile (preserve singleton id if one already exists)
   onProgress?.('Setting up profile...', 95);
-  const defaultProfile: Omit<UserProfile, 'id'> = {
-    name: 'Athlete',
-    unitSystem: 'metric',
-    barWeight: 20,
-    dumbbellWeight: 10,
-    equipment: ['barbell', 'dumbbell', 'cable', 'body weight', 'machine', 'leverage machine'],
-    defaultRestTime: 90,
-    restTimerEnabled: true,
-    soundEnabled: true,
-    hapticEnabled: true,
-    notificationsEnabled: false,
-    theme: 'dark',
+  const existingProfile = await db.userProfile.toCollection().first();
+  const defaultProfile: UserProfile = {
+    ...(existingProfile?.id ? { id: existingProfile.id } : {}),
+    name: existingProfile?.name || 'Athlete',
+    unitSystem: existingProfile?.unitSystem || 'metric',
+    barWeight: existingProfile?.barWeight ?? 20,
+    dumbbellWeight: existingProfile?.dumbbellWeight ?? 10,
+    equipment: existingProfile?.equipment?.length
+      ? existingProfile.equipment
+      : ['barbell', 'dumbbell', 'cable', 'body weight', 'machine', 'leverage machine'],
+    defaultRestTime: existingProfile?.defaultRestTime ?? 90,
+    restTimerEnabled: existingProfile?.restTimerEnabled ?? true,
+    soundEnabled: existingProfile?.soundEnabled ?? true,
+    hapticEnabled: existingProfile?.hapticEnabled ?? true,
+    notificationsEnabled: existingProfile?.notificationsEnabled ?? false,
+    theme: existingProfile?.theme || 'dark',
     isSeeded: true,
     exerciseCatalogVersion: EXERCISE_CATALOG_VERSION,
   };
 
-  await db.userProfile.put(defaultProfile as UserProfile);
+  await db.userProfile.put(defaultProfile);
   onProgress?.('Setup complete!', 100);
 }
 
@@ -581,7 +585,14 @@ export async function ensureWorkoutPrograms(forceUpdateBuiltIn = false): Promise
     },
   ];
 
-  for (const { plan, days } of programs) {
+  const existingPlans = await db.workoutPlans.toArray();
+  const hasAnyActivePlan = existingPlans.some((p) => p.isActive);
+
+  for (let idx = 0; idx < programs.length; idx++) {
+    const { plan, days } = programs[idx];
+    if (idx === 0 && !hasAnyActivePlan && existingPlans.length === 0) {
+      plan.isActive = true;
+    }
     const existing = await db.workoutPlans.where('name').equals(plan.name).first();
     if (existing?.id) {
       if (forceUpdateBuiltIn && !existing.isCustom) {

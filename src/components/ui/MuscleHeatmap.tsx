@@ -1113,8 +1113,17 @@ function AnatomicalFigure({
             return (
               <g
                 key={part.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`${part.headLabel} (${part.latinName}) — ${Math.round(val * 100)}% activation`}
                 onClick={() => onSelectPart(part)}
-                style={{ cursor: 'pointer' }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onSelectPart(part);
+                  }
+                }}
+                style={{ cursor: 'pointer', outline: 'none' }}
                 filter={val > 0.65 || isHighlighted ? `url(#muscle-glow-${view})` : undefined}
               >
                 <title>{`${part.headLabel} (${part.latinName}) — ${Math.round(val * 100)}% activation`}</title>
@@ -1618,8 +1627,8 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
             </button>
           </div>
 
-          {/* 4-Metric Diagnostic Strip */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 14 }}>
+          {/* 5-Metric Diagnostic Strip (includes Volume) */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6, marginBottom: 14 }}>
             {[
               {
                 label: 'Activation',
@@ -1635,6 +1644,11 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
                 label: 'Sets Logged',
                 value: `${muscleSetCounts[selectedMuscle] || 0}`,
                 color: 'var(--accent-purple)',
+              },
+              {
+                label: `Vol (${unitLabel})`,
+                value: `${Math.round(muscleVolumes[selectedMuscle] || 0).toLocaleString()}`,
+                color: 'var(--accent-orange)',
               },
               {
                 label: 'Last Trained',

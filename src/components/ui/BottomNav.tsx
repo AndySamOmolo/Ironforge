@@ -60,17 +60,36 @@ export default function BottomNav() {
         setActiveTab('plans');
         return;
       }
-      const completedCount = await db.workoutSessions.filter(s => s.isComplete).count();
-      const nextDay = days[completedCount % days.length];
+      const planCompletedCount = await db.workoutSessions
+        .filter(s => Boolean(s.isComplete) && s.planName === activePlan.name)
+        .count();
+      const nextDay = days[planCompletedCount % days.length];
+      const savedSwaps: Record<string, { newExerciseId: number; newExerciseName: string; newGifUrl?: string }> = {};
+      try {
+        const swaps = await db.exerciseSwaps
+          .where('planName')
+          .equals(activePlan.name)
+          .filter(s => s.dayName === nextDay.name)
+          .toArray();
+        for (const swap of swaps) {
+          savedSwaps[swap.originalExerciseName.toLowerCase()] = {
+            newExerciseId: swap.newExerciseId,
+            newExerciseName: swap.newExerciseName,
+            newGifUrl: swap.newGifUrl,
+          };
+        }
+      } catch {}
       const allExercises = await db.exercises.toArray();
       const equip = userEquipment && userEquipment.length > 0 ? userEquipment : [...ALL_EQUIPMENT];
+      const hasSwaps = Object.keys(savedSwaps).length > 0;
       const resolved = resolveWorkoutDayExercises({
         dayExercises: nextDay.exercises,
         allExercises,
         userEquipment: equip,
         barWeight,
         dumbbellWeight,
-        varietySeed: completedCount + nextDay.dayNumber,
+        savedSwaps,
+        varietySeed: hasSwaps ? 0 : planCompletedCount + nextDay.dayNumber,
         varietyLevel: exerciseVariety || 'medium',
       });
       setShowQuickLaunch(false);
@@ -179,7 +198,7 @@ export default function BottomNav() {
               </button>
             );
           }
-          const isActive = activeTab === tab.id;
+          const isActive = activeTab === tab.id || (tab.id === 'plans' && activeTab === 'exercises');
           return (
             <button
               key={tab.id}

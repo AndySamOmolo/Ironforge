@@ -21,12 +21,13 @@ import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends BridgeActivity {
+    private boolean keepScreenOnEnabled = false;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         Window window = getWindow();
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         window.setStatusBarColor(Color.parseColor("#070710"));
         window.setNavigationBarColor(Color.parseColor("#070710"));
 
@@ -49,7 +50,7 @@ public class MainActivity extends BridgeActivity {
 
         if (getBridge() != null && getBridge().getWebView() != null) {
             WebView webView = getBridge().getWebView();
-            webView.setKeepScreenOn(true);
+            webView.setKeepScreenOn(false);
             webView.setBackgroundColor(Color.parseColor("#070710"));
             webView.addJavascriptInterface(new IronForgeNativeBridge(), "IronForgeNative");
         }
@@ -58,12 +59,17 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        if (keepScreenOnEnabled) {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        } else {
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
     }
 
     public class IronForgeNativeBridge {
         @JavascriptInterface
         public void setKeepScreenOn(final boolean enabled) {
+            keepScreenOnEnabled = enabled;
             runOnUiThread(() -> {
                 if (enabled) {
                     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -78,11 +84,16 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public boolean exportBackupJson(final String filename, final String jsonContent) {
+            if (jsonContent == null) return false;
             try {
                 String safeName = (filename != null && !filename.trim().isEmpty())
                     ? filename.trim().replaceAll("[^a-zA-Z0-9._-]", "_")
                     : "ironforge-backup.json";
-                File outFile = new File(getCacheDir(), safeName);
+                File backupsDir = new File(getCacheDir(), "backups");
+                if (!backupsDir.exists()) {
+                    backupsDir.mkdirs();
+                }
+                File outFile = new File(backupsDir, safeName);
                 try (FileOutputStream fos = new FileOutputStream(outFile)) {
                     fos.write(jsonContent.getBytes(StandardCharsets.UTF_8));
                     fos.flush();
@@ -104,20 +115,24 @@ public class MainActivity extends BridgeActivity {
                 });
                 return true;
             } catch (Exception e) {
-                try {
-                    Intent textShare = new Intent(Intent.ACTION_SEND);
-                    textShare.setType("text/plain");
-                    textShare.putExtra(Intent.EXTRA_SUBJECT, filename != null ? filename : "ironforge-backup.json");
-                    textShare.putExtra(Intent.EXTRA_TEXT, jsonContent);
-                    runOnUiThread(() -> {
-                        Intent chooser = Intent.createChooser(textShare, "Export IronForge Backup");
-                        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                        startActivity(chooser);
-                    });
-                    return true;
-                } catch (Exception ignored) {
-                    return false;
+                // Only fall back to EXTRA_TEXT if payload is safely below Android Binder 1MB limit
+                if (jsonContent.length() < 200000) {
+                    try {
+                        Intent textShare = new Intent(Intent.ACTION_SEND);
+                        textShare.setType("text/plain");
+                        textShare.putExtra(Intent.EXTRA_SUBJECT, filename != null ? filename : "ironforge-backup.json");
+                        textShare.putExtra(Intent.EXTRA_TEXT, jsonContent);
+                        runOnUiThread(() -> {
+                            Intent chooser = Intent.createChooser(textShare, "Export IronForge Backup");
+                            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            startActivity(chooser);
+                        });
+                        return true;
+                    } catch (Exception ignored) {
+                        return false;
+                    }
                 }
+                return false;
             }
         }
     }

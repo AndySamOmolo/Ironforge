@@ -156,11 +156,11 @@ export default function ExercisesPage() {
         <input className="search-bar" type="text" placeholder="Search exercises, muscles, equipment..."
           value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
         {searchQuery && (
-          <button onClick={() => setSearchQuery('')} style={{ position: 'absolute', right: 48, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+          <button aria-label="Clear search" onClick={() => setSearchQuery('')} style={{ position: 'absolute', right: 48, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
             <X size={14} />
           </button>
         )}
-        <button onClick={() => setShowFilters(!showFilters)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: activeFilters > 0 ? 'var(--accent-purple)' : 'transparent', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', color: activeFilters > 0 ? 'white' : 'var(--text-muted)', transition: 'all 0.2s' }}>
+        <button aria-label="Toggle equipment filters" aria-expanded={showFilters} onClick={() => setShowFilters(!showFilters)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: activeFilters > 0 ? 'var(--accent-purple)' : 'transparent', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', color: activeFilters > 0 ? 'white' : 'var(--text-muted)', transition: 'all 0.2s' }}>
           <Filter size={14} />
         </button>
       </motion.div>
@@ -238,8 +238,17 @@ export default function ExercisesPage() {
             return (
               <motion.div key={exercise.id} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: Math.min(idx * 0.015, 0.25) }} className="card exercise-card"
+                role="button"
+                tabIndex={0}
+                aria-label={`View exercise details for ${exercise.name}`}
                 style={{ padding: 0, overflow: 'hidden', cursor: 'pointer' }}
-                onClick={() => setSelectedExercise(exercise)}>
+                onClick={() => setSelectedExercise(exercise)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSelectedExercise(exercise);
+                  }
+                }}>
                 <div className="exercise-img-container">
                   {hasMedia && !hasError ? (
                     <ExerciseMedia

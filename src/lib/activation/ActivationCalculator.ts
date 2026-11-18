@@ -165,7 +165,8 @@ export async function computeActivations(
     const regionLastTrained: Record<string, number> = {};
     const regionTrainingEvents: Record<string, number[]> = {};
     const regionExerciseScores: Record<string, Record<string, number>> = {};
-    const regionSetCounter: Record<string, number> = {};
+    // Scope intra-workout set fatigue per (sessionId, regionId) so recent sessions are not penalized by prior sessions
+    const sessionRegionSetCounter: Record<string, number> = {};
 
     for (const set of sets) {
       const exercise = exerciseById.get(set.exerciseId);
@@ -195,8 +196,9 @@ export async function computeActivations(
       if (targeting) {
         const romMultiplier = rangeOfMotionMultiplier(targeting.biomechanics.rangeOfMotion);
         for (const target of targeting.targets) {
-          regionSetCounter[target.regionId] = (regionSetCounter[target.regionId] || 0) + 1;
-          const fatigue = fatigueMultiplier(regionSetCounter[target.regionId]);
+          const counterKey = `${set.sessionId}:${target.regionId}`;
+          sessionRegionSetCounter[counterKey] = (sessionRegionSetCounter[counterKey] || 0) + 1;
+          const fatigue = fatigueMultiplier(sessionRegionSetCounter[counterKey]);
 
           const targetScore = baseLoad
             * target.coefficient
@@ -244,8 +246,9 @@ export async function computeActivations(
         const perRegion = (baseLoad * primaryWeight * temporal) / regions.length;
 
         for (const region of regions) {
-          regionSetCounter[region.id] = (regionSetCounter[region.id] || 0) + 1;
-          const fatigue = fatigueMultiplier(regionSetCounter[region.id]);
+          const counterKey = `${set.sessionId}:${region.id}`;
+          sessionRegionSetCounter[counterKey] = (sessionRegionSetCounter[counterKey] || 0) + 1;
+          const fatigue = fatigueMultiplier(sessionRegionSetCounter[counterKey]);
           const score = perRegion * fatigue;
           addScore(scoreByRegion, region.id, score);
           addContribution(regionExerciseScores, region.id, exercise.name, score);
@@ -263,8 +266,9 @@ export async function computeActivations(
         const perRegion = (baseLoad * secondaryWeight * temporal) / regions.length;
 
         for (const region of regions) {
-          regionSetCounter[region.id] = (regionSetCounter[region.id] || 0) + 1;
-          const fatigue = fatigueMultiplier(regionSetCounter[region.id]);
+          const counterKey = `${set.sessionId}:${region.id}`;
+          sessionRegionSetCounter[counterKey] = (sessionRegionSetCounter[counterKey] || 0) + 1;
+          const fatigue = fatigueMultiplier(sessionRegionSetCounter[counterKey]);
           const score = perRegion * fatigue;
           addScore(scoreByRegion, region.id, score);
           addContribution(regionExerciseScores, region.id, exercise.name, score);

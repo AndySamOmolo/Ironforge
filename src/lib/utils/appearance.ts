@@ -23,6 +23,8 @@ export interface AppearanceSettings {
   textShadow: boolean;
 }
 
+export const APPEARANCE_STORAGE_KEY = 'ironforge_appearance_v1';
+
 export const DEFAULT_APPEARANCE: AppearanceSettings = {
   theme: 'dark',
   customAccent: 'default',
@@ -179,19 +181,28 @@ function setOrRemoveAttr(el: HTMLElement, attr: string, value: string | undefine
 }
 
 /**
- * Applies all appearance settings to `document.documentElement` immediately and consistently.
+ * Applies all appearance settings to `document.documentElement` immediately and caches
+ * them in `localStorage` for zero-FOUC synchronous restoration on reload.
  */
 export function applyAppearanceToDOM(raw: Partial<AppearanceSettings>) {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
   const s: AppearanceSettings = { ...DEFAULT_APPEARANCE, ...raw };
 
-  // If legacy compactMode is true and density wasn't explicitly set, map to 'compact'
   const effectiveDensity = s.density && s.density !== 'normal'
     ? s.density
     : s.compactMode
       ? 'compact'
       : 'normal';
+
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(
+        APPEARANCE_STORAGE_KEY,
+        JSON.stringify({ ...s, density: effectiveDensity, compactMode: effectiveDensity === 'compact' })
+      );
+    }
+  } catch {}
 
   // 1. Clear inline accent overrides first so theme CSS variables can be read cleanly
   ACCENT_VAR_KEYS.forEach((key) => root.style.removeProperty(key));

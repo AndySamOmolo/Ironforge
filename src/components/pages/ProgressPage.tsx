@@ -125,6 +125,7 @@ export default function ProgressPage() {
 
   const handleDeleteSession = async (id: number) => {
     await db.workoutSessions.delete(id);
+    await db.sessionExercises.where('sessionId').equals(id).delete();
     await db.sets.where('sessionId').equals(id).delete();
     await db.personalRecords.where('sessionId').equals(id).delete();
     setDeleteConfirm(null);

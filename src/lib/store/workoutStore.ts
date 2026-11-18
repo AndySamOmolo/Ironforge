@@ -21,6 +21,11 @@ interface PersistedWorkoutSnapshot {
   exercises: ActiveExercise[];
   currentExerciseIndex: number;
   elapsedTime: number;
+  lastTickAt?: number | null;
+  restTimerActive?: boolean;
+  restTimeRemaining?: number;
+  restTimeDuration?: number;
+  restEndTimeMs?: number | null;
   totalVolume: number;
   totalSets: number;
   totalReps: number;
@@ -77,12 +82,14 @@ interface WorkoutState {
   exercises: ActiveExercise[];
   currentExerciseIndex: number;
   elapsedTime: number;
+  lastTickAt: number | null;
   totalVolume: number;
   totalSets: number;
   totalReps: number;
   restTimerActive: boolean;
   restTimeRemaining: number;
   restTimeDuration: number;
+  restEndTimeMs: number | null;
   newPRs: { exerciseName: string; weight: number; reps: number }[];
 
   startWorkout: (planName: string, dayName: string, exercises: ActiveExercise[]) => void;
@@ -94,6 +101,7 @@ interface WorkoutState {
   uncompleteSet: (exerciseIndex: number, setIndex: number) => void;
   updateSetWeight: (exerciseIndex: number, setIndex: number, weight: number) => void;
   updateSetReps: (exerciseIndex: number, setIndex: number, reps: number) => void;
+  updateExerciseNote: (exerciseIndex: number, note: string) => void;
   cycleSetType: (exerciseIndex: number, setIndex: number) => void;
   addSet: (exerciseIndex: number) => void;
   removeSet: (exerciseIndex: number, setIndex: number) => void;
@@ -124,12 +132,14 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
   exercises: [],
   currentExerciseIndex: 0,
   elapsedTime: 0,
+  lastTickAt: null,
   totalVolume: 0,
   totalSets: 0,
   totalReps: 0,
   restTimerActive: false,
   restTimeRemaining: 0,
   restTimeDuration: 0,
+  restEndTimeMs: null,
   newPRs: [],
 
   startWorkout: (planName, dayName, exercises) => {
@@ -143,11 +153,14 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
       exercises,
       currentExerciseIndex: 0,
       elapsedTime: 0,
+      lastTickAt: null,
       totalVolume: 0,
       totalSets: 0,
       totalReps: 0,
       restTimerActive: false,
       restTimeRemaining: 0,
+      restTimeDuration: 0,
+      restEndTimeMs: null,
       newPRs: [],
     };
     saveSnapshot(nextState);
@@ -157,16 +170,41 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
   restoreWorkoutIfAny: () => {
     const snap = loadSnapshot();
     if (snap && snap.isActive) {
+      const now = Date.now();
+      const isPaused = Boolean(snap.isPaused);
+      let elapsedTime = snap.elapsedTime || 0;
+      if (!isPaused && snap.lastTickAt && now > snap.lastTickAt) {
+        elapsedTime += Math.floor((now - snap.lastTickAt) / 1000);
+      }
+
+      let restTimerActive = Boolean(snap.restTimerActive);
+      let restTimeRemaining = snap.restTimeRemaining || 0;
+      const restEndTimeMs = snap.restEndTimeMs ?? null;
+      if (restTimerActive && restEndTimeMs) {
+        const diffSec = Math.ceil((restEndTimeMs - now) / 1000);
+        if (diffSec > 0) {
+          restTimeRemaining = diffSec;
+        } else {
+          restTimerActive = false;
+          restTimeRemaining = 0;
+        }
+      }
+
       set({
         isActive: true,
-        isPaused: Boolean(snap.isPaused),
+        isPaused,
         isMinimized: Boolean(snap.isMinimized),
         sessionId: snap.sessionId ?? null,
         planName: snap.planName || 'Workout',
         dayName: snap.dayName || '',
         exercises: snap.exercises || [],
         currentExerciseIndex: snap.currentExerciseIndex || 0,
-        elapsedTime: snap.elapsedTime || 0,
+        elapsedTime,
+        lastTickAt: isPaused ? null : now,
+        restTimerActive,
+        restTimeRemaining,
+        restTimeDuration: snap.restTimeDuration || 0,
+        restEndTimeMs: restTimerActive ? restEndTimeMs : null,
         totalVolume: snap.totalVolume || 0,
         totalSets: snap.totalSets || 0,
         totalReps: snap.totalReps || 0,
@@ -175,16 +213,16 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
     }
   },
 
-  // Marks the active workout as finished and clears the persisted snapshot immediately
-  // so navigating back from WorkoutCompletePage never re-opens ActiveWorkoutPage or double-saves.
   completeWorkoutSession: (id) => {
     saveSnapshot({ isActive: false });
     set({
       isActive: false,
       isPaused: false,
       isMinimized: false,
+      lastTickAt: null,
       restTimerActive: false,
       restTimeRemaining: 0,
+      restEndTimeMs: null,
       sessionId: id,
     });
   },
@@ -199,12 +237,14 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
       exercises: [],
       currentExerciseIndex: 0,
       elapsedTime: 0,
+      lastTickAt: null,
       totalVolume: 0,
       totalSets: 0,
       totalReps: 0,
       newPRs: [],
       restTimerActive: false,
       restTimeRemaining: 0,
+      restEndTimeMs: null,
     });
   },
 
@@ -223,10 +263,11 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
     exercise.isComplete = sets.every(s => s.isComplete);
     exercises[exerciseIndex] = exercise;
 
+    const now = Date.now();
     const totals = recomputeTotals(exercises);
-    const next = { ...state, isPaused: false, exercises, ...totals };
+    const next = { ...state, isPaused: false, lastTickAt: state.lastTickAt || now, exercises, ...totals };
     saveSnapshot(next);
-    return { isPaused: false, exercises, ...totals };
+    return { isPaused: false, lastTickAt: state.lastTickAt || now, exercises, ...totals };
   }),
 
   uncompleteSet: (exerciseIndex, setIndex) => set((state) => {
@@ -248,10 +289,16 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
     const exercises = [...state.exercises];
     const exercise = { ...exercises[exerciseIndex] };
     const sets = [...exercise.sets];
+    const safeWeight = Math.max(0, Math.min(1500, Number.isFinite(weight) ? weight : 0));
     if (setIndex === 0) {
-      exercise.sets = sets.map((s, idx) => (s.isComplete && idx !== 0 ? s : { ...s, weight }));
+      const prevSet0Weight = sets[0]?.weight;
+      exercise.sets = sets.map((s, idx) =>
+        idx === 0 || (!s.isComplete && s.weight === prevSet0Weight)
+          ? { ...s, weight: safeWeight }
+          : s
+      );
     } else {
-      sets[setIndex] = { ...sets[setIndex], weight };
+      sets[setIndex] = { ...sets[setIndex], weight: safeWeight };
       exercise.sets = sets;
     }
     exercises[exerciseIndex] = exercise;
@@ -264,16 +311,30 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
     const exercises = [...state.exercises];
     const exercise = { ...exercises[exerciseIndex] };
     const sets = [...exercise.sets];
+    const safeReps = Math.max(0, Math.min(999, Number.isFinite(reps) ? Math.round(reps) : 0));
     if (setIndex === 0) {
-      exercise.sets = sets.map((s, idx) => (s.isComplete && idx !== 0 ? s : { ...s, reps }));
+      const prevSet0Reps = sets[0]?.reps;
+      exercise.sets = sets.map((s, idx) =>
+        idx === 0 || (!s.isComplete && s.reps === prevSet0Reps)
+          ? { ...s, reps: safeReps }
+          : s
+      );
     } else {
-      sets[setIndex] = { ...sets[setIndex], reps };
+      sets[setIndex] = { ...sets[setIndex], reps: safeReps };
       exercise.sets = sets;
     }
     exercises[exerciseIndex] = exercise;
     const totals = recomputeTotals(exercises);
     saveSnapshot({ ...state, exercises, ...totals });
     return { exercises, ...totals };
+  }),
+
+  updateExerciseNote: (exerciseIndex, note) => set((state) => {
+    if (!state.exercises[exerciseIndex]) return {};
+    const exercises = [...state.exercises];
+    exercises[exerciseIndex] = { ...exercises[exerciseIndex], notes: note };
+    saveSnapshot({ ...state, exercises });
+    return { exercises };
   }),
 
   cycleSetType: (exerciseIndex, setIndex) => set((state) => {
@@ -362,36 +423,71 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
 
   swapExercise: (index, newExercise) => set((state) => {
     const exercises = [...state.exercises];
-    exercises[index] = newExercise;
+    const prevEx = exercises[index];
+    exercises[index] = {
+      ...newExercise,
+      originalExerciseName: prevEx?.originalExerciseName || prevEx?.exerciseName || newExercise.originalExerciseName,
+      notes: prevEx?.notes || newExercise.notes,
+    };
     const totals = recomputeTotals(exercises);
     saveSnapshot({ ...state, exercises, ...totals });
     return { exercises, ...totals };
   }),
 
-  startRestTimer: (duration) => set({
-    restTimerActive: true,
-    restTimeRemaining: duration,
-    restTimeDuration: duration,
+  startRestTimer: (duration) => set((state) => {
+    const safeDur = Math.max(1, duration);
+    const restEndTimeMs = Date.now() + safeDur * 1000;
+    const next = {
+      ...state,
+      restTimerActive: true,
+      restTimeRemaining: safeDur,
+      restTimeDuration: safeDur,
+      restEndTimeMs,
+    };
+    saveSnapshot(next);
+    return {
+      restTimerActive: true,
+      restTimeRemaining: safeDur,
+      restTimeDuration: safeDur,
+      restEndTimeMs,
+    };
   }),
 
-  stopRestTimer: () => set({
-    restTimerActive: false,
-    restTimeRemaining: 0,
+  stopRestTimer: () => set((state) => {
+    const next = {
+      ...state,
+      restTimerActive: false,
+      restTimeRemaining: 0,
+      restEndTimeMs: null,
+    };
+    saveSnapshot(next);
+    return {
+      restTimerActive: false,
+      restTimeRemaining: 0,
+      restEndTimeMs: null,
+    };
   }),
 
   tickTimer: () => set((state) => {
     if (state.isPaused) return {};
-    const elapsedTime = state.elapsedTime + 1;
-    if (elapsedTime % 5 === 0) {
-      saveSnapshot({ ...state, elapsedTime });
+    const now = Date.now();
+    const deltaSec = state.lastTickAt ? Math.max(1, Math.round((now - state.lastTickAt) / 1000)) : 1;
+    const elapsedTime = state.elapsedTime + deltaSec;
+    if (elapsedTime % 5 === 0 || deltaSec > 1) {
+      saveSnapshot({ ...state, elapsedTime, lastTickAt: now });
     }
-    return { elapsedTime };
+    return { elapsedTime, lastTickAt: now };
   }),
 
   tickRestTimer: () => set((state) => {
-    const remaining = state.restTimeRemaining - 1;
+    if (!state.restTimerActive) return {};
+    const now = Date.now();
+    const remaining = state.restEndTimeMs
+      ? Math.max(0, Math.ceil((state.restEndTimeMs - now) / 1000))
+      : Math.max(0, state.restTimeRemaining - 1);
     if (remaining <= 0) {
-      return { restTimerActive: false, restTimeRemaining: 0 };
+      saveSnapshot({ ...state, restTimerActive: false, restTimeRemaining: 0, restEndTimeMs: null });
+      return { restTimerActive: false, restTimeRemaining: 0, restEndTimeMs: null };
     }
     return { restTimeRemaining: remaining };
   }),
@@ -405,8 +501,9 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
 
   togglePause: () => set((state) => {
     const isPaused = !state.isPaused;
-    saveSnapshot({ ...state, isPaused });
-    return { isPaused };
+    const lastTickAt = isPaused ? null : Date.now();
+    saveSnapshot({ ...state, isPaused, lastTickAt });
+    return { isPaused, lastTickAt };
   }),
 
   minimizeWorkout: () => set((state) => {
@@ -420,7 +517,7 @@ export const useWorkoutStore = create<WorkoutState>((set) => ({
   }),
 
   resetTimer: () => set((state) => {
-    saveSnapshot({ ...state, elapsedTime: 0, isPaused: true });
-    return { elapsedTime: 0, isPaused: true };
+    saveSnapshot({ ...state, elapsedTime: 0, isPaused: true, lastTickAt: null });
+    return { elapsedTime: 0, isPaused: true, lastTickAt: null };
   }),
 }));

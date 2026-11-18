@@ -1389,7 +1389,7 @@ export function resolveWorkoutDayExercises({
 
   dayExercises.forEach((ex, idx) => {
     const swapKey = ex.exerciseName.toLowerCase();
-    const savedSwap = savedSwaps[swapKey];
+    const savedSwap = savedSwaps[swapKey] || savedSwaps[ex.exerciseName];
 
     let chosenEx: Exercise | undefined;
 
@@ -1439,6 +1439,7 @@ export function resolveWorkoutDayExercises({
     activeExercises.push({
       exerciseId: chosenEx?.id || 0,
       exerciseName: chosenEx?.name || ex.exerciseName,
+      originalExerciseName: ex.exerciseName,
       imageUrl: chosenEx ? getPrimaryExerciseImage(chosenEx) : undefined,
       gifUrl: chosenEx ? getExerciseGifUrl(chosenEx) : undefined,
       mediaFrames: chosenEx ? getExerciseImageFrames(chosenEx) : [],
@@ -1583,10 +1584,17 @@ export function analyzePlanMuscleBalance(
       [];
     const joined = `${clean} ${muscles.join(' ')}`.toLowerCase();
 
+    // Check explicit back/pull exercises whose secondary muscles include glutes/hamstrings before 'legs'
+    if (/back extension|hyperextension|superman|cat-cow|thoracic/.test(clean)) {
+      return 'pull';
+    }
+    if (/jumping jack|burpee|high knee|box jump|kettlebell swing/.test(clean)) {
+      return 'legs';
+    }
     if (/squat|lunge|leg press|leg extension|leg curl|hamstring|deadlift|romanian|glute|hip thrust|calf|quad|step-up|hip stretch/.test(joined)) {
       return 'legs';
     }
-    if (/plank|crunch|leg raise|mountain climber|ab |abs|abdominals|oblique|sit-up/.test(joined)) {
+    if (/plank|crunch|leg raise|mountain climber|ab |abs|abdominals|oblique|sit-up|dead bug|russian twist|woodchop/.test(joined)) {
       return 'core';
     }
     if (/curl|tricep|skull crusher|pushdown|preacher|kickback|bicep|forearm/.test(joined)) {

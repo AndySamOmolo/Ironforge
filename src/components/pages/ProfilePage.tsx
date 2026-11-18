@@ -111,9 +111,14 @@ export default function ProfilePage() {
     loadMeasurements();
   };
 
+  const getLocalTodayKey = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  };
+
   const loadTodayWater = async () => {
     try {
-      const todayKey = new Date().toISOString().split('T')[0];
+      const todayKey = getLocalTodayKey();
       const existing = await db.waterLogs.where('date').equals(todayKey).first();
       if (existing) {
         setTodayWater(existing);
@@ -124,7 +129,7 @@ export default function ProfilePage() {
   };
 
   const updateWater = async (delta: number) => {
-    const todayKey = new Date().toISOString().split('T')[0];
+    const todayKey = getLocalTodayKey();
     const current = todayWater || { date: todayKey, glasses: 0, targetGlasses: 8 };
     const nextGlasses = Math.max(0, current.glasses + delta);
     const existing = await db.waterLogs.where('date').equals(todayKey).first();
@@ -226,7 +231,7 @@ export default function ProfilePage() {
     if (isNaN(w) || isNaN(r) || w <= 0 || r <= 0) return null;
     return {
       epley: Math.round(w * (1 + r / 30)),
-      brzycki: Math.round(w * (36 / (37 - Math.min(36, r)))),
+      brzycki: Math.round(w * (36 / (37 - Math.min(15, r)))),
       lombardi: Math.round(w * Math.pow(r, 0.1)),
     };
   }, [oneRMWeight, oneRMReps]);
@@ -252,18 +257,25 @@ export default function ProfilePage() {
 
   const exportData = async () => {
     try {
+      const allPlans = await db.workoutPlans.toArray();
+      const customPlans = allPlans.filter(p => p.isCustom);
+      const customPlanIds = new Set(customPlans.map(p => p.id).filter(Boolean));
+      const allDays = await db.workoutDays.toArray();
       const data = {
-        version: 2,
+        version: 3,
         exportedAt: new Date().toISOString(),
         sessions: await db.workoutSessions.toArray(),
+        sessionExercises: await db.sessionExercises.toArray(),
         sets: await db.sets.toArray(),
         bodyWeight: await db.bodyWeight.toArray(),
         measurements: await db.measurements.toArray(),
         waterLogs: await db.waterLogs.toArray(),
+        nutritionLogs: await db.nutritionLogs.toArray(),
+        workoutReminders: await db.workoutReminders.toArray(),
         profile: await db.userProfile.toArray(),
         prs: await db.personalRecords.toArray(),
-        customPlans: (await db.workoutPlans.toArray()).filter(p => p.isCustom),
-        workoutDays: await db.workoutDays.toArray(),
+        customPlans,
+        workoutDays: allDays.filter(d => customPlanIds.has(d.planId)),
         swaps: await db.exerciseSwaps.toArray(),
       };
       const filename = `ironforge-backup-${new Date().toISOString().split('T')[0]}.json`;
@@ -300,34 +312,136 @@ export default function ProfilePage() {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
+      if (file.size > 25 * 1024 * 1024) {
+        throw new Error('Backup file exceeds 25MB limit');
+      }
       const text = await file.text();
       const data = JSON.parse(text);
+      if (!data || typeof data !== 'object') {
+        throw new Error('Invalid JSON structure');
+      }
+      const safeDate = (val: any): Date => {
+        const d = val ? new Date(val) : new Date();
+        return Number.isNaN(d.getTime()) ? new Date() : d;
+      };
+      const safeNum = (val: any, fallback = 0, max = 1000000): number => {
+        const n = Number(val);
+        return Number.isFinite(n) ? Math.min(max, Math.max(0, n)) : fallback;
+      };
+
       if (Array.isArray(data.sessions) && data.sessions.length > 0) {
         const normalized = data.sessions.map((s: any) => ({
           ...s,
-          startedAt: new Date(s.startedAt || s.startTime || Date.now()),
-          completedAt: (s.completedAt || s.endTime) ? new Date(s.completedAt || s.endTime) : undefined,
+          planName: String(s.planName || 'Workout').slice(0, 120),
+          dayName: String(s.dayName || 'Session').slice(0, 120),
+          startedAt: safeDate(s.startedAt || s.startTime),
+          completedAt: (s.completedAt || s.endTime) ? safeDate(s.completedAt || s.endTime) : undefined,
+          duration: safeNum(s.duration, 0, 86400),
+          totalVolume: safeNum(s.totalVolume, 0, 10000000),
+          totalSets: safeNum(s.totalSets, 0, 1000),
+          totalReps: safeNum(s.totalReps, 0, 50000),
+          isComplete: Boolean(s.isComplete ?? true),
         }));
         await db.workoutSessions.bulkPut(normalized);
+      }
+      if (Array.isArray(data.sessionExercises) && data.sessionExercises.length > 0) {
+        await db.sessionExercises.bulkPut(data.sessionExercises);
       }
       if (Array.isArray(data.sets) && data.sets.length > 0) {
         const normalizedSets = data.sets.map((s: any) => ({
           ...s,
-          completedAt: s.completedAt ? new Date(s.completedAt) : undefined,
+          weight: safeNum(s.weight, 0, 1500),
+          reps: safeNum(s.reps, 0, 999),
+          completedAt: s.completedAt ? safeDate(s.completedAt) : undefined,
         }));
         await db.sets.bulkPut(normalizedSets);
       }
       if (Array.isArray(data.bodyWeight) && data.bodyWeight.length > 0) {
-        await db.bodyWeight.bulkPut(data.bodyWeight.map((b: any) => ({ ...b, date: new Date(b.date) })));
+        await db.bodyWeight.bulkPut(
+          data.bodyWeight.map((b: any) => ({
+            ...b,
+            weight: safeNum(b.weight, 70, 500),
+            date: safeDate(b.date),
+          }))
+        );
       }
       if (Array.isArray(data.measurements) && data.measurements.length > 0) {
-        await db.measurements.bulkPut(data.measurements.map((m: any) => ({ ...m, date: new Date(m.date) })));
+        await db.measurements.bulkPut(
+          data.measurements.map((m: any) => ({
+            ...m,
+            date: safeDate(m.date),
+          }))
+        );
       }
       if (Array.isArray(data.waterLogs) && data.waterLogs.length > 0) {
         await db.waterLogs.bulkPut(data.waterLogs);
       }
+      if (Array.isArray(data.nutritionLogs) && data.nutritionLogs.length > 0) {
+        await db.nutritionLogs.bulkPut(data.nutritionLogs);
+      }
+      if (Array.isArray(data.workoutReminders) && data.workoutReminders.length > 0) {
+        await db.workoutReminders.bulkPut(data.workoutReminders);
+        void useReminderStore.getState().loadReminders();
+      }
       if (Array.isArray(data.prs) && data.prs.length > 0) {
-        await db.personalRecords.bulkPut(data.prs.map((p: any) => ({ ...p, date: new Date(p.date || p.achievedAt || Date.now()) })));
+        await db.personalRecords.bulkPut(
+          data.prs.map((p: any) => ({
+            ...p,
+            weight: safeNum(p.weight, 0, 1500),
+            reps: safeNum(p.reps, 0, 999),
+            estimated1RM: safeNum(p.estimated1RM, 0, 2500),
+            date: safeDate(p.date || p.achievedAt),
+          }))
+        );
+      }
+      if (Array.isArray(data.customPlans) && data.customPlans.length > 0) {
+        const daysList = Array.isArray(data.workoutDays) ? data.workoutDays : [];
+        for (const cp of data.customPlans) {
+          const oldPlanId = cp.id;
+          const existing = await db.workoutPlans.where('name').equals(String(cp.name || 'Custom Plan')).first();
+          const newPlanId = existing?.id
+            ? existing.id
+            : await db.workoutPlans.add({
+                ...cp,
+                id: undefined,
+                isCustom: true,
+                isActive: false,
+                createdAt: safeDate(cp.createdAt),
+                updatedAt: safeDate(cp.updatedAt),
+              });
+          const planDaysForCustom = daysList.filter((d: any) => d.planId === oldPlanId);
+          if (planDaysForCustom.length > 0) {
+            await db.workoutDays.where('planId').equals(newPlanId).delete();
+            for (const day of planDaysForCustom) {
+              await db.workoutDays.add({
+                ...day,
+                id: undefined,
+                planId: newPlanId,
+              });
+            }
+          }
+        }
+      }
+      if (Array.isArray(data.swaps) && data.swaps.length > 0) {
+        await db.exerciseSwaps.bulkPut(
+          data.swaps.map((sw: any) => ({
+            ...sw,
+            swappedAt: safeDate(sw.swappedAt),
+          }))
+        );
+      }
+      if (Array.isArray(data.profile) && data.profile[0]) {
+        const importedProfile = data.profile[0];
+        const existingProfiles = await db.userProfile.toArray();
+        const targetId = existingProfiles[0]?.id;
+        const mergedProfile = {
+          ...importedProfile,
+          ...(targetId ? { id: targetId } : {}),
+          isSeeded: true,
+        };
+        await db.userProfile.put(mergedProfile);
+        loadFromProfile(mergedProfile);
+        applyAppearanceToDOM(mergedProfile);
       }
       loadBodyWeights();
       loadMeasurements();
@@ -355,8 +469,13 @@ export default function ProfilePage() {
     }).join(' ');
   }, [bodyWeights]);
 
-  const Toggle = ({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) => (
-    <button onClick={onToggle}
+  const Toggle = ({ enabled, onToggle, label }: { enabled: boolean; onToggle: () => void; label?: string }) => (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      aria-label={label || 'Toggle setting'}
+      onClick={onToggle}
       style={{ width: 48, height: 26, borderRadius: 13, border: 'none', background: enabled ? 'var(--accent-green)' : 'var(--bg-input)', cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
       <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'white', position: 'absolute', top: 3, left: enabled ? 25 : 3, transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
     </button>
@@ -365,7 +484,7 @@ export default function ProfilePage() {
   const SettingRow = ({ icon: Icon, iconColor, label, description, children, stacked = false }: { icon: any; iconColor: string; label: string; description?: string; children: React.ReactNode; stacked?: boolean }) => (
     <div className="card" style={{ display: 'flex', flexDirection: stacked ? 'column' : 'row', alignItems: stacked ? 'stretch' : 'center', justifyContent: 'space-between', gap: stacked ? 10 : 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
-        <div style={{ width: 36, height: 36, borderRadius: 10, background: `${iconColor}12`, border: `1px solid ${iconColor}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: `color-mix(in srgb, ${iconColor} 12%, transparent)`, border: `1px solid color-mix(in srgb, ${iconColor} 22%, transparent)`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <Icon size={16} color={iconColor} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -414,7 +533,16 @@ export default function ProfilePage() {
           <SettingRow icon={Scale} iconColor="var(--accent-green)" label="Units" description="Weight & measurement system">
             <div style={{ display: 'flex', gap: 4, background: 'var(--bg-input)', borderRadius: 10, padding: 3 }}>
               {(['metric', 'imperial'] as const).map(sys => (
-                <button key={sys} onClick={() => { setUnitSystem(sys); saveProfileFields({ unitSystem: sys }); }}
+                <button key={sys} onClick={() => {
+                  setUnitSystem(sys);
+                  const nextState = useUserStore.getState();
+                  saveProfileFields({
+                    unitSystem: sys,
+                    barWeight: nextState.barWeight,
+                    dumbbellWeight: nextState.dumbbellWeight,
+                    weightIncrement: nextState.weightIncrement,
+                  });
+                }}
                   style={{ padding: '7px 18px', borderRadius: 8, border: 'none', background: unitSystem === sys ? 'var(--gradient-fire)' : 'transparent', color: unitSystem === sys ? 'white' : 'var(--text-muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer', textTransform: 'capitalize' }}>
                   {sys}
                 </button>
@@ -439,7 +567,7 @@ export default function ProfilePage() {
                 }}
                 style={{ width: 86, textAlign: 'right', padding: '8px 10px', borderRadius: 10, border: '1px solid var(--border-bright)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14, fontWeight: 700 }}
               />
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)', minWidth: 26 }}>{unitSystem === 'metric' ? 'kg' : 'lb'}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)', minWidth: 26 }}>{unitSystem === 'metric' ? 'kg' : 'lbs'}</span>
             </div>
           </SettingRow>
 
@@ -460,7 +588,7 @@ export default function ProfilePage() {
                 }}
                 style={{ width: 86, textAlign: 'right', padding: '8px 10px', borderRadius: 10, border: '1px solid var(--border-bright)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14, fontWeight: 700 }}
               />
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)', minWidth: 26 }}>{unitSystem === 'metric' ? 'kg' : 'lb'}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)', minWidth: 26 }}>{unitSystem === 'metric' ? 'kg' : 'lbs'}</span>
             </div>
           </SettingRow>
 
@@ -1359,11 +1487,16 @@ function ReminderSection() {
             <div style={{ fontSize: 13, fontWeight: 700 }}>{dayNames[r.dayOfWeek]} at {String(r.timeHour).padStart(2, '0')}:{String(r.timeMinute).padStart(2, '0')}</div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{r.label}</div>
           </div>
-          <button onClick={() => r.id && toggleReminder(r.id)}
+          <button
+            type="button"
+            role="switch"
+            aria-checked={r.isEnabled}
+            aria-label={`Toggle reminder ${r.label}`}
+            onClick={() => r.id && toggleReminder(r.id)}
             style={{ width: 48, height: 26, borderRadius: 13, border: 'none', background: r.isEnabled ? 'var(--accent-green)' : 'var(--bg-input)', cursor: 'pointer', position: 'relative' as const, flexShrink: 0 }}>
             <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'white', position: 'absolute' as const, top: 3, left: r.isEnabled ? 25 : 3, transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
           </button>
-          <button onClick={() => r.id && deleteReminder(r.id)} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: 4 }}>
+          <button aria-label={`Delete reminder ${r.label}`} onClick={() => r.id && deleteReminder(r.id)} style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: 4 }}>
             <X size={14} />
           </button>
         </div>
@@ -1419,42 +1552,46 @@ function ReminderSection() {
 /* ===== PLATE CALCULATOR ===== */
 function PlateCalculator({ barWeight, unit }: { barWeight: number; unit: string }) {
   const [targetWeight, setTargetWeight] = useState('');
-  const plates = useMemo(() => {
+  const unitSys = unit === 'imperial' ? 'imperial' : 'metric';
+  const plateResult = useMemo(() => {
     const target = parseFloat(targetWeight);
-    if (isNaN(target) || target <= barWeight) return [];
-    const perSide = (target - barWeight) / 2;
-    const available = unit === 'metric' ? [25, 20, 15, 10, 5, 2.5, 1.25] : [45, 35, 25, 10, 5, 2.5];
-    const result: { weight: number; color: string }[] = [];
-    const colors: Record<number, string> = { 25: '#FF3D5A', 20: '#38BDF8', 15: '#FBBF24', 10: '#10E89A', 5: '#F472B6', 2.5: '#8B5CF6', 1.25: '#22D3EE', 45: '#FF3D5A', 35: '#FBBF24' };
-    let remaining = perSide;
-    for (const plate of available) {
-      while (remaining >= plate) { result.push({ weight: plate, color: colors[plate] || '#888' }); remaining -= plate; }
+    if (isNaN(target) || target <= barWeight) return null;
+    return calculatePlates(Math.min(1500, target), barWeight, unitSys);
+  }, [targetWeight, barWeight, unitSys]);
+
+  const expandedVisualPlates = useMemo(() => {
+    if (!plateResult) return [];
+    const list: { weight: number; color: string }[] = [];
+    for (const item of plateResult.perSide) {
+      for (let i = 0; i < Math.min(20, item.count); i++) {
+        list.push({ weight: item.weight, color: item.color });
+      }
     }
-    return result;
-  }, [targetWeight, barWeight, unit]);
+    return list;
+  }, [plateResult]);
 
   return (
     <div className="card" style={{ padding: 16 }}>
       <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
         <Dumbbell size={16} color="var(--accent-red)" /> Plate Calculator
       </h3>
-      <input value={targetWeight} onChange={e => setTargetWeight(e.target.value)} placeholder={`Target weight (${unit === 'metric' ? 'kg' : 'lbs'})`} type="number"
+      <input value={targetWeight} onChange={e => setTargetWeight(e.target.value)} placeholder={`Target weight (${unit === 'metric' ? 'kg' : 'lbs'})`} type="number" max={1500}
         style={{ width: '100%', padding: '12px 14px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', fontFamily: 'inherit', marginBottom: 12, minHeight: 46 }} />
-      {plates.length > 0 && (
+      {plateResult && plateResult.perSide.length > 0 && (
         <div>
-          <div className="section-label" style={{ marginBottom: 8 }}>Each side ({((parseFloat(targetWeight) - barWeight) / 2).toFixed(1)} {unit === 'metric' ? 'kg' : 'lbs'}/side)</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '12px 0' }}>
-            <div style={{ height: 8, width: 60, background: '#666', borderRadius: 2 }} />
-            {plates.map((p, i) => (
-              <div key={i} style={{ height: Math.max(24, 20 + p.weight * 1.2), width: Math.max(10, 6 + p.weight * 0.3), background: p.color, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 7, fontWeight: 800, color: 'white', writingMode: 'vertical-lr', textOrientation: 'mixed' }}>
+          <div className="section-label" style={{ marginBottom: 8 }}>Each side ({((Math.min(1500, parseFloat(targetWeight)) - barWeight) / 2).toFixed(1)} {unit === 'metric' ? 'kg' : 'lbs'}/side)</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '12px 0', overflowX: 'auto' }}>
+            <div style={{ height: 8, width: 60, background: '#666', borderRadius: 2, flexShrink: 0 }} />
+            {expandedVisualPlates.map((p, i) => (
+              <div key={i} style={{ height: Math.max(24, 20 + p.weight * 1.2), width: Math.max(10, 6 + p.weight * 0.3), background: p.color, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 7, fontWeight: 800, color: 'white', writingMode: 'vertical-lr', textOrientation: 'mixed', flexShrink: 0 }}>
                 {p.weight}
               </div>
             ))}
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {plates.map((p, i) => (
+            {plateResult.perSide.map((p, i) => (
               <span key={i} className="badge" style={{ background: `${p.color}15`, color: p.color, border: `1px solid ${p.color}30`, fontSize: 12, fontWeight: 700 }}>
-                {p.weight}{unit === 'metric' ? 'kg' : 'lbs'}
+                {p.weight}{unit === 'metric' ? 'kg' : 'lbs'} ×{p.count}
               </span>
             ))}
           </div>

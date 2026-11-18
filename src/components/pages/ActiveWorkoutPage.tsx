@@ -12,7 +12,8 @@ import { useUserStore } from '@/lib/store/userStore';
 import { db } from '@/lib/db/schema';
 import { MUSCLE_COLORS, SetType } from '@/lib/types';
 import type { Exercise } from '@/lib/types';
-import { getSwapSuggestions, calculatePlates } from '@/lib/utils/swapEngine';
+import { getSwapSuggestions } from '@/lib/utils/swapEngine';
+import { calculatePlates } from '@/lib/utils/plateCalculator';
 import { getProgressionSuggestion, estimate1RM, type ProgressionSuggestion } from '@/lib/utils/progressionEngine';
 import { matchesUserEquipment } from '@/lib/utils/exerciseResolver';
 import { getWorkoutStartingWeight, createKeepScreenAwakeController } from '@/lib/utils/workoutDefaults';
@@ -40,7 +41,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
   const {
     exercises, currentExerciseIndex, elapsedTime, totalVolume, totalSets,
     planName, dayName, sessionId, isPaused,
-    completeSet, uncompleteSet, updateSetWeight, updateSetReps,
+    completeSet, uncompleteSet, updateSetWeight, updateSetReps, updateExerciseNote,
     cycleSetType, addSet, removeSet,
     goToExercise, nextExercise, prevExercise,
     addExercise, removeExercise,
@@ -88,6 +89,15 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const restTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isFinishingRef = useRef(false);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+        audioCtxRef.current.close().catch(() => {});
+      }
+    };
+  }, []);
 
   const stepWeight = weightIncrement && weightIncrement > 0 ? weightIncrement : 2.5;
   const unitLabel = unitSystem === 'metric' ? 'kg' : 'lbs';
@@ -213,7 +223,13 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     try {
       const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtx) return;
-      const ctx = new AudioCtx();
+      if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+        audioCtxRef.current = new AudioCtx();
+      }
+      const ctx = audioCtxRef.current!;
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
       const now = ctx.currentTime;
       const gain = ctx.createGain();
       gain.connect(ctx.destination);
@@ -323,9 +339,12 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
       const computedTotalReps = completedSetEntries.reduce((sum, set) => sum + set.reps, 0);
       const computedTotalSets = completedSetEntries.length;
 
-      const combinedNotes = Object.entries(notes)
-        .filter(([, text]) => text && text.trim().length > 0)
-        .map(([idx, text]) => `${exercises[Number(idx)]?.exerciseName || 'Exercise'}: ${text.trim()}`)
+      const combinedNotes = exercises
+        .map((ex, idx) => {
+          const text = ex.notes ?? notes[idx] ?? '';
+          return text.trim().length > 0 ? `${ex.exerciseName || 'Exercise'}: ${text.trim()}` : '';
+        })
+        .filter(Boolean)
         .join(' | ');
 
       const currentSessionId = useWorkoutStore.getState().sessionId || sessionId;
@@ -363,9 +382,23 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
       }
 
       if (completedSetEntries.length > 0) {
+        const sessionExIdByOrder = new Map<number, number>();
+        for (let exOrder = 0; exOrder < exercises.length; exOrder++) {
+          const ex = exercises[exOrder];
+          if (!ex.sets.some(s => s.isComplete)) continue;
+          const seId = await db.sessionExercises.add({
+            sessionId: savedSessionId,
+            exerciseId: ex.exerciseId,
+            exerciseName: ex.exerciseName,
+            order: exOrder,
+            notes: ex.notes?.trim() || undefined,
+          });
+          sessionExIdByOrder.set(exOrder, seId);
+        }
+
         await db.sets.bulkAdd(
           completedSetEntries.map(set => ({
-            sessionExerciseId: 0,
+            sessionExerciseId: sessionExIdByOrder.get(set.orderIndex) || 0,
             sessionId: savedSessionId,
             exerciseId: set.exerciseId,
             setNumber: set.setNumber,
@@ -472,13 +505,19 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     }
     if (planName && dayName) {
       try {
+        const slotOriginalName = currentExercise.originalExerciseName || currentExercise.exerciseName;
         const existing = await db.exerciseSwaps
           .where('planName')
           .equals(planName)
-          .filter(s => s.dayName === dayName && s.originalExerciseName.toLowerCase() === currentExercise.exerciseName.toLowerCase())
+          .filter(s =>
+            s.dayName === dayName &&
+            (s.originalExerciseName.toLowerCase() === slotOriginalName.toLowerCase() ||
+             s.originalExerciseName.toLowerCase() === currentExercise.exerciseName.toLowerCase())
+          )
           .first();
         if (existing?.id) {
           await db.exerciseSwaps.update(existing.id, {
+            originalExerciseName: slotOriginalName,
             newExerciseId: newEx.id || 0,
             newExerciseName: newEx.name,
             newGifUrl: getExerciseGifUrl(newEx),
@@ -488,7 +527,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
           await db.exerciseSwaps.add({
             planName,
             dayName,
-            originalExerciseName: currentExercise.exerciseName,
+            originalExerciseName: slotOriginalName,
             newExerciseId: newEx.id || 0,
             newExerciseName: newEx.name,
             newGifUrl: getExerciseGifUrl(newEx),
@@ -566,10 +605,19 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     else if (key === '✓') {
       if (showNumpad) {
         const v = parseFloat(numpadValue) || 0;
-        showNumpad.field === 'weight' ? updateSetWeight(showNumpad.exerciseIdx, showNumpad.setIdx, v) : updateSetReps(showNumpad.exerciseIdx, showNumpad.setIdx, Math.round(v));
+        if (showNumpad.field === 'weight') {
+          updateSetWeight(showNumpad.exerciseIdx, showNumpad.setIdx, Math.min(1500, Math.max(0, v)));
+        } else {
+          updateSetReps(showNumpad.exerciseIdx, showNumpad.setIdx, Math.min(999, Math.max(0, Math.round(v))));
+        }
         setShowNumpad(null);
       }
-    } else setNumpadValue(prev => prev === '0' ? key : prev + key);
+    } else {
+      setNumpadValue(prev => {
+        if (prev.length >= 6) return prev;
+        return prev === '0' ? key : prev + key;
+      });
+    }
   };
 
   // Strictly separate primary GIF from backup static image frames so GIFs are always primary
@@ -799,8 +847,8 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
               {exercises.length > 1 && (
                 <button onClick={() => removeExercise(currentExerciseIndex)} title="Remove Exercise" style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(255,61,90,0.08)', border: '1px solid rgba(255,61,90,0.2)', color: 'var(--accent-red)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={15} /></button>
               )}
-              <button onClick={prevExercise} disabled={currentExerciseIndex === 0} style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: currentExerciseIndex === 0 ? 0.3 : 1 }}><ChevronLeft size={18} /></button>
-              <button onClick={nextExercise} disabled={currentExerciseIndex === exercises.length - 1} style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: currentExerciseIndex === exercises.length - 1 ? 0.3 : 1 }}><ChevronRight size={18} /></button>
+              <button onClick={prevExercise} aria-label="Previous exercise" disabled={currentExerciseIndex === 0} style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: currentExerciseIndex === 0 ? 0.3 : 1 }}><ChevronLeft size={18} /></button>
+              <button onClick={nextExercise} aria-label="Next exercise" disabled={currentExerciseIndex === exercises.length - 1} style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: currentExerciseIndex === exercises.length - 1 ? 0.3 : 1 }}><ChevronRight size={18} /></button>
             </div>
           </div>
         </div>
@@ -862,17 +910,17 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                     {set.isPR && <span style={{ color: 'var(--accent-yellow)', fontWeight: 800 }}>🏆 PR</span>}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <button onClick={() => updateSetWeight(currentExerciseIndex, setIdx, Math.max(0, Number((set.weight - stepWeight).toFixed(2))))} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Minus size={14} /></button>
+                    <button aria-label={`Decrease set ${setIdx + 1} weight`} onClick={() => updateSetWeight(currentExerciseIndex, setIdx, Math.max(0, Number((set.weight - stepWeight).toFixed(2))))} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Minus size={14} /></button>
                     <button className="set-input" onClick={() => openNumpad('weight', currentExerciseIndex, setIdx)} style={{ cursor: 'pointer', width: 60, minHeight: 40 }}>{set.weight}</button>
-                    <button onClick={() => updateSetWeight(currentExerciseIndex, setIdx, Number((set.weight + stepWeight).toFixed(2)))} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Plus size={14} /></button>
+                    <button aria-label={`Increase set ${setIdx + 1} weight`} onClick={() => updateSetWeight(currentExerciseIndex, setIdx, Number((set.weight + stepWeight).toFixed(2)))} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Plus size={14} /></button>
                   </div>
                 </div>
                 <div style={{ flex: 1 }}>
                   <div className="section-label" style={{ marginBottom: 3 }}>REPS</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <button onClick={() => updateSetReps(currentExerciseIndex, setIdx, Math.max(0, set.reps - 1))} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Minus size={14} /></button>
+                    <button aria-label={`Decrease set ${setIdx + 1} reps`} onClick={() => updateSetReps(currentExerciseIndex, setIdx, Math.max(0, set.reps - 1))} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Minus size={14} /></button>
                     <button className="set-input" onClick={() => openNumpad('reps', currentExerciseIndex, setIdx)} style={{ cursor: 'pointer', width: 52, minHeight: 40 }}>{set.reps || set.targetReps}</button>
-                    <button onClick={() => updateSetReps(currentExerciseIndex, setIdx, (set.reps || set.targetReps) + 1)} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Plus size={14} /></button>
+                    <button aria-label={`Increase set ${setIdx + 1} reps`} onClick={() => updateSetReps(currentExerciseIndex, setIdx, (set.reps || set.targetReps) + 1)} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Plus size={14} /></button>
                   </div>
                 </div>
                 {!set.isComplete && (
@@ -928,13 +976,13 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                         : `Bar: ${barWeight}${unitLabel} • Each side: ${((currentExercise.sets[currentSetIndex].weight - barWeight) / 2).toFixed(1)}${unitLabel}`}
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {calculatePlates(currentExercise.sets[currentSetIndex].weight, barWeight).map((p, i) => (
+                      {calculatePlates(currentExercise.sets[currentSetIndex].weight, barWeight, unitSystem).perSide.map((p, i) => (
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: `${p.color}15`, border: `1px solid ${p.color}30`, borderRadius: 6 }}>
                           <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color }} />
                           <span style={{ fontSize: 11, fontWeight: 700, color: p.color }}>{p.plate}{unitLabel} ×{p.count}</span>
                         </div>
                       ))}
-                      {calculatePlates(currentExercise.sets[currentSetIndex].weight, barWeight).length === 0 && (
+                      {calculatePlates(currentExercise.sets[currentSetIndex].weight, barWeight, unitSystem).perSide.length === 0 && (
                         <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Empty bar</span>
                       )}
                     </div>
@@ -1172,7 +1220,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
 
               <div style={{ marginBottom: 12 }}>
                 <div className="section-label" style={{ marginBottom: 8 }}>YOUR NOTES (SAVED WITH WORKOUT)</div>
-                <textarea value={notes[currentExerciseIndex] || ''} onChange={e => setNotes(prev => ({ ...prev, [currentExerciseIndex]: e.target.value }))} placeholder="Add form cues, seat settings, or notes..." rows={3}
+                <textarea value={currentExercise.notes ?? notes[currentExerciseIndex] ?? ''} onChange={e => { const val = e.target.value; setNotes(prev => ({ ...prev, [currentExerciseIndex]: val })); updateExerciseNote(currentExerciseIndex, val); }} placeholder="Add form cues, seat settings, or notes..." rows={3}
                   style={{ width: '100%', padding: 14, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit' }} />
               </div>
               <button onClick={() => setShowNotes(false)} className="btn-primary" style={{ borderRadius: 14, minHeight: 46, color: '#fff', textShadow: 'none', boxShadow: 'none' }}>Save Note</button>
@@ -1257,7 +1305,10 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
               )}
               <div className="numpad-grid">
                 {['1','2','3','4','5','6','7','8','9', showNumpad.field === 'weight' ? '.' : 'C','0','←'].map(key => <button key={key} className="numpad-key" onClick={() => handleNumpadInput(key)}>{key}</button>)}
-                <motion.button whileTap={{ scale: 0.95 }} className="numpad-key action" onClick={() => handleNumpadInput('✓')} style={{ gridColumn: '1 / -1' }}>Done</motion.button>
+                {showNumpad.field === 'weight' && (
+                  <button className="numpad-key" onClick={() => handleNumpadInput('C')} style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-red)' }}>Clear</button>
+                )}
+                <motion.button whileTap={{ scale: 0.95 }} className="numpad-key action" onClick={() => handleNumpadInput('✓')} style={{ gridColumn: showNumpad.field === 'weight' ? 'span 2' : '1 / -1' }}>Done</motion.button>
               </div>
             </motion.div>
           </motion.div>

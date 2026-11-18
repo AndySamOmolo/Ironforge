@@ -17,6 +17,7 @@ import WorkoutCompletePage from '@/components/pages/WorkoutCompletePage';
 import BottomNav from '@/components/ui/BottomNav';
 import SeedingScreen from '@/components/ui/SeedingScreen';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
+import { useReminderStore } from '@/lib/store/reminderStore';
 import { Play, Pause, Maximize2 } from 'lucide-react';
 
 export default function App() {
@@ -143,6 +144,9 @@ export default function App() {
 
         applyAppearanceToDOM(p);
         restoreWorkoutIfAny();
+        void useReminderStore.getState().loadReminders().then(() => {
+          useReminderStore.getState().startBackgroundCheck();
+        });
 
         setSeedingProgress(100, 'Ready!');
         await ensureWorkoutPrograms();
@@ -161,9 +165,16 @@ export default function App() {
         setSeedingProgress(pct, msg);
       });
 
+      const seededProfiles = await db.userProfile.toArray();
+      if (seededProfiles[0]) {
+        applyAppearanceToDOM(seededProfiles[0]);
+      }
       setIsSeeded(true);
       setSeedingProgress(100, 'Setup complete!');
       restoreWorkoutIfAny();
+      void useReminderStore.getState().loadReminders().then(() => {
+        useReminderStore.getState().startBackgroundCheck();
+      });
 
       await new Promise(r => setTimeout(r, 400));
 

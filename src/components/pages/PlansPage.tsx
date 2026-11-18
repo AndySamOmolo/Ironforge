@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronRight, ChevronDown, ChevronUp, Target, Plus, X, Check, Settings, Search, Play, XCircle, Shuffle, Sparkles, Trash2, Copy, Scale } from 'lucide-react';
+import { ChevronRight, ChevronDown, ChevronUp, Target, Plus, X, Check, Settings, Search, Play, XCircle, Shuffle, Sparkles, Trash2, Copy, Scale, Dumbbell } from 'lucide-react';
+import { useUIStore } from '@/lib/store/uiStore';
 import { db } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
@@ -21,6 +22,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   Hypertrophy: 'var(--accent-purple)',
   Strength: 'var(--accent-blue)',
   Powerlifting: 'var(--accent-red)',
+  Athletic: 'var(--accent-cyan)',
   Cardio: 'var(--accent-orange)',
   Bodyweight: 'var(--accent-green)',
   Mobility: 'var(--accent-cyan)',
@@ -43,7 +45,10 @@ export default function PlansPage() {
     setField,
   } = useUserStore();
   const { startWorkout } = useWorkoutStore();
+  const { setActiveTab } = useUIStore();
   const [plans, setPlans] = useState<WorkoutPlan[]>([]);
+  const [allSwaps, setAllSwaps] = useState<Record<string, Record<string, { newExerciseId: number; newExerciseName: string; newGifUrl?: string }>>>({});
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [expandedPlan, setExpandedPlan] = useState<number | null>(null);
   const [planDays, setPlanDays] = useState<Record<number, WorkoutDay[]>>({});
   const [allExercises, setAllExercises] = useState<Exercise[]>([]);
@@ -67,13 +72,25 @@ export default function PlansPage() {
 
   const loadPlansAndCatalog = async () => {
     try {
-      const [allPlans, allDays, catalog, recentSets, completedCount] = await Promise.all([
+      const [allPlans, allDays, catalog, recentSets, completedCount, swapsList] = await Promise.all([
         db.workoutPlans.toArray(),
         db.workoutDays.toArray(),
         db.exercises.toArray(),
         db.sets.orderBy('completedAt').reverse().limit(120).toArray(),
         db.workoutSessions.filter(s => s.isComplete).count(),
+        db.exerciseSwaps.toArray(),
       ]);
+      const swapsMap: Record<string, Record<string, { newExerciseId: number; newExerciseName: string; newGifUrl?: string }>> = {};
+      for (const sw of swapsList) {
+        const key = `${sw.planName}::${sw.dayName}`;
+        if (!swapsMap[key]) swapsMap[key] = {};
+        swapsMap[key][sw.originalExerciseName.toLowerCase()] = {
+          newExerciseId: sw.newExerciseId,
+          newExerciseName: sw.newExerciseName,
+          newGifUrl: sw.newGifUrl,
+        };
+      }
+      setAllSwaps(swapsMap);
       const daysByPlan: Record<number, WorkoutDay[]> = {};
       for (const d of allDays) {
         if (!daysByPlan[d.planId]) daysByPlan[d.planId] = [];
@@ -135,8 +152,13 @@ export default function PlansPage() {
   };
 
   const deleteCustomPlan = async (planId: number) => {
+    const planObj = plans.find(p => p.id === planId);
+    if (planObj?.name) {
+      await db.exerciseSwaps.where('planName').equals(planObj.name).delete();
+    }
     await db.workoutDays.where('planId').equals(planId).delete();
     await db.workoutPlans.delete(planId);
+    setConfirmDeleteId(null);
     if (expandedPlan === planId) setExpandedPlan(null);
     loadPlansAndCatalog();
   };
@@ -179,19 +201,23 @@ export default function PlansPage() {
     if (allExercises.length === 0) {
       return day.exercises.map(e => e.exerciseName);
     }
-    const seed = getDaySeed(plan.id || 0, day.dayNumber);
+    const customVary = dayVarietySeeds[`${plan.id || 0}_${day.dayNumber}`] || 0;
+    const savedSwapsForDay = allSwaps[`${plan.name}::${day.name}`] || {};
+    const hasSwaps = Object.keys(savedSwapsForDay).length > 0;
+    const seed = hasSwaps && customVary === 0 ? 0 : getDaySeed(plan.id || 0, day.dayNumber);
     const resolved = resolveWorkoutDayExercises({
       dayExercises: day.exercises,
       allExercises,
       userEquipment: selectedEquipment,
       barWeight,
       dumbbellWeight,
+      savedSwaps: savedSwapsForDay,
       recentExerciseIds,
       varietySeed: seed,
       varietyLevel: exerciseVariety || 'medium',
     });
     return resolved.map(r => r.exerciseName);
-  }, [allExercises, selectedEquipment, barWeight, dumbbellWeight, recentExerciseIds, exerciseVariety, sessionCount, dayVarietySeeds]);
+  }, [allExercises, selectedEquipment, barWeight, dumbbellWeight, recentExerciseIds, exerciseVariety, sessionCount, dayVarietySeeds, allSwaps]);
 
   const startDay = async (plan: WorkoutPlan, day: WorkoutDay) => {
     const savedSwaps: Record<string, { newExerciseId: number; newExerciseName: string; newGifUrl?: string }> = {};
@@ -207,7 +233,8 @@ export default function PlansPage() {
     } catch {}
 
     const catalog = allExercises.length > 0 ? allExercises : await db.exercises.toArray();
-    const seed = getDaySeed(plan.id || 0, day.dayNumber);
+    const customVary = dayVarietySeeds[`${plan.id || 0}_${day.dayNumber}`] || 0;
+    const seed = Object.keys(savedSwaps).length > 0 && customVary === 0 ? 0 : getDaySeed(plan.id || 0, day.dayNumber);
 
     const exercises = resolveWorkoutDayExercises({
       dayExercises: day.exercises,
@@ -254,13 +281,23 @@ export default function PlansPage() {
                 : `${plans.length} balanced programs • ${availableExerciseCount.toLocaleString()} exercises match your equipment`}
             </p>
           </div>
-          <button
-            onClick={() => setShowSmartGenerator(true)}
-            className="btn-secondary"
-            style={{ padding: '10px 14px', borderRadius: 12, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, border: '1px solid var(--accent-purple)' }}
-          >
-            <Sparkles size={14} color="var(--accent-purple)" /> Generate
-          </button>
+          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+            <button
+              onClick={() => setActiveTab('exercises')}
+              className="btn-secondary"
+              title="Browse full Exercise Library"
+              style={{ padding: '10px 12px', borderRadius: 12, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, border: '1px solid var(--border-bright)' }}
+            >
+              <Dumbbell size={14} color="var(--accent-green)" /> Library
+            </button>
+            <button
+              onClick={() => setShowSmartGenerator(true)}
+              className="btn-secondary"
+              style={{ padding: '10px 14px', borderRadius: 12, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, border: '1px solid var(--accent-purple)' }}
+            >
+              <Sparkles size={14} color="var(--accent-purple)" /> Generate
+            </button>
+          </div>
         </div>
       </motion.div>
 
@@ -386,10 +423,10 @@ export default function PlansPage() {
                       <span className="badge" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', fontSize: 10 }}>
                         📅 {plan.daysPerWeek}d/week
                       </span>
-                      <span className="badge" style={{ background: diff.bg, color: diff.color, border: `1px solid ${diff.color}20`, fontSize: 10, textTransform: 'capitalize' }}>
+                      <span className="badge" style={{ background: diff.bg, color: diff.color, border: `1px solid color-mix(in srgb, ${diff.color} 22%, transparent)`, fontSize: 10, textTransform: 'capitalize' }}>
                         ☆ {plan.difficulty}
                       </span>
-                      <span className="badge" style={{ background: `${catColor}10`, color: catColor, border: `1px solid ${catColor}20`, fontSize: 10 }}>
+                      <span className="badge" style={{ background: `color-mix(in srgb, ${catColor} 12%, transparent)`, color: catColor, border: `1px solid color-mix(in srgb, ${catColor} 24%, transparent)`, fontSize: 10 }}>
                         {plan.category}
                       </span>
                       {balance && (
@@ -516,14 +553,34 @@ export default function PlansPage() {
                             <Copy size={13} /> Clone
                           </button>
                           {plan.isCustom && (
-                            <button
-                              onClick={() => deleteCustomPlan(plan.id!)}
-                              className="btn-cancel"
-                              style={{ padding: '10px 14px', borderRadius: 14, minHeight: 46, fontSize: 12 }}
-                              title="Delete custom plan"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                            confirmDeleteId === plan.id ? (
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button
+                                  onClick={() => deleteCustomPlan(plan.id!)}
+                                  className="btn-cancel"
+                                  style={{ padding: '10px 12px', borderRadius: 14, minHeight: 46, fontSize: 11, fontWeight: 800 }}
+                                >
+                                  Confirm Delete
+                                </button>
+                                <button
+                                  onClick={() => setConfirmDeleteId(null)}
+                                  className="btn-secondary"
+                                  style={{ padding: '10px 10px', borderRadius: 14, minHeight: 46, fontSize: 11 }}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setConfirmDeleteId(plan.id!)}
+                                className="btn-cancel"
+                                aria-label={`Delete custom plan ${plan.name}`}
+                                style={{ padding: '10px 14px', borderRadius: 14, minHeight: 46, fontSize: 12 }}
+                                title="Delete custom plan"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )
                           )}
                         </div>
                       </div>

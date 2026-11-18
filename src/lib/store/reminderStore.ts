@@ -17,6 +17,34 @@ interface ReminderState {
   stopBackgroundCheck: () => void;
 }
 
+async function showWorkoutNotification(title: string, body: string, tag: string): Promise<void> {
+  if (typeof window === 'undefined' || typeof Notification === 'undefined') return;
+  try {
+    new Notification(title, {
+      body,
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      tag,
+    });
+    return;
+  } catch {
+    // Mobile Chrome / Android WebView fallback via ServiceWorkerRegistration
+    try {
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg && typeof reg.showNotification === 'function') {
+          await reg.showNotification(title, {
+            body,
+            icon: '/icon-192.png',
+            badge: '/icon-192.png',
+            tag,
+          });
+        }
+      }
+    } catch {}
+  }
+}
+
 export const useReminderStore = create<ReminderState>((set, get) => ({
   reminders: [],
   permissionGranted: typeof Notification !== 'undefined' && Notification.permission === 'granted',
@@ -25,8 +53,13 @@ export const useReminderStore = create<ReminderState>((set, get) => ({
   loadReminders: async () => {
     try {
       const all = await db.workoutReminders.toArray();
-      set({ reminders: all });
-    } catch { set({ reminders: [] }); }
+      set({
+        reminders: all,
+        permissionGranted: typeof Notification !== 'undefined' && Notification.permission === 'granted',
+      });
+    } catch {
+      set({ reminders: [] });
+    }
   },
 
   addReminder: async (reminder) => {
@@ -59,11 +92,18 @@ export const useReminderStore = create<ReminderState>((set, get) => ({
 
   requestPermission: async () => {
     if (typeof Notification === 'undefined') return false;
-    if (Notification.permission === 'granted') { set({ permissionGranted: true }); return true; }
-    const result = await Notification.requestPermission();
-    const granted = result === 'granted';
-    set({ permissionGranted: granted });
-    return granted;
+    if (Notification.permission === 'granted') {
+      set({ permissionGranted: true });
+      return true;
+    }
+    try {
+      const result = await Notification.requestPermission();
+      const granted = result === 'granted';
+      set({ permissionGranted: granted });
+      return granted;
+    } catch {
+      return false;
+    }
   },
 
   startBackgroundCheck: () => {
@@ -80,37 +120,42 @@ export const useReminderStore = create<ReminderState>((set, get) => ({
       const reminders = get().reminders.filter(r => r.isEnabled);
       for (const r of reminders) {
         if (r.dayOfWeek !== dayOfWeek || r.timeHour !== hour || r.timeMinute !== minute) continue;
-        // Check if already fired this minute
         if (r.lastFiredAt) {
           const lastFired = new Date(r.lastFiredAt);
-          if (lastFired.getFullYear() === now.getFullYear() &&
-              lastFired.getMonth() === now.getMonth() &&
-              lastFired.getDate() === now.getDate() &&
-              lastFired.getHours() === now.getHours() &&
-              lastFired.getMinutes() === now.getMinutes()) continue;
+          if (
+            lastFired.getFullYear() === now.getFullYear() &&
+            lastFired.getMonth() === now.getMonth() &&
+            lastFired.getDate() === now.getDate() &&
+            lastFired.getHours() === now.getHours() &&
+            lastFired.getMinutes() === now.getMinutes()
+          ) {
+            continue;
+          }
         }
-        // Fire notification
         try {
-          new Notification('🏋️ IronForge', {
-            body: r.label || 'Time for your workout!',
-            icon: '/favicon.ico',
-            badge: '/favicon.ico',
-            tag: `reminder-${r.id}`,
-          });
+          await showWorkoutNotification(
+            '🏋️ IronForge',
+            r.label || 'Time for your workout!',
+            `reminder-${r.id}`
+          );
           if (r.id) {
             await db.workoutReminders.update(r.id, { lastFiredAt: now });
+            await get().loadReminders();
           }
         } catch {}
       }
     };
 
-    const id = setInterval(checkAndFire, 30000); // Check every 30 seconds
+    const id = setInterval(checkAndFire, 30000);
     set({ intervalId: id });
-    checkAndFire(); // Run immediately once
+    void checkAndFire();
   },
 
   stopBackgroundCheck: () => {
     const id = get().intervalId;
-    if (id) { clearInterval(id); set({ intervalId: null }); }
+    if (id) {
+      clearInterval(id);
+      set({ intervalId: null });
+    }
   },
 }));
