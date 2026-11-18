@@ -390,7 +390,8 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
             sessionId: savedSessionId,
             exerciseId: ex.exerciseId,
             exerciseName: ex.exerciseName,
-            order: exOrder,
+            wasSwapped: Boolean(ex.originalExerciseName && ex.originalExerciseName !== ex.exerciseName),
+            orderIndex: exOrder,
             notes: ex.notes?.trim() || undefined,
           });
           sessionExIdByOrder.set(exOrder, seId);

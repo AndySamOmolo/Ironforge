@@ -12,6 +12,7 @@ import { db } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
 import type { BodyWeight, BodyMeasurement, WaterLog } from '@/lib/types';
 import { ALL_EQUIPMENT, EQUIPMENT_PRESETS } from '@/lib/utils/exerciseResolver';
+import { calculatePlates } from '@/lib/utils/plateCalculator';
 import {
   THEME_OPTIONS,
   CUSTOM_ACCENT_OPTIONS,
