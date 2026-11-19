@@ -8,11 +8,13 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.media.AudioAttributes;
 import android.media.AudioManager;
 import android.media.ToneGenerator;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.VibrationAttributes;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
@@ -179,66 +181,78 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public boolean triggerHaptic(final String mode) {
             final String safeMode = mode != null ? mode.trim().toLowerCase() : "light";
+            try {
+                Vibrator vibrator = null;
+                if (Build.VERSION.SDK_INT >= 31) {
+                    VibratorManager vm = (VibratorManager) getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
+                    if (vm != null) {
+                        vibrator = vm.getDefaultVibrator();
+                    }
+                } else {
+                    //noinspection deprecation
+                    vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+                }
+
+                if (vibrator != null && vibrator.hasVibrator()) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        VibrationEffect effect;
+                        switch (safeMode) {
+                            case "success":
+                                effect = VibrationEffect.createWaveform(
+                                        new long[]{0, 30, 50, 45},
+                                        new int[]{0, 210, 0, 255},
+                                        -1
+                                );
+                                break;
+                            case "warning":
+                                effect = VibrationEffect.createWaveform(
+                                        new long[]{0, 40, 45, 40},
+                                        new int[]{0, 235, 0, 235},
+                                        -1
+                                );
+                                break;
+                            case "medium":
+                                effect = VibrationEffect.createOneShot(34, 235);
+                                break;
+                            default:
+                                effect = VibrationEffect.createOneShot(20, 190);
+                                break;
+                        }
+                        if (Build.VERSION.SDK_INT >= 33) {
+                            VibrationAttributes attrs = new VibrationAttributes.Builder()
+                                    .setUsage(VibrationAttributes.USAGE_MEDIA)
+                                    .build();
+                            vibrator.vibrate(effect, attrs);
+                        } else {
+                            AudioAttributes audioAttrs = new AudioAttributes.Builder()
+                                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                                    .build();
+                            //noinspection deprecation
+                            vibrator.vibrate(effect, audioAttrs);
+                        }
+                    } else {
+                        //noinspection deprecation
+                        if ("success".equals(safeMode) || "warning".equals(safeMode)) {
+                            vibrator.vibrate(new long[]{0, 30, 50, 45}, -1);
+                        } else if ("medium".equals(safeMode)) {
+                            vibrator.vibrate(34);
+                        } else {
+                            vibrator.vibrate(20);
+                        }
+                    }
+                    return true;
+                }
+            } catch (Exception ignored) {}
+
+            // Fallback to View haptic feedback if Vibrator service is unavailable
             runOnUiThread(() -> {
                 try {
                     if (getBridge() != null && getBridge().getWebView() != null) {
                         int constant = "success".equals(safeMode) && Build.VERSION.SDK_INT >= 30
                                 ? HapticFeedbackConstants.CONFIRM
                                 : HapticFeedbackConstants.KEYBOARD_TAP;
-                        getBridge().getWebView().performHapticFeedback(
-                                constant,
-                                HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING
-                        );
-                    }
-                } catch (Exception ignored) {}
-
-                try {
-                    Vibrator vibrator = null;
-                    if (Build.VERSION.SDK_INT >= 31) {
-                        VibratorManager vm = (VibratorManager) getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
-                        if (vm != null) {
-                            vibrator = vm.getDefaultVibrator();
-                        }
-                    } else {
-                        //noinspection deprecation
-                        vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
-                    }
-                    if (vibrator == null || !vibrator.hasVibrator()) return;
-
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        VibrationEffect effect;
-                        switch (safeMode) {
-                            case "success":
-                                effect = VibrationEffect.createWaveform(
-                                        new long[]{0, 22, 45, 34},
-                                        new int[]{0, 170, 0, 235},
-                                        -1
-                                );
-                                break;
-                            case "warning":
-                                effect = VibrationEffect.createWaveform(
-                                        new long[]{0, 35, 40, 35},
-                                        new int[]{0, 210, 0, 210},
-                                        -1
-                                );
-                                break;
-                            case "medium":
-                                effect = VibrationEffect.createOneShot(24, 185);
-                                break;
-                            default:
-                                effect = VibrationEffect.createOneShot(14, 130);
-                                break;
-                        }
-                        vibrator.vibrate(effect);
-                    } else {
-                        //noinspection deprecation
-                        if ("success".equals(safeMode) || "warning".equals(safeMode)) {
-                            vibrator.vibrate(new long[]{0, 25, 45, 35}, -1);
-                        } else if ("medium".equals(safeMode)) {
-                            vibrator.vibrate(24);
-                        } else {
-                            vibrator.vibrate(14);
-                        }
+                        getBridge().getWebView().performHapticFeedback(constant);
                     }
                 } catch (Exception ignored) {}
             });

@@ -603,7 +603,10 @@ export default function ProfilePage() {
       role="switch"
       aria-checked={enabled}
       aria-label={label || 'Toggle setting'}
-      onClick={onToggle}
+      onClick={() => {
+        triggerWorkoutHaptic('light', hapticEnabled);
+        onToggle();
+      }}
       style={{
         width: 46,
         height: 26,
@@ -756,12 +759,21 @@ export default function ProfilePage() {
             ariaLabel="Quick equipment presets"
             style={{ marginBottom: 4 }}
             chipStyle={{ fontSize: 11, padding: '6px 11px', minHeight: 32 }}
-            items={EQUIPMENT_PRESETS.map(preset => ({
-              id: preset.id,
-              label: preset.label,
-              icon: <span>{preset.icon}</span>,
-              onClick: () => applyEquipmentPreset(preset.items),
-            }))}
+            items={EQUIPMENT_PRESETS.map(preset => {
+              const isMatched =
+                preset.items.length === equipment.length &&
+                preset.items.every(item => equipment.includes(item));
+              return {
+                id: preset.id,
+                label: preset.label,
+                icon: <span>{preset.icon}</span>,
+                isActive: isMatched,
+                onClick: () => {
+                  triggerWorkoutHaptic('light', hapticEnabled);
+                  applyEquipmentPreset(preset.items);
+                },
+              };
+            })}
           />
 
           {/* Equipment */}

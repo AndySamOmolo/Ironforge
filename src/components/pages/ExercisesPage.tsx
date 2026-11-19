@@ -132,16 +132,15 @@ export default function ExercisesPage() {
             <div
               className="icon-badge"
               style={{
-                width: 42,
-                height: 42,
-                borderRadius: 12,
-                background: 'var(--gradient-fire)',
-                boxShadow: '0 4px 16px var(--glow-red)',
-                color: 'var(--text-on-accent)',
+                width: 38,
+                height: 38,
+                borderRadius: 10,
+                background: 'color-mix(in srgb, var(--accent-orange) 14%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--accent-orange) 28%, transparent)',
                 flexShrink: 0,
               }}
             >
-              <Dumbbell size={20} />
+              <Dumbbell size={18} color="var(--accent-orange)" />
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
               <h1 className="font-display" style={{ fontSize: 23, fontWeight: 800, letterSpacing: '-0.025em', lineHeight: 1.15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>

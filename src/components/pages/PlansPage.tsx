@@ -289,16 +289,15 @@ export default function PlansPage() {
           <div
             className="icon-badge"
             style={{
-              width: 40,
-              height: 40,
-              borderRadius: 12,
-              background: 'var(--gradient-fire)',
-              boxShadow: '0 4px 14px var(--glow-red)',
-              color: 'var(--text-on-accent)',
+              width: 38,
+              height: 38,
+              borderRadius: 10,
+              background: 'color-mix(in srgb, var(--accent-red) 14%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--accent-red) 28%, transparent)',
               flexShrink: 0,
             }}
           >
-            <ClipboardList size={19} />
+            <ClipboardList size={18} color="var(--accent-red)" />
           </div>
           <div style={{ minWidth: 0, flex: 1 }}>
             <h1 className="font-display" style={{ fontSize: 23, fontWeight: 800, letterSpacing: '-0.025em', lineHeight: 1.15, whiteSpace: 'nowrap' }}>
@@ -340,8 +339,8 @@ export default function PlansPage() {
           cursor: 'pointer', padding: '14px 16px', border: '1px solid var(--border-subtle)', minHeight: 56,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--gradient-mint)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Settings size={16} color="white" />
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'color-mix(in srgb, var(--accent-green) 14%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-green) 28%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Settings size={16} color="var(--accent-green)" />
             </div>
             <div style={{ textAlign: 'left' }}>
               <div style={{ fontSize: 14, fontWeight: 700 }}>My Equipment & Variety</div>
@@ -959,13 +958,19 @@ function SmartWorkoutGeneratorModal({
           dropdownTitle="Balanced Split Presets"
           ariaLabel="Balanced split presets"
           style={{ marginBottom: 12 }}
-          chipStyle={{ fontSize: 10.5, padding: '5px 10px', minHeight: 30 }}
-          items={SPLIT_PRESETS.map(p => ({
-            id: p.label,
-            label: p.label,
-            icon: <Scale size={11} />,
-            onClick: () => setSelectedMuscles(p.muscles),
-          }))}
+          chipStyle={{ fontSize: 10.5, padding: '5px 11px', minHeight: 31 }}
+          items={SPLIT_PRESETS.map(p => {
+            const isMatched =
+              p.muscles.length === selectedMuscles.length &&
+              p.muscles.every(m => selectedMuscles.includes(m));
+            return {
+              id: p.label,
+              label: p.label,
+              icon: <Scale size={11} />,
+              isActive: isMatched,
+              onClick: () => setSelectedMuscles([...p.muscles]),
+            };
+          })}
         />
 
         <div className="section-label" style={{ marginBottom: 8 }}>Target Muscles</div>

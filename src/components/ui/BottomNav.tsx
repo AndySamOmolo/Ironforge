@@ -7,7 +7,7 @@ import { useUserStore } from '@/lib/store/userStore';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
 import { db } from '@/lib/db/schema';
 import { ALL_EQUIPMENT, resolveWorkoutDayExercises, generateSmartWorkout, matchesUserEquipment } from '@/lib/utils/exerciseResolver';
-import { getWorkoutStartingWeight, resolveNextPlanDayIndex } from '@/lib/utils/workoutDefaults';
+import { getWorkoutStartingWeight, resolveNextPlanDayIndex, triggerWorkoutHaptic } from '@/lib/utils/workoutDefaults';
 import { getPrimaryExerciseImage, getExerciseImageFrames, getExerciseGifUrl, hasGifExerciseMedia } from '@/lib/utils/exerciseMedia';
 import { SetType } from '@/lib/types';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -22,7 +22,7 @@ const tabs = [
 
 export default function BottomNav() {
   const { activeTab, setActiveTab } = useUIStore();
-  const { equipment: userEquipment, barWeight, dumbbellWeight, exerciseVariety, defaultRestTime } = useUserStore();
+  const { equipment: userEquipment, barWeight, dumbbellWeight, exerciseVariety, defaultRestTime, hapticEnabled } = useUserStore();
   const { startWorkout, isActive: workoutActive, isMinimized: workoutMinimized, resumeWorkout } = useWorkoutStore();
   const [showQuickLaunch, setShowQuickLaunch] = useState(false);
   const [activePlanName, setActivePlanName] = useState<string | null>(null);
@@ -75,6 +75,7 @@ export default function BottomNav() {
 
   const handleTabClick = (tabId: string) => {
     if (tabId === 'start') {
+      triggerWorkoutHaptic('medium', hapticEnabled);
       if (workoutActive && workoutMinimized) {
         resumeWorkout();
         return;
@@ -82,6 +83,7 @@ export default function BottomNav() {
       setShowQuickLaunch(true);
       return;
     }
+    triggerWorkoutHaptic('light', hapticEnabled);
     setActiveTab(tabId);
   };
 

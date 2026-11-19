@@ -323,16 +323,15 @@ export default function ProgressPage() {
           <div
             className="icon-badge"
             style={{
-              background: 'var(--gradient-fire)',
-              color: 'var(--text-on-accent)',
-              width: 40,
-              height: 40,
-              borderRadius: 12,
-              boxShadow: '0 4px 14px var(--glow-red)',
+              width: 38,
+              height: 38,
+              borderRadius: 10,
+              background: 'color-mix(in srgb, var(--accent-green) 14%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--accent-green) 28%, transparent)',
               flexShrink: 0,
             }}
           >
-            <BarChart3 size={20} />
+            <BarChart3 size={18} color="var(--accent-green)" />
           </div>
           <div style={{ minWidth: 0 }}>
             <h1 className="font-display" style={{ fontSize: 23, fontWeight: 800, letterSpacing: '-0.025em', lineHeight: 1.15 }}>
