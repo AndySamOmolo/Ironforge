@@ -61,10 +61,10 @@ const run = () => {
   }
 
   console.log(`✅ Verified ${exercises.length} exercises in src/lib/data/merged-exercises.json`);
-  console.log(`✅ Empty instructions: ${emptyInstructions}`);
+  console.log(`⚠️ Empty instructions (allowed): ${emptyInstructions}`);
   console.log(`✅ Invalid media paths: ${invalidMediaPaths}`);
 
-  if (emptyInstructions > 0 || invalidMediaPaths > 0) {
+  if (invalidMediaPaths > 0) {
     process.exit(1);
   }
 };

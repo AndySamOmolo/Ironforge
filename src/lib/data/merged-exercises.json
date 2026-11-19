@@ -9944,7 +9944,7 @@
   },
   {
     "exerciseId": "T0yTjgW",
-    "name": "lever chest press (leverage machine)",
+    "name": "lever chest press",
     "gifUrl": "/exercises/T0yTjgW.gif",
     "targetMuscles": [
       "pectorals"
@@ -24956,7 +24956,7 @@
   },
   {
     "exerciseId": "Y4BRNQF",
-    "name": "push-up (on stability ball) (stability ball)",
+    "name": "push-up (on stability ball)",
     "gifUrl": "/exercises/Y4BRNQF.gif",
     "targetMuscles": [
       "pectorals"
@@ -36098,7 +36098,7 @@
   },
   {
     "exerciseId": "ktsFQAZ",
-    "name": "barbell seated calf raise (barbell)",
+    "name": "barbell seated calf raise",
     "gifUrl": "/exercises/ktsFQAZ.gif",
     "targetMuscles": [
       "calves"
@@ -38779,7 +38779,7 @@
   },
   {
     "exerciseId": "BCs0G2F",
-    "name": "barbell sitted alternate leg raise (barbell)",
+    "name": "barbell sitted alternate leg raise",
     "gifUrl": "/exercises/BCs0G2F.gif",
     "targetMuscles": [
       "abs"
@@ -39453,7 +39453,7 @@
   },
   {
     "exerciseId": "C0eCeEt",
-    "name": "twisted leg raise (body weight)",
+    "name": "twisted leg raise",
     "gifUrl": "/exercises/C0eCeEt.gif",
     "targetMuscles": [
       "abs"
@@ -39514,7 +39514,7 @@
   },
   {
     "exerciseId": "Ye5Qxb0",
-    "name": "ez barbell spider curl (ez barbell)",
+    "name": "ez barbell spider curl",
     "gifUrl": "/exercises/Ye5Qxb0.gif",
     "targetMuscles": [
       "biceps"
@@ -40328,8 +40328,14 @@
     "force": null,
     "level": "intermediate",
     "mechanic": null,
-    "images": [],
-    "imageUrls": []
+    "images": [
+      "All_Fours_Quad_Stretch/0.jpg",
+      "All_Fours_Quad_Stretch/1.jpg"
+    ],
+    "imageUrls": [
+      "/exercise-images/All_Fours_Quad_Stretch/0.jpg",
+      "/exercise-images/All_Fours_Quad_Stretch/1.jpg"
+    ]
   },
   {
     "exerciseId": "xiHiJcA",
@@ -41236,7 +41242,7 @@
   },
   {
     "exerciseId": "ywaNfuh",
-    "name": "smith reverse calf raises (smith machine)",
+    "name": "smith reverse calf raises",
     "gifUrl": "/exercises/ywaNfuh.gif",
     "targetMuscles": [
       "calves"
@@ -41462,7 +41468,7 @@
   },
   {
     "exerciseId": "GwYwElT",
-    "name": "self assisted inverse leg curl (body weight)",
+    "name": "self assisted inverse leg curl",
     "gifUrl": "/exercises/GwYwElT.gif",
     "targetMuscles": [
       "hamstrings"
@@ -42905,7 +42911,7 @@
   },
   {
     "exerciseId": "eZ79rbI",
-    "name": "cable kneeling rear delt row (with rope) expanded",
+    "name": "cable kneeling rear delt row (with rope) (male) expanded",
     "gifUrl": "/exercises/eZ79rbI.gif",
     "targetMuscles": [
       "delts"
@@ -43123,7 +43129,7 @@
   },
   {
     "exerciseId": "v6EKk0O",
-    "name": "half knee bends with blunt",
+    "name": "half knee bends (male) with blunt",
     "gifUrl": "/exercises/v6EKk0O.gif",
     "targetMuscles": [
       "cardiovascular system"
@@ -43846,7 +43852,7 @@
   },
   {
     "exerciseId": "Ql4g5s8",
-    "name": "forward lunge with bench",
+    "name": "forward lunge (male) with bench",
     "gifUrl": "/exercises/Ql4g5s8.gif",
     "targetMuscles": [
       "glutes"
@@ -45754,7 +45760,7 @@
   },
   {
     "exerciseId": "ntjtCfu",
-    "name": "barbell sitted alternate leg raise with intermediate",
+    "name": "barbell sitted alternate leg raise (female) with intermediate",
     "gifUrl": "/exercises/ntjtCfu.gif",
     "targetMuscles": [
       "abs"
@@ -46536,7 +46542,7 @@
   },
   {
     "exerciseId": "KQfySvS",
-    "name": "dumbbell reverse grip row hold",
+    "name": "dumbbell reverse grip row (female) hold",
     "gifUrl": "/exercises/KQfySvS.gif",
     "targetMuscles": [
       "upper back"
@@ -48002,8 +48008,8 @@
   },
   {
     "exerciseId": "free_all_fours_quad_stretch",
-    "name": "All Fours Quad Stretch (body weight)",
-    "gifUrl": "",
+    "name": "All Fours Quad Stretch",
+    "gifUrl": "/exercises/qBcKorM.gif",
     "targetMuscles": [
       "quadriceps"
     ],
@@ -54573,7 +54579,7 @@
   },
   {
     "exerciseId": "free_dynamic_chest_stretch",
-    "name": "Dynamic Chest Stretch (body weight)",
+    "name": "Dynamic Chest Stretch",
     "gifUrl": "/exercises/3uj0Ozg.gif",
     "targetMuscles": [
       "chest"
@@ -57789,12 +57795,7 @@
       "quadriceps",
       "traps"
     ],
-    "instructions": [
-      "Grip the gymnastics rings with a false grip and press yourself up into a straight-arm support position.",
-      "Slowly lower your body by abducting your arms outward while keeping your elbows completely locked and scapulae depressed.",
-      "Stop when your arms are horizontal (parallel to the floor) forming a cross with your torso upright.",
-      "Hold the isometric position for the prescribed duration, then pull back to support or safely dismount."
-    ],
+    "instructions": [],
     "force": "push",
     "level": "intermediate",
     "mechanic": "compound",
@@ -61941,12 +61942,7 @@
       "lower back",
       "shoulders"
     ],
-    "instructions": [
-      "Stand with your feet shoulder-width apart and place a kettlebell about a foot in front of you.",
-      "Hinge at the hips, grip the kettlebell with one hand, and hike it back between your legs while keeping your spine neutral.",
-      "Drive your hips forward explosively to propel the kettlebell up to chest or shoulder height with your arm relaxed.",
-      "Let the kettlebell arc back down between your legs by hinging at the hips, then repeat for all reps before switching arms."
-    ],
+    "instructions": [],
     "force": "pull",
     "level": "intermediate",
     "mechanic": "compound",
@@ -64034,12 +64030,7 @@
       "quadriceps",
       "triceps"
     ],
-    "instructions": [
-      "Stand with feet hip-width apart holding a barbell across your front deltoids and clavicles with elbows slightly in front of the bar.",
-      "Brace your core and dip your knees and hips 3 to 4 inches while keeping your torso vertical.",
-      "Drive explosively through your heels to extend your legs and hips, transferring momentum into the bar.",
-      "Press the bar overhead to full lockout with biceps by your ears, then lower it under control back to the front rack."
-    ],
+    "instructions": [],
     "force": "push",
     "level": "expert",
     "mechanic": "compound",
@@ -66058,7 +66049,7 @@
   },
   {
     "exerciseId": "free_seated_calf_stretch",
-    "name": "Seated Calf Stretch (body weight)",
+    "name": "Seated Calf Stretch",
     "gifUrl": "/exercises/17bqEXD.gif",
     "targetMuscles": [
       "calves"
@@ -67142,12 +67133,7 @@
     "secondaryMuscles": [
       "shoulders"
     ],
-    "instructions": [
-      "Lie on your side with your legs extended and prop your upper body up on your forearm with your elbow directly beneath your shoulder.",
-      "Brace your core and glutes, then lift your hips off the floor until your body forms a straight line from ankles to shoulders.",
-      "Hold this position while breathing steadily and preventing your hips from sagging or rotating.",
-      "Lower under control after the target duration and repeat on the opposite side."
-    ],
+    "instructions": [],
     "force": "static",
     "level": "beginner",
     "mechanic": null,
@@ -67210,12 +67196,7 @@
       "body weight"
     ],
     "secondaryMuscles": [],
-    "instructions": [
-      "Lie on your side with your bottom arm extended on the floor for balance and your top hand behind your head.",
-      "Simultaneously contract your obliques to raise your torso and your top leg toward each other.",
-      "Pause briefly at peak contraction when your elbow nears your hip or knee.",
-      "Lower your torso and leg back to the starting position under control and complete all reps on both sides."
-    ],
+    "instructions": [],
     "force": "pull",
     "level": "beginner",
     "mechanic": "compound",
@@ -71235,7 +71216,7 @@
   },
   {
     "exerciseId": "free_star_jump",
-    "name": "Star Jump (body weight)",
+    "name": "Star Jump",
     "gifUrl": "/exercises/HtfCpfi.gif",
     "targetMuscles": [
       "quadriceps"
@@ -73775,12 +73756,7 @@
       "machine"
     ],
     "secondaryMuscles": [],
-    "instructions": [
-      "Adjust the stationary bike saddle and handlebars so your knee has a slight bend at the bottom of the pedal stroke.",
-      "Begin pedaling at a brisk cadence while maintaining an upright posture and engaged core.",
-      "Alternate between seated high-cadence intervals and standing resistance climbs as prescribed.",
-      "Cool down with 1 to 2 minutes of easy pedaling at low resistance."
-    ],
+    "instructions": [],
     "force": null,
     "level": "intermediate",
     "mechanic": null,
