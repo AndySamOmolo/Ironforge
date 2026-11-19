@@ -8,10 +8,16 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.media.AudioManager;
+import android.media.ToneGenerator;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.os.VibratorManager;
 import android.provider.Settings;
+import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -169,6 +175,118 @@ public class MainActivity extends BridgeActivity {
         public void setSystemBarTheme(final String bgHex, final boolean isLightBars) {
             runOnUiThread(() -> applySystemBarTheme(bgHex, isLightBars));
         }
+
+        @JavascriptInterface
+        public boolean triggerHaptic(final String mode) {
+            final String safeMode = mode != null ? mode.trim().toLowerCase() : "light";
+            runOnUiThread(() -> {
+                try {
+                    if (getBridge() != null && getBridge().getWebView() != null) {
+                        int constant = "success".equals(safeMode) && Build.VERSION.SDK_INT >= 30
+                                ? HapticFeedbackConstants.CONFIRM
+                                : HapticFeedbackConstants.KEYBOARD_TAP;
+                        getBridge().getWebView().performHapticFeedback(
+                                constant,
+                                HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING
+                        );
+                    }
+                } catch (Exception ignored) {}
+
+                try {
+                    Vibrator vibrator = null;
+                    if (Build.VERSION.SDK_INT >= 31) {
+                        VibratorManager vm = (VibratorManager) getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
+                        if (vm != null) {
+                            vibrator = vm.getDefaultVibrator();
+                        }
+                    } else {
+                        //noinspection deprecation
+                        vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+                    }
+                    if (vibrator == null || !vibrator.hasVibrator()) return;
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        VibrationEffect effect;
+                        switch (safeMode) {
+                            case "success":
+                                effect = VibrationEffect.createWaveform(
+                                        new long[]{0, 22, 45, 34},
+                                        new int[]{0, 170, 0, 235},
+                                        -1
+                                );
+                                break;
+                            case "warning":
+                                effect = VibrationEffect.createWaveform(
+                                        new long[]{0, 35, 40, 35},
+                                        new int[]{0, 210, 0, 210},
+                                        -1
+                                );
+                                break;
+                            case "medium":
+                                effect = VibrationEffect.createOneShot(24, 185);
+                                break;
+                            default:
+                                effect = VibrationEffect.createOneShot(14, 130);
+                                break;
+                        }
+                        vibrator.vibrate(effect);
+                    } else {
+                        //noinspection deprecation
+                        if ("success".equals(safeMode) || "warning".equals(safeMode)) {
+                            vibrator.vibrate(new long[]{0, 25, 45, 35}, -1);
+                        } else if ("medium".equals(safeMode)) {
+                            vibrator.vibrate(24);
+                        } else {
+                            vibrator.vibrate(14);
+                        }
+                    }
+                } catch (Exception ignored) {}
+            });
+            return true;
+        }
+
+        @JavascriptInterface
+        public boolean playTone(final String mode) {
+            final String safeMode = mode != null ? mode.trim().toLowerCase() : "set";
+            new Thread(() -> {
+                ToneGenerator tg = null;
+                try {
+                    int toneType;
+                    int durationMs;
+                    switch (safeMode) {
+                        case "finish":
+                        case "pr":
+                            toneType = ToneGenerator.TONE_PROP_ACK;
+                            durationMs = 240;
+                            break;
+                        case "rest":
+                            toneType = ToneGenerator.TONE_PROP_BEEP2;
+                            durationMs = 220;
+                            break;
+                        case "tick":
+                            toneType = ToneGenerator.TONE_PROP_BEEP;
+                            durationMs = 70;
+                            break;
+                        default:
+                            toneType = ToneGenerator.TONE_PROP_BEEP;
+                            durationMs = 110;
+                            break;
+                    }
+                    tg = new ToneGenerator(AudioManager.STREAM_MUSIC, 72);
+                    tg.startTone(toneType, durationMs);
+                    Thread.sleep(durationMs + 80L);
+                } catch (Exception ignored) {
+                } finally {
+                    if (tg != null) {
+                        try {
+                            tg.release();
+                        } catch (Exception ignored) {}
+                    }
+                }
+            }).start();
+            return true;
+        }
+
 
         @JavascriptInterface
         public void setKeepScreenOn(final boolean enabled) {

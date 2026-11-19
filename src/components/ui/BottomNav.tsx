@@ -7,7 +7,7 @@ import { useUserStore } from '@/lib/store/userStore';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
 import { db } from '@/lib/db/schema';
 import { ALL_EQUIPMENT, resolveWorkoutDayExercises, generateSmartWorkout, matchesUserEquipment } from '@/lib/utils/exerciseResolver';
-import { getWorkoutStartingWeight } from '@/lib/utils/workoutDefaults';
+import { getWorkoutStartingWeight, resolveNextPlanDayIndex } from '@/lib/utils/workoutDefaults';
 import { getPrimaryExerciseImage, getExerciseImageFrames, getExerciseGifUrl, hasGifExerciseMedia } from '@/lib/utils/exerciseMedia';
 import { SetType } from '@/lib/types';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -26,12 +26,40 @@ export default function BottomNav() {
   const { startWorkout, isActive: workoutActive, isMinimized: workoutMinimized, resumeWorkout } = useWorkoutStore();
   const [showQuickLaunch, setShowQuickLaunch] = useState(false);
   const [activePlanName, setActivePlanName] = useState<string | null>(null);
+  const [nextPlanDayLabel, setNextPlanDayLabel] = useState<string | null>(null);
 
   useEffect(() => {
     if (!showQuickLaunch) return;
-    db.workoutPlans.filter(p => !!p.isActive).first().then(p => {
-      setActivePlanName(p?.name || null);
-    }).catch(() => setActivePlanName(null));
+    let cancelled = false;
+    (async () => {
+      try {
+        const plan = await db.workoutPlans.filter(p => !!p.isActive).first();
+        if (cancelled) return;
+        setActivePlanName(plan?.name || null);
+        if (!plan?.id) {
+          setNextPlanDayLabel(null);
+          return;
+        }
+        const [days, allSessions] = await Promise.all([
+          db.workoutDays.where('planId').equals(plan.id).sortBy('dayNumber'),
+          db.workoutSessions.toArray(),
+        ]);
+        if (cancelled) return;
+        if (days.length > 0) {
+          const nextIdx = resolveNextPlanDayIndex(days, allSessions, plan.name, plan.id);
+          const nextDay = days[nextIdx] || days[0];
+          setNextPlanDayLabel(`D${nextDay.dayNumber} · ${nextDay.name}`);
+        } else {
+          setNextPlanDayLabel(null);
+        }
+      } catch {
+        if (!cancelled) {
+          setActivePlanName(null);
+          setNextPlanDayLabel(null);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
   }, [showQuickLaunch]);
 
   useEffect(() => {
@@ -71,10 +99,12 @@ export default function BottomNav() {
         setActiveTab('plans');
         return;
       }
-      const planCompletedCount = await db.workoutSessions
-        .filter(s => Boolean(s.isComplete) && s.planName === activePlan.name)
-        .count();
-      const nextDay = days[planCompletedCount % days.length];
+      const allSessions = await db.workoutSessions.toArray();
+      const planCompletedCount = allSessions.filter(
+        s => Boolean(s.isComplete) && (s.planName === activePlan.name || (activePlan.id != null && s.planId === activePlan.id))
+      ).length;
+      const nextIdx = resolveNextPlanDayIndex(days, allSessions, activePlan.name, activePlan.id);
+      const nextDay = days[nextIdx] || days[0];
       const savedSwaps: Record<string, { newExerciseId: number; newExerciseName: string; newGifUrl?: string }> = {};
       try {
         const swaps = await db.exerciseSwaps
@@ -269,7 +299,7 @@ export default function BottomNav() {
                   </div>
                   <div>
                     <div style={{ fontSize: 15, fontWeight: 800 }}>{activePlanName ? `Next Day in ${activePlanName}` : 'Choose an Active Plan'}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{activePlanName ? 'Automatically picks the next scheduled day for your equipment' : 'Browse 19 balanced workout programs to activate your split'}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{activePlanName ? (nextPlanDayLabel ? `Up next: ${nextPlanDayLabel}` : 'Automatically picks the next scheduled day for your equipment') : 'Browse balanced workout programs to activate your split'}</div>
                   </div>
                 </button>
 

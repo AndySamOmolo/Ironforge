@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useReminderStore } from '@/lib/store/reminderStore';
 import { db } from '@/lib/db/schema';
+import { unlockAudioContext, playWorkoutSound, triggerWorkoutHaptic } from '@/lib/utils/workoutDefaults';
 import { useUserStore } from '@/lib/store/userStore';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
 import type { BodyWeight, BodyMeasurement, WaterLog } from '@/lib/types';
@@ -1519,7 +1520,7 @@ export default function ProfilePage() {
           </SettingRow>
 
           <SettingRow icon={Volume2} iconColor="var(--accent-yellow)" label="Sound Effects" description="Set & rest timer completion sounds">
-            <Toggle enabled={soundEnabled} onToggle={() => { toggleSound(); saveProfileFields({ soundEnabled: !soundEnabled }); }} />
+            <Toggle enabled={soundEnabled} onToggle={() => { const next = !soundEnabled; toggleSound(); saveProfileFields({ soundEnabled: next }); if (next) { unlockAudioContext(); playWorkoutSound('set', true); } }} />
           </SettingRow>
 
           <SettingRow icon={Bell} iconColor="var(--accent-cyan)" label="Countdown Beeps (3-2-1)" description="Audio ticks on final 3 seconds of rest">
@@ -1527,7 +1528,7 @@ export default function ProfilePage() {
           </SettingRow>
 
           <SettingRow icon={Vibrate} iconColor="var(--accent-pink)" label="Haptic Feedback" description="Vibrate on set & workout completion">
-            <Toggle enabled={hapticEnabled} onToggle={() => { toggleHaptic(); saveProfileFields({ hapticEnabled: !hapticEnabled }); }} />
+            <Toggle enabled={hapticEnabled} onToggle={() => { const next = !hapticEnabled; toggleHaptic(); saveProfileFields({ hapticEnabled: next }); if (next) { triggerWorkoutHaptic('medium', true); } }} />
           </SettingRow>
 
           <SettingRow icon={Smartphone} iconColor="var(--accent-purple)" label="Keep Screen On" description="Prevent screen sleep during workouts">

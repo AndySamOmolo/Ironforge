@@ -7,6 +7,7 @@ import {
   Star, BarChart3, Shuffle, Check, Activity,
 } from 'lucide-react';
 import { db } from '@/lib/db/schema';
+import { resolveNextPlanDayIndex } from '@/lib/utils/workoutDefaults';
 import { useUserStore } from '@/lib/store/userStore';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
 import { useUIStore } from '@/lib/store/uiStore';
@@ -71,6 +72,7 @@ export default function HomePage() {
   const [recentSessions, setRecentSessions] = useState<WorkoutSession[]>([]);
   const [activePlan, setActivePlan] = useState<WorkoutPlan | null>(null);
   const [activePlanDays, setActivePlanDays] = useState<WorkoutDay[]>([]);
+  const [nextPlanDayIdx, setNextPlanDayIdx] = useState(0);
   const [stats, setStats] = useState({
     totalWorkouts: 0,
     weekWorkouts: 0,
@@ -202,6 +204,7 @@ export default function HomePage() {
         setActivePlan(plans);
         const days = await db.workoutDays.where('planId').equals(plans.id!).sortBy('dayNumber');
         setActivePlanDays(days);
+        setNextPlanDayIdx(resolveNextPlanDayIndex(days, completedAll, plans.name, plans.id));
       }
 
       const [catalog, recentSets] = await Promise.all([
@@ -406,7 +409,7 @@ export default function HomePage() {
   const streakDashOffset = Math.max(0, 251 - (251 * Math.min(stats.streak, 7) / 7));
 
   const activeDays = activePlanDays;
-  const nextUpIdx = activeDays.length > 0 ? stats.totalWorkouts % activeDays.length : 0;
+  const nextUpIdx = activeDays.length > 0 ? nextPlanDayIdx % activeDays.length : 0;
 
   return (
     <div className="page-container">

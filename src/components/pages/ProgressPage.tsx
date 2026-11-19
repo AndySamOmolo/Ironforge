@@ -201,21 +201,40 @@ export default function ProgressPage() {
     return map;
   }, [sessions]);
 
-  const calendarWeeks = useMemo(() => {
-    const weeks: { date: string; count: number; isToday: boolean }[][] = [];
+  const { calendarWeeks, calendarMonthHeaders } = useMemo(() => {
+    const weeks: { date: string; count: number; isToday: boolean; isFuture: boolean }[][] = [];
+    const headers: { label: string; weekIndex: number }[] = [];
     const now = new Date();
+    now.setHours(12, 0, 0, 0);
     const today = toLocalDateKey(now);
+    const endSaturday = new Date(now);
+    endSaturday.setDate(now.getDate() + (6 - now.getDay()));
+    let lastMonth = '';
+
     for (let w = 11; w >= 0; w--) {
-      const week: { date: string; count: number; isToday: boolean }[] = [];
+      const week: { date: string; count: number; isToday: boolean; isFuture: boolean }[] = [];
+      let weekFirstMonth = '';
       for (let d = 0; d < 7; d++) {
-        const date = new Date(now);
-        date.setDate(date.getDate() - (w * 7 + (6 - d)));
+        const date = new Date(endSaturday);
+        date.setDate(endSaturday.getDate() - (w * 7 + (6 - d)));
         const key = toLocalDateKey(date);
-        week.push({ date: key, count: calendarData.get(key) || 0, isToday: key === today });
+        if (d === 0) {
+          weekFirstMonth = date.toLocaleDateString('en-US', { month: 'short' });
+        }
+        week.push({
+          date: key,
+          count: calendarData.get(key) || 0,
+          isToday: key === today,
+          isFuture: key > today,
+        });
+      }
+      if (weekFirstMonth && weekFirstMonth !== lastMonth) {
+        headers.push({ label: weekFirstMonth, weekIndex: 11 - w });
+        lastMonth = weekFirstMonth;
       }
       weeks.push(week);
     }
-    return weeks;
+    return { calendarWeeks: weeks, calendarMonthHeaders: headers };
   }, [calendarData]);
 
   const weekStats = useMemo(() => {
@@ -299,14 +318,29 @@ export default function ProgressPage() {
   return (
     <div className="page-container">
       {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-          <div className="icon-badge" style={{ background: 'color-mix(in srgb, var(--accent-green) 10%, transparent)', width: 38, height: 38, borderRadius: 10 }}>
-            <BarChart3 size={18} color="var(--accent-green)" />
+      <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div
+            className="icon-badge"
+            style={{
+              background: 'var(--gradient-fire)',
+              color: 'var(--text-on-accent)',
+              width: 40,
+              height: 40,
+              borderRadius: 12,
+              boxShadow: '0 4px 14px var(--glow-red)',
+              flexShrink: 0,
+            }}
+          >
+            <BarChart3 size={20} />
           </div>
-          <div>
-            <h1 style={{ fontSize: 24, fontWeight: 800 }}>Progress & Analytics</h1>
-            <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>Track your activity consistency, strength, records & 3D body map</p>
+          <div style={{ minWidth: 0 }}>
+            <h1 className="font-display" style={{ fontSize: 23, fontWeight: 800, letterSpacing: '-0.025em', lineHeight: 1.15 }}>
+              <span className="gradient-text">Progress &amp; Analytics</span>
+            </h1>
+            <p style={{ color: 'var(--text-muted)', fontSize: 12, fontWeight: 500, marginTop: 2 }}>
+              Track your consistency, strength, records &amp; 3D body map
+            </p>
           </div>
         </div>
       </motion.div>
@@ -441,36 +475,106 @@ export default function ProgressPage() {
 
           {calendarView && (
             <div className="card" style={{ padding: 14, marginBottom: 14 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>Last 12 Weeks (Tap a day to filter)</span>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{activeDays30d} active days in last 30d</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>Last 12 Weeks</span>
+                <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-muted)' }}>
+                  {activeDays30d} active {activeDays30d === 1 ? 'day' : 'days'} in 30d
+                </span>
               </div>
-              <div style={{ display: 'flex', gap: 3, justifyContent: 'center' }}>
-                {calendarWeeks.map((week, wi) => (
-                  <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    {week.map((cell, di) => {
-                      const isSel = selectedCalendarDate === cell.date;
-                      return (
-                        <button
-                          key={di}
-                          onClick={() => setSelectedCalendarDate(isSel ? null : cell.date)}
-                          title={`${cell.date}: ${cell.count} workout${cell.count !== 1 ? 's' : ''}`}
-                          aria-label={`${cell.date}: ${cell.count} workout${cell.count !== 1 ? 's' : ''}`}
-                          style={{
-                            width: 16, height: 16, minHeight: 28, borderRadius: 3.5, padding: 0, cursor: 'pointer',
-                            background: cell.count === 0 ? 'var(--bg-glass)' : cell.count === 1 ? 'var(--accent-green)' : 'var(--accent-red)',
-                            opacity: cell.count === 0 ? 0.24 : 0.65 + Math.min(cell.count * 0.2, 0.35),
-                            border: isSel ? '1.5px solid var(--text-primary)' : cell.isToday ? '1.5px solid var(--accent-purple)' : 'none',
-                          }}
-                        />
-                      );
-                    })}
-                  </div>
-                ))}
+
+              {/* Month Headers */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <div style={{ width: 24, flexShrink: 0 }} />
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, minmax(0, 1fr))', gap: 4, flex: 1 }}>
+                  {Array.from({ length: 12 }).map((_, wi) => {
+                    const hdr = calendarMonthHeaders.find(h => h.weekIndex === wi);
+                    return (
+                      <div key={wi} style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--text-muted)', textAlign: 'left', overflow: 'visible', whiteSpace: 'nowrap' }}>
+                        {hdr ? hdr.label : ''}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-                <span style={{ fontSize: 8, color: 'var(--text-dim)' }}>12 weeks ago</span>
-                <span style={{ fontSize: 8, color: 'var(--text-dim)' }}>Today</span>
+
+              {/* Weekday Labels + 12x7 Responsive Square Heatmap */}
+              <div style={{ display: 'flex', alignItems: 'stretch', gap: 6 }}>
+                <div style={{ width: 24, flexShrink: 0, display: 'grid', gridTemplateRows: 'repeat(7, minmax(0, 1fr))', gap: 4 }}>
+                  {['Sun', '', 'Tue', '', 'Thu', '', 'Sat'].map((lbl, idx) => (
+                    <span key={idx} style={{ fontSize: 8.5, fontWeight: 600, color: 'var(--text-dim)', display: 'flex', alignItems: 'center' }}>
+                      {lbl}
+                    </span>
+                  ))}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, minmax(0, 1fr))', gap: 4, flex: 1 }}>
+                  {calendarWeeks.map((week, wi) => (
+                    <div key={wi} style={{ display: 'grid', gridTemplateRows: 'repeat(7, minmax(0, 1fr))', gap: 4 }}>
+                      {week.map((cell, di) => {
+                        const isSel = selectedCalendarDate === cell.date;
+                        const bg = cell.isFuture
+                          ? 'transparent'
+                          : cell.count === 0
+                            ? 'var(--bg-track)'
+                            : cell.count === 1
+                              ? 'var(--accent-green)'
+                              : 'var(--accent-red)';
+                        return (
+                          <button
+                            key={di}
+                            type="button"
+                            disabled={cell.isFuture}
+                            className="activity-heatmap-cell"
+                            onClick={() => setSelectedCalendarDate(isSel ? null : cell.date)}
+                            title={`${cell.date}: ${cell.count} workout${cell.count !== 1 ? 's' : ''}`}
+                            aria-label={`${cell.date}: ${cell.count} workout${cell.count !== 1 ? 's' : ''}`}
+                            style={{
+                              width: '100%',
+                              aspectRatio: '1 / 1',
+                              minHeight: 0,
+                              minWidth: 0,
+                              borderRadius: 4.5,
+                              padding: 0,
+                              cursor: cell.isFuture ? 'default' : 'pointer',
+                              background: bg,
+                              opacity: cell.isFuture ? 0.2 : 1,
+                              border: isSel
+                                ? '2px solid var(--text-primary)'
+                                : cell.isToday
+                                  ? '1.5px solid var(--accent-purple)'
+                                  : cell.isFuture
+                                    ? '1px dashed var(--border-subtle)'
+                                    : cell.count === 0
+                                      ? '1px solid var(--border-subtle)'
+                                      : 'none',
+                              boxShadow: cell.count > 0
+                                ? `0 1px 6px color-mix(in srgb, ${cell.count === 1 ? 'var(--accent-green)' : 'var(--accent-red)'} 38%, transparent)`
+                                : 'none',
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Footer & Legend */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, gap: 8 }}>
+                <span style={{ fontSize: 9.5, color: 'var(--text-dim)', fontWeight: 600 }}>Tap any day to filter</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 9.5, color: 'var(--text-muted)', fontWeight: 600 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ width: 9, height: 9, borderRadius: 2.5, background: 'var(--bg-track)', border: '1px solid var(--border-subtle)', display: 'inline-block' }} />
+                    Rest
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ width: 9, height: 9, borderRadius: 2.5, background: 'var(--accent-green)', display: 'inline-block' }} />
+                    1
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ width: 9, height: 9, borderRadius: 2.5, background: 'var(--accent-red)', display: 'inline-block' }} />
+                    2+
+                  </span>
+                </div>
               </div>
               {selectedCalendarDate && (
                 <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 10, background: 'color-mix(in srgb, var(--accent-purple) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-purple) 30%, transparent)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
@@ -527,7 +631,7 @@ export default function ProgressPage() {
                         </div>
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div className="font-mono" style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-green)' }}>{fmtVol(s.totalVolume)}{unitLabel}</div>
+                        <div className="font-mono" style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-green)' }}>{fmtVol(s.totalVolume)} {unitLabel}</div>
                         <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{s.totalSets} sets</div>
                       </div>
                       {isExpanded ? <ChevronDown size={14} color="var(--text-muted)" /> : <ChevronRight size={14} color="var(--text-muted)" />}
@@ -542,7 +646,7 @@ export default function ProgressPage() {
                               { v: fmtDur(s.duration), l: 'Duration' },
                               { v: s.totalSets, l: 'Sets' },
                               { v: s.totalReps, l: 'Reps' },
-                              { v: `${fmtVol(s.totalVolume)}${unitLabel}`, l: 'Volume' },
+                              { v: `${fmtVol(s.totalVolume)} ${unitLabel}`, l: 'Volume' },
                             ].map((st, i) => (
                               <div key={i} style={{ textAlign: 'center', padding: 6, background: 'var(--bg-glass)', borderRadius: 8 }}>
                                 <div className="font-mono" style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-green)' }}>{st.v}</div>
@@ -745,7 +849,7 @@ export default function ProgressPage() {
                       <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.dayName || s.planName || 'Workout'}</div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(s.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
                     </div>
-                    <div className="font-mono" style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-green)' }}>{fmtVol(s.totalVolume)}{unitLabel}</div>
+                    <div className="font-mono" style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-green)' }}>{fmtVol(s.totalVolume)} {unitLabel}</div>
                   </div>
                 ))}
               </div>

@@ -17,7 +17,15 @@ import { getSwapSuggestions } from '@/lib/utils/swapEngine';
 import { calculatePlates } from '@/lib/utils/plateCalculator';
 import { getProgressionSuggestion, estimate1RM, type ProgressionSuggestion } from '@/lib/utils/progressionEngine';
 import { matchesUserEquipment } from '@/lib/utils/exerciseResolver';
-import { getWorkoutStartingWeight, createKeepScreenAwakeController } from '@/lib/utils/workoutDefaults';
+import {
+  getWorkoutStartingWeight,
+  createKeepScreenAwakeController,
+  unlockAudioContext,
+  playWorkoutSound,
+  triggerWorkoutHaptic,
+  WorkoutHapticMode,
+  WorkoutSoundMode,
+} from '@/lib/utils/workoutDefaults';
 import { getYoutubeSearchUrl, getVideoSearchOptions } from '@/lib/data/youtube-ids';
 import {
   getPrimaryExerciseImage,
@@ -111,13 +119,16 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const restTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isFinishingRef = useRef(false);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleUnlock = () => {
+      unlockAudioContext();
+    };
+    window.addEventListener('pointerdown', handleUnlock, { passive: true, once: true });
+    window.addEventListener('touchstart', handleUnlock, { passive: true, once: true });
     return () => {
-      if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
-        audioCtxRef.current.close().catch(() => {});
-      }
+      window.removeEventListener('pointerdown', handleUnlock);
+      window.removeEventListener('touchstart', handleUnlock);
     };
   }, []);
 
@@ -256,54 +267,12 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     [currentSetIndex, currentExercise, barWeight, unitSystem]
   );
 
-  const triggerHaptic = useCallback((mode: 'light' | 'success' = 'light') => {
-    if (!hapticEnabled || typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return;
-    if (mode === 'success') {
-      navigator.vibrate([20, 30, 20]);
-      return;
-    }
-    navigator.vibrate(14);
+  const triggerHaptic = useCallback((mode: WorkoutHapticMode = 'light') => {
+    triggerWorkoutHaptic(mode, hapticEnabled);
   }, [hapticEnabled]);
 
-  const playFeedbackTone = useCallback((mode: 'set' | 'finish' | 'rest' | 'tick' | 'pr') => {
-    if (!soundEnabled || typeof window === 'undefined') return;
-    try {
-      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
-      if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
-        audioCtxRef.current = new AudioCtx();
-      }
-      const ctx = audioCtxRef.current!;
-      if (ctx.state === 'suspended') {
-        ctx.resume().catch(() => {});
-      }
-      const now = ctx.currentTime;
-      const gain = ctx.createGain();
-      gain.connect(ctx.destination);
-      gain.gain.setValueAtTime(0.0001, now);
-
-      const sequence = mode === 'finish' || mode === 'pr'
-        ? [660, 880, 1100, 1320]
-        : mode === 'rest'
-          ? [880, 1100]
-          : mode === 'tick'
-            ? [540]
-            : [760];
-
-      sequence.forEach((freq, idx) => {
-        const osc = ctx.createOscillator();
-        const start = now + idx * 0.1;
-        const stop = start + (mode === 'tick' ? 0.05 : 0.09);
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, start);
-        osc.connect(gain);
-        gain.gain.setValueAtTime(0.0001, start);
-        gain.gain.exponentialRampToValueAtTime(mode === 'tick' ? 0.08 : 0.14, start + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, stop);
-        osc.start(start);
-        osc.stop(stop);
-      });
-    } catch {}
+  const playFeedbackTone = useCallback((mode: WorkoutSoundMode) => {
+    playWorkoutSound(mode, soundEnabled);
   }, [soundEnabled]);
 
   useEffect(() => {
@@ -315,6 +284,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
       }
     } else if (restTimerActive && countdownSound && restTimeRemaining > 0 && restTimeRemaining <= 3) {
       playFeedbackTone('tick');
+      triggerHaptic('light');
     }
   }, [restTimeRemaining, restTimerActive, countdownSound, playFeedbackTone, triggerHaptic, notificationsEnabled, exercises, currentExerciseIndex]);
 
@@ -730,17 +700,8 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
       {/* Compact Sticky Top Header */}
       <div style={{ position: 'sticky', top: 0, background: 'var(--bg-sheet)', backdropFilter: 'blur(24px)', zIndex: 50, padding: '8px 12px 6px', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-          {/* Left: Minimize + End */}
+          {/* Left: End + Minimize */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-            <button
-              onClick={minimizeWorkout}
-              className="btn-secondary"
-              title="Minimize workout to browse app"
-              aria-label="Minimize workout"
-              style={{ width: 'auto', minHeight: 32, padding: '5px 9px', fontSize: 11, fontWeight: 700, borderRadius: 9, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-            >
-              <Minimize2 size={12} />
-            </button>
             <button
               onClick={handleCancel}
               className="btn-cancel"
@@ -749,6 +710,15 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
               aria-label="End workout"
             >
               <X size={12} />
+            </button>
+            <button
+              onClick={minimizeWorkout}
+              className="btn-secondary"
+              title="Minimize workout to browse app"
+              aria-label="Minimize workout"
+              style={{ width: 'auto', minHeight: 32, padding: '5px 9px', fontSize: 11, fontWeight: 700, borderRadius: 9, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            >
+              <Minimize2 size={12} />
             </button>
           </div>
 
@@ -1149,16 +1119,16 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
 
                 {/* Weight Stepper */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                  <button aria-label={`Decrease set ${setIdx + 1} weight`} onClick={() => updateSetWeight(currentExerciseIndex, setIdx, Math.max(0, Number((set.weight - stepWeight).toFixed(2))))} style={{ width: 28, height: 34, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Minus size={12} /></button>
-                  <button className="set-input" onClick={() => openNumpad('weight', currentExerciseIndex, setIdx)} style={{ cursor: 'pointer', width: 54, minHeight: 34, padding: '4px 2px', fontSize: 14.5 }}>{set.weight}</button>
-                  <button aria-label={`Increase set ${setIdx + 1} weight`} onClick={() => updateSetWeight(currentExerciseIndex, setIdx, Number((set.weight + stepWeight).toFixed(2)))} style={{ width: 28, height: 34, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Plus size={12} /></button>
+                  <button aria-label={`Decrease set ${setIdx + 1} weight`} onClick={() => { triggerHaptic('light'); updateSetWeight(currentExerciseIndex, setIdx, Math.max(0, Number((set.weight - stepWeight).toFixed(2)))); }} style={{ width: 28, height: 34, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Minus size={12} /></button>
+                  <button className="set-input" onClick={() => { triggerHaptic('light'); openNumpad('weight', currentExerciseIndex, setIdx); }} style={{ cursor: 'pointer', width: 54, minHeight: 34, padding: '4px 2px', fontSize: 14.5 }}>{set.weight}</button>
+                  <button aria-label={`Increase set ${setIdx + 1} weight`} onClick={() => { triggerHaptic('light'); updateSetWeight(currentExerciseIndex, setIdx, Number((set.weight + stepWeight).toFixed(2))); }} style={{ width: 28, height: 34, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Plus size={12} /></button>
                 </div>
 
                 {/* Reps Stepper */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                  <button aria-label={`Decrease set ${setIdx + 1} reps`} onClick={() => updateSetReps(currentExerciseIndex, setIdx, Math.max(0, set.reps - 1))} style={{ width: 28, height: 34, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Minus size={12} /></button>
-                  <button className="set-input" onClick={() => openNumpad('reps', currentExerciseIndex, setIdx)} style={{ cursor: 'pointer', width: 46, minHeight: 34, padding: '4px 2px', fontSize: 14.5 }}>{set.reps || set.targetReps}</button>
-                  <button aria-label={`Increase set ${setIdx + 1} reps`} onClick={() => updateSetReps(currentExerciseIndex, setIdx, (set.reps || set.targetReps) + 1)} style={{ width: 28, height: 34, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Plus size={12} /></button>
+                  <button aria-label={`Decrease set ${setIdx + 1} reps`} onClick={() => { triggerHaptic('light'); updateSetReps(currentExerciseIndex, setIdx, Math.max(0, set.reps - 1)); }} style={{ width: 28, height: 34, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Minus size={12} /></button>
+                  <button className="set-input" onClick={() => { triggerHaptic('light'); openNumpad('reps', currentExerciseIndex, setIdx); }} style={{ cursor: 'pointer', width: 46, minHeight: 34, padding: '4px 2px', fontSize: 14.5 }}>{set.reps || set.targetReps}</button>
+                  <button aria-label={`Increase set ${setIdx + 1} reps`} onClick={() => { triggerHaptic('light'); updateSetReps(currentExerciseIndex, setIdx, (set.reps || set.targetReps) + 1); }} style={{ width: 28, height: 34, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Plus size={12} /></button>
                 </div>
 
                 {/* Complete / Status Button */}
