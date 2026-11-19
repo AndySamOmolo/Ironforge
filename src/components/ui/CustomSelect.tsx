@@ -588,6 +588,7 @@ export function ChipScrollBar({
                     fontSize: 11.5,
                     padding: '6px 11px',
                     minHeight: 32,
+                    textTransform: chipStyle?.textTransform,
                   }}
                 >
                   {item.icon}

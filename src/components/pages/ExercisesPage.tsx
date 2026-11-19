@@ -173,10 +173,10 @@ export default function ExercisesPage() {
           <input
             className="search-bar"
             type="text"
-            placeholder="Search exercises, muscles, equipment..."
+            placeholder="Search exercises, muscles, gear..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ paddingLeft: 42, paddingRight: searchQuery ? 84 : 50, minHeight: 46 }}
+            style={{ paddingLeft: 40, paddingRight: searchQuery ? 82 : 48, minHeight: 42 }}
           />
           {searchQuery && (
             <button

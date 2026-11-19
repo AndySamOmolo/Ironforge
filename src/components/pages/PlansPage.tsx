@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronRight, ChevronDown, ChevronUp, Target, Plus, X, Check, Settings, Search, Play, XCircle, Shuffle, Sparkles, Trash2, Copy, Scale, Dumbbell } from 'lucide-react';
+import { ChevronRight, ChevronDown, ChevronUp, Target, Plus, X, Check, Settings, Search, Play, XCircle, Shuffle, Sparkles, Trash2, Copy, Scale, Dumbbell, ClipboardList } from 'lucide-react';
 import { useUIStore } from '@/lib/store/uiStore';
 import { db } from '@/lib/db/schema';
 import { useUserStore } from '@/lib/store/userStore';
@@ -284,35 +284,51 @@ export default function PlansPage() {
   return (
     <div className="page-container">
       {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-          <div>
-            <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em' }}>
+      <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 12 }}>
+          <div
+            className="icon-badge"
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 12,
+              background: 'var(--gradient-fire)',
+              boxShadow: '0 4px 14px var(--glow-red)',
+              color: 'var(--text-on-accent)',
+              flexShrink: 0,
+            }}
+          >
+            <ClipboardList size={19} />
+          </div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <h1 className="font-display" style={{ fontSize: 23, fontWeight: 800, letterSpacing: '-0.025em', lineHeight: 1.15, whiteSpace: 'nowrap' }}>
               <span className="gradient-text">Workout Plans</span>
             </h1>
-            <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>
+            <p style={{ color: 'var(--text-muted)', fontSize: 11.5, fontWeight: 600, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {isLoadingPlans
-                ? 'Loading balanced programs & exercise catalog...'
-                : `${plans.length} balanced programs • ${availableExerciseCount.toLocaleString()} exercises match your equipment`}
+                ? 'Loading balanced programs...'
+                : `${plans.length} programs • ${availableExerciseCount.toLocaleString()} exercises matched`}
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-            <button
-              onClick={() => setActiveTab('exercises')}
-              className="btn-secondary"
-              title="Browse full Exercise Library"
-              style={{ padding: '10px 12px', borderRadius: 12, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, border: '1px solid var(--border-bright)' }}
-            >
-              <Dumbbell size={14} color="var(--accent-green)" /> Library
-            </button>
-            <button
-              onClick={() => setShowSmartGenerator(true)}
-              className="btn-secondary"
-              style={{ padding: '10px 14px', borderRadius: 12, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, border: '1px solid var(--accent-purple)' }}
-            >
-              <Sparkles size={14} color="var(--accent-purple)" /> Generate
-            </button>
-          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => setActiveTab('exercises')}
+            className="btn-secondary"
+            title="Browse full Exercise Library"
+            style={{ padding: '9px 12px', minHeight: 40, borderRadius: 12, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: '1px solid var(--border-subtle)' }}
+          >
+            <Dumbbell size={14} color="var(--accent-green)" /> Exercise Library
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowSmartGenerator(true)}
+            className="btn-secondary"
+            style={{ padding: '9px 12px', minHeight: 40, borderRadius: 12, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: '1px solid color-mix(in srgb, var(--accent-purple) 45%, transparent)' }}
+          >
+            <Sparkles size={14} color="var(--accent-purple)" /> Smart Generate
+          </button>
         </div>
       </motion.div>
 

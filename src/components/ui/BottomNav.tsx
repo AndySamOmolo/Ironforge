@@ -199,9 +199,9 @@ export default function BottomNav() {
                 onClick={() => handleTabClick(tab.id)}
                 aria-label="Start workout"
               >
-                <div style={{
-                  position: 'absolute', width: 64, height: 64, borderRadius: '50%',
-                  border: '2px solid var(--border-active)',
+                <div className="nav-start-ring" style={{
+                  position: 'absolute', width: 62, height: 62, borderRadius: '50%',
+                  border: '1.5px solid var(--border-active)',
                   animation: 'pulse-dot 3s ease-in-out infinite',
                   pointerEvents: 'none',
                 }} />
