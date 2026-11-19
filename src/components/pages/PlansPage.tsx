@@ -18,7 +18,7 @@ import {
   type PlanMuscleBalanceSummary,
 } from '@/lib/utils/exerciseResolver';
 import ExerciseMedia from '@/components/ui/ExerciseMedia';
-import CustomSelect from '@/components/ui/CustomSelect';
+import CustomSelect, { ChipScrollBar } from '@/components/ui/CustomSelect';
 
 const CATEGORY_COLORS: Record<string, string> = {
   Hypertrophy: 'var(--accent-purple)',
@@ -342,18 +342,18 @@ export default function PlansPage() {
             <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} style={{ overflow: 'hidden' }}>
               <div className="card" style={{ marginTop: 8, padding: 14 }}>
                 <div className="section-label" style={{ marginBottom: 8 }}>Quick Equipment Presets</div>
-                <div className="chip-scroll" style={{ marginBottom: 12 }}>
-                  {EQUIPMENT_PRESETS.map(preset => (
-                    <button
-                      key={preset.id}
-                      className="filter-chip"
-                      onClick={() => persistEquipment(preset.items)}
-                      style={{ fontSize: 11, padding: '6px 12px' }}
-                    >
-                      <span>{preset.icon}</span> {preset.label}
-                    </button>
-                  ))}
-                </div>
+                <ChipScrollBar
+                  dropdownTitle="Equipment Presets"
+                  ariaLabel="Quick equipment presets"
+                  style={{ marginBottom: 10 }}
+                  chipStyle={{ fontSize: 11, padding: '6px 11px', minHeight: 32 }}
+                  items={EQUIPMENT_PRESETS.map(preset => ({
+                    id: preset.id,
+                    label: preset.label,
+                    icon: <span>{preset.icon}</span>,
+                    onClick: () => persistEquipment(preset.items),
+                  }))}
+                />
 
                 <div className="section-label" style={{ marginBottom: 8 }}>Available Equipment (Strict Filter)</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, marginBottom: 12 }}>
@@ -401,14 +401,16 @@ export default function PlansPage() {
       </motion.div>
 
       {/* Category Filter */}
-      <div className="chip-scroll">
-        {categories.map(cat => (
-          <button key={cat} className={`filter-chip ${categoryFilter === cat ? 'active' : ''}`}
-            onClick={() => setCategoryFilter(cat)}>
-            {cat === 'all' ? 'All' : cat}
-          </button>
-        ))}
-      </div>
+      <ChipScrollBar
+        dropdownTitle="Program Categories"
+        ariaLabel="Filter plans by category"
+        items={categories.map(cat => ({
+          id: cat,
+          label: cat === 'all' ? 'All' : cat,
+          isActive: categoryFilter === cat,
+          onClick: () => setCategoryFilter(cat),
+        }))}
+      />
 
       {/* Plans List */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -937,18 +939,18 @@ function SmartWorkoutGeneratorModal({
         </p>
 
         <div className="section-label" style={{ marginBottom: 6 }}>Balanced Split Presets</div>
-        <div className="chip-scroll" style={{ marginBottom: 12 }}>
-          {SPLIT_PRESETS.map(p => (
-            <button
-              key={p.label}
-              onClick={() => setSelectedMuscles(p.muscles)}
-              className="filter-chip"
-              style={{ fontSize: 10, padding: '5px 10px' }}
-            >
-              <Scale size={11} /> {p.label}
-            </button>
-          ))}
-        </div>
+        <ChipScrollBar
+          dropdownTitle="Balanced Split Presets"
+          ariaLabel="Balanced split presets"
+          style={{ marginBottom: 12 }}
+          chipStyle={{ fontSize: 10.5, padding: '5px 10px', minHeight: 30 }}
+          items={SPLIT_PRESETS.map(p => ({
+            id: p.label,
+            label: p.label,
+            icon: <Scale size={11} />,
+            onClick: () => setSelectedMuscles(p.muscles),
+          }))}
+        />
 
         <div className="section-label" style={{ marginBottom: 8 }}>Target Muscles</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, Check, Search, X } from 'lucide-react';
 
@@ -280,6 +280,326 @@ export default function CustomSelect({
                   );
                 })
               )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+
+export interface ChipScrollItem {
+  id: string;
+  label: string;
+  icon?: React.ReactNode;
+  badge?: string;
+  isActive?: boolean;
+  onClick: () => void;
+  title?: string;
+}
+
+interface ChipScrollBarProps {
+  items: ChipScrollItem[];
+  dropdownTitle?: string;
+  ariaLabel?: string;
+  className?: string;
+  style?: React.CSSProperties;
+  chipStyle?: React.CSSProperties;
+  showDropdown?: boolean;
+  trailingAction?: React.ReactNode;
+}
+
+export function ChipScrollBar({
+  items,
+  dropdownTitle = 'All Options',
+  ariaLabel = 'Scrollable options',
+  className = '',
+  style,
+  chipStyle,
+  showDropdown = true,
+  trailingAction,
+}: ChipScrollBarProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const touchStartXRef = useRef<number | null>(null);
+  const touchStartScrollRef = useRef<number>(0);
+  const wheelResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const [bounceX, setBounceX] = useState(0);
+  const [isDraggingBounce, setIsDraggingBounce] = useState(false);
+
+  const updateScrollEdges = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+    setCanScrollLeft(el.scrollLeft > 2);
+    setCanScrollRight(maxScroll - el.scrollLeft > 2);
+  }, []);
+
+  useEffect(() => {
+    updateScrollEdges();
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => updateScrollEdges();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => updateScrollEdges());
+      ro.observe(el);
+    }
+    window.addEventListener('resize', updateScrollEdges);
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', updateScrollEdges);
+      ro?.disconnect();
+    };
+  }, [updateScrollEdges, items.length]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleOutside = (e: MouseEvent | TouchEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('touchstart', handleOutside);
+    window.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('touchstart', handleOutside);
+      window.removeEventListener('keydown', handleKey);
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (wheelResetRef.current) clearTimeout(wheelResetRef.current);
+    };
+  }, []);
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    if (!el || e.touches.length !== 1) return;
+    touchStartXRef.current = e.touches[0].clientX;
+    touchStartScrollRef.current = el.scrollLeft;
+    setIsDraggingBounce(false);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    if (!el || touchStartXRef.current === null || e.touches.length !== 1) return;
+    const deltaX = e.touches[0].clientX - touchStartXRef.current;
+    const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+
+    if (el.scrollLeft <= 1 && deltaX > 0 && touchStartScrollRef.current <= 2) {
+      const resisted = Math.min(24, Math.sqrt(deltaX) * 2.5);
+      setIsDraggingBounce(true);
+      setBounceX(resisted);
+    } else if (el.scrollLeft >= maxScroll - 1 && deltaX < 0 && touchStartScrollRef.current >= maxScroll - 2) {
+      const resisted = -Math.min(24, Math.sqrt(Math.abs(deltaX)) * 2.5);
+      setIsDraggingBounce(true);
+      setBounceX(resisted);
+    } else if (bounceX !== 0) {
+      setIsDraggingBounce(false);
+      setBounceX(0);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    touchStartXRef.current = null;
+    if (bounceX !== 0) {
+      setIsDraggingBounce(false);
+      setBounceX(0);
+    }
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+    const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : 0;
+    if (delta === 0) return;
+
+    if (el.scrollLeft <= 1 && delta < 0) {
+      setIsDraggingBounce(false);
+      setBounceX(Math.min(18, Math.abs(delta) * 0.25));
+      if (wheelResetRef.current) clearTimeout(wheelResetRef.current);
+      wheelResetRef.current = setTimeout(() => setBounceX(0), 160);
+    } else if (el.scrollLeft >= maxScroll - 1 && delta > 0) {
+      setIsDraggingBounce(false);
+      setBounceX(-Math.min(18, Math.abs(delta) * 0.25));
+      if (wheelResetRef.current) clearTimeout(wheelResetRef.current);
+      wheelResetRef.current = setTimeout(() => setBounceX(0), 160);
+    }
+  };
+
+  const scrollChipIntoView = (id: string) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const target = el.querySelector(`[data-chip-id="${CSS.escape ? CSS.escape(id) : id}"]`) as HTMLElement | null;
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
+  };
+
+  const maskGradient = canScrollLeft && canScrollRight
+    ? 'linear-gradient(to right, transparent 0%, #000 22px, #000 calc(100% - 22px), transparent 100%)'
+    : canScrollRight
+      ? 'linear-gradient(to right, #000 0%, #000 calc(100% - 22px), transparent 100%)'
+      : canScrollLeft
+        ? 'linear-gradient(to right, transparent 0%, #000 22px, #000 100%)'
+        : 'none';
+
+  return (
+    <div
+      ref={rootRef}
+      className={`chip-scroll-shell ${isOpen ? 'is-open' : ''} ${className}`}
+      style={{ position: 'relative', marginBottom: 14, ...style }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div
+          ref={scrollRef}
+          role="region"
+          aria-label={ariaLabel}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchEnd}
+          onWheel={handleWheel}
+          className="chip-scroll-track hide-scrollbar"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 7,
+            overflowX: 'auto',
+            overscrollBehaviorX: 'contain',
+            WebkitOverflowScrolling: 'touch',
+            padding: '2px 2px 4px',
+            maskImage: maskGradient,
+            WebkitMaskImage: maskGradient,
+          }}
+        >
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 7,
+              paddingRight: canScrollRight ? 16 : 2,
+              paddingLeft: canScrollLeft ? 10 : 0,
+              transform: `translateX(${bounceX}px)`,
+              transition: isDraggingBounce ? 'none' : 'transform 0.36s cubic-bezier(0.22, 1.45, 0.36, 1)',
+              willChange: 'transform',
+            }}
+          >
+            {items.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                data-chip-id={item.id}
+                title={item.title || item.label}
+                className={`filter-chip ${item.isActive ? 'active' : ''}`}
+                onClick={item.onClick}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                  ...chipStyle,
+                }}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+                {item.badge && (
+                  <span style={{ opacity: 0.78, fontSize: '0.85em', fontWeight: 800 }}>
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            ))}
+            {trailingAction}
+          </div>
+        </div>
+
+        {showDropdown && items.length > 1 && (
+          <button
+            type="button"
+            aria-label={`Show all ${dropdownTitle.toLowerCase()}`}
+            aria-expanded={isOpen}
+            onClick={() => setIsOpen((prev) => !prev)}
+            className={`chip-scroll-dropdown-btn ${isOpen ? 'active' : ''}`}
+          >
+            <ChevronDown
+              size={14}
+              style={{
+                transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s ease',
+              }}
+            />
+          </button>
+        )}
+      </div>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+            transition={{ duration: 0.16, ease: 'easeOut' }}
+            className="chip-scroll-dropdown-menu"
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span className="section-label">{dropdownTitle} ({items.length})</span>
+              <button
+                type="button"
+                aria-label="Close list"
+                onClick={() => setIsOpen(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', padding: 2 }}
+              >
+                <X size={13} />
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 240, overflowY: 'auto' }}>
+              {items.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`filter-chip ${item.isActive ? 'active' : ''}`}
+                  onClick={() => {
+                    item.onClick();
+                    setIsOpen(false);
+                    setTimeout(() => scrollChipIntoView(item.id), 40);
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    fontSize: 11.5,
+                    padding: '6px 11px',
+                    minHeight: 32,
+                  }}
+                >
+                  {item.icon}
+                  <span>{item.label}</span>
+                  {item.badge && (
+                    <span style={{ opacity: 0.78, fontSize: '0.85em', fontWeight: 800 }}>
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              ))}
+              {trailingAction}
             </div>
           </motion.div>
         )}

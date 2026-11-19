@@ -3359,3 +3359,81 @@ html[data-radius="large"] .day-badge,
 html[data-radius="large"] .custom-select-trigger { border-radius: 16px !important; }
 html[data-radius="pill"] .day-badge { border-radius: 999px !important; }
 html[data-radius="pill"] .custom-select-trigger { border-radius: 999px !important; }
+
+
+/* ============================================
+   CHIP SCROLL BAR (DROPDOWN + SOFT EDGES + BOUNCE)
+   ============================================ */
+.chip-scroll-shell.is-open {
+  z-index: 85;
+}
+
+.chip-scroll-dropdown-btn {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  border-radius: 10px;
+  background: var(--bg-glass);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+  margin-bottom: 2px;
+}
+
+.chip-scroll-dropdown-btn:hover,
+.chip-scroll-dropdown-btn.active {
+  border-color: var(--accent-red);
+  color: var(--accent-red);
+  background: color-mix(in srgb, var(--accent-red) 10%, var(--bg-elevated));
+}
+
+.chip-scroll-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 95;
+  background: color-mix(in srgb, var(--bg-sheet) 98%, var(--bg-primary));
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  backdrop-filter: blur(24px) saturate(1.4);
+  border: 1px solid var(--border-bright);
+  border-radius: 14px;
+  padding: 12px;
+  box-shadow: var(--shadow-elevated);
+}
+
+/* ============================================
+   COMPACT TOOL INPUTS (SETTINGS -> TOOLS TAB)
+   ============================================ */
+.tool-input {
+  width: 100%;
+  min-width: 0;
+  height: 38px !important;
+  min-height: 38px !important;
+  padding: 7px 11px !important;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  color: var(--text-primary);
+  font-size: 13.5px !important;
+  font-weight: 600;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.tool-input:focus {
+  border-color: var(--accent-purple);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-purple) 14%, transparent);
+}
+
+.tool-input::placeholder {
+  color: var(--text-muted);
+  font-weight: 500;
+}

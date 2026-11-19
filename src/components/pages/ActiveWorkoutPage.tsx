@@ -27,6 +27,7 @@ import {
   hasGifExerciseMedia,
 } from '@/lib/utils/exerciseMedia';
 import ExerciseMedia from '@/components/ui/ExerciseMedia';
+import { ChipScrollBar } from '@/components/ui/CustomSelect';
 
 interface ActiveWorkoutPageProps { onComplete: () => void; }
 
@@ -880,40 +881,33 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
       </div>
 
       {/* Slim Exercise Queue Strip */}
-      <div className="chip-scroll" style={{ padding: '6px 12px', marginBottom: 0, borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
-        {exercises.map((ex, idx) => (
-          <button
-            key={idx}
-            onClick={() => goToExercise(idx)}
-            style={{
-              flexShrink: 0,
-              padding: '5px 11px',
-              borderRadius: 10,
-              border: idx === currentExerciseIndex ? '1.5px solid var(--accent-red)' : '1px solid var(--border)',
-              background: ex.isComplete ? 'color-mix(in srgb, var(--accent-green) 8%, transparent)' : idx === currentExerciseIndex ? 'color-mix(in srgb, var(--accent-red) 10%, transparent)' : 'var(--bg-glass)',
-              color: ex.isComplete ? 'var(--accent-green)' : idx === currentExerciseIndex ? 'var(--text-primary)' : 'var(--text-muted)',
-              fontSize: 11.5,
-              fontWeight: idx === currentExerciseIndex ? 800 : 600,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              minHeight: 31,
-              textTransform: 'capitalize',
-            }}
-          >
-            {ex.isComplete ? '✓ ' : `${idx + 1}. `}{ex.exerciseName.split(' ').slice(0, 3).join(' ')}
-          </button>
-        ))}
-        <button
-          onClick={openAddExerciseModal}
-          style={{
-            flexShrink: 0, padding: '5px 10px', borderRadius: 10,
-            border: '1px dashed var(--accent-purple)', background: 'color-mix(in srgb, var(--accent-purple) 8%, transparent)',
-            color: 'var(--accent-purple)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', gap: 3, minHeight: 31,
-          }}
-        >
-          <Plus size={12} /> Add
-        </button>
+      <div style={{ padding: '6px 12px', borderBottom: '1px solid var(--border)' }}>
+        <ChipScrollBar
+          dropdownTitle="Workout Exercises"
+          ariaLabel="Workout exercise queue"
+          style={{ marginBottom: 0 }}
+          chipStyle={{ fontSize: 11.5, padding: '5px 11px', minHeight: 32, textTransform: 'capitalize' }}
+          items={exercises.map((ex, idx) => ({
+            id: `${idx}-${ex.exerciseName}`,
+            label: `${ex.isComplete ? '✓ ' : `${idx + 1}. `}${ex.exerciseName.split(' ').slice(0, 3).join(' ')}`,
+            isActive: idx === currentExerciseIndex,
+            onClick: () => goToExercise(idx),
+          }))}
+          trailingAction={
+            <button
+              type="button"
+              onClick={openAddExerciseModal}
+              style={{
+                flexShrink: 0, padding: '5px 10px', borderRadius: 999,
+                border: '1px dashed var(--accent-purple)', background: 'color-mix(in srgb, var(--accent-purple) 8%, transparent)',
+                color: 'var(--accent-purple)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+                display: 'inline-flex', alignItems: 'center', gap: 3, minHeight: 32,
+              }}
+            >
+              <Plus size={12} /> Add
+            </button>
+          }
+        />
       </div>
 
       <div style={{ padding: '10px 12px', paddingBottom: 'calc(16px + env(safe-area-inset-bottom) + 90px)' }}>

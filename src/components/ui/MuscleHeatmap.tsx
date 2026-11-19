@@ -9,6 +9,8 @@ import { ALL_EQUIPMENT, generateSmartWorkout, resolveWorkoutDayExercises } from 
 import { calculateRecoveryPercentage } from '@/lib/activation/RecoveryTracker';
 import { resolveExerciseTargeting } from '@/lib/data/ExerciseTargetingDatabase';
 import { MUSCLE_COLORS, SetType, type WorkoutSession, type WorkoutSet, type Exercise } from '@/lib/types';
+import { ChipScrollBar } from '@/components/ui/CustomSelect';
+import { isLightTheme } from '@/lib/utils/appearance';
 
 type MuscleHeatmapProps = {
   sessions: WorkoutSession[];
@@ -910,6 +912,7 @@ function AnatomicalFigure({
   selectedMuscle,
   selectedPart,
   mode,
+  isLightMode,
   onSelectPart,
 }: {
   view: 'front' | 'back';
@@ -920,25 +923,32 @@ function AnatomicalFigure({
   selectedMuscle: string | null;
   selectedPart: AnatomicalMusclePart | null;
   mode: MapMode;
+  isLightMode: boolean;
   onSelectPart: (part: AnatomicalMusclePart) => void;
 }) {
   const isFront = view === 'front';
-  const title = isFront ? 'Anterior (Front)' : 'Posterior (Back)';
+  const shortTitle = isFront ? 'Front' : 'Back';
+  const anatomicalLabel = isFront ? 'Anterior' : 'Posterior';
+  const silhouetteStroke = isLightMode ? 'rgba(30, 41, 59, 0.3)' : 'rgba(255,255,255,0.22)';
+  const landmarkStroke = isLightMode ? 'rgba(30, 41, 59, 0.22)' : 'rgba(255,255,255,0.18)';
 
   return (
-    <div className="card" style={{ padding: 12, position: 'relative' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.02em' }}>{title}</span>
-        <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600 }}>Tap muscle to inspect</span>
+    <div className="card" style={{ padding: 10, position: 'relative' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, marginBottom: 8, padding: '0 2px' }}>
+        <span style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>{shortTitle}</span>
+        <span style={{ fontSize: 9.5, color: 'var(--text-muted)', fontWeight: 700, padding: '2px 7px', borderRadius: 6, background: 'var(--bg-input)', border: '1px solid var(--border)' }}>
+          {anatomicalLabel}
+        </span>
       </div>
 
       <div
         style={{
-          borderRadius: 16,
-          border: '1px solid rgba(255,255,255,0.08)',
-          background:
-            'radial-gradient(ellipse 80% 50% at 50% 15%, rgba(255, 90, 110, 0.10), transparent 70%), radial-gradient(ellipse 70% 45% at 50% 85%, color-mix(in srgb, var(--accent-purple) 8%, transparent), transparent 70%), linear-gradient(180deg, #0b0d18 0%, #06070d 100%)',
-          padding: '6px 4px',
+          borderRadius: 14,
+          border: '1px solid var(--border-subtle)',
+          background: isLightMode
+            ? 'radial-gradient(ellipse 80% 55% at 50% 18%, color-mix(in srgb, var(--accent-red) 7%, transparent), transparent 70%), radial-gradient(ellipse 70% 45% at 50% 85%, color-mix(in srgb, var(--accent-purple) 6%, transparent), transparent 70%), linear-gradient(180deg, color-mix(in srgb, var(--bg-input) 72%, #ffffff) 0%, color-mix(in srgb, var(--bg-void) 55%, #ffffff) 100%)'
+            : 'radial-gradient(ellipse 80% 50% at 50% 15%, color-mix(in srgb, var(--accent-red) 11%, transparent), transparent 70%), radial-gradient(ellipse 70% 45% at 50% 85%, color-mix(in srgb, var(--accent-purple) 9%, transparent), transparent 70%), linear-gradient(180deg, #0d101c 0%, #070911 100%)',
+          padding: '8px 4px',
           position: 'relative',
           overflow: 'hidden',
         }}
@@ -946,29 +956,36 @@ function AnatomicalFigure({
         <svg
           viewBox="0 0 220 420"
           width="100%"
-          style={{ height: 'auto', maxHeight: 410, display: 'block', filter: 'drop-shadow(0 12px 24px rgba(0,0,0,0.55))' }}
+          style={{
+            height: 'auto',
+            maxHeight: 400,
+            display: 'block',
+            filter: isLightMode
+              ? 'drop-shadow(0 8px 16px rgba(15, 23, 42, 0.14))'
+              : 'drop-shadow(0 12px 24px rgba(0, 0, 0, 0.55))',
+          }}
           role="img"
-          aria-label={`${title} anatomical muscle map`}
+          aria-label={`${shortTitle} (${anatomicalLabel}) anatomical muscle map`}
         >
           <defs>
             {/* Volumetric Skin & Subsurface Ecorché Base */}
             <linearGradient id={`skin-base-${view}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#26293e" />
-              <stop offset="45%" stopColor="#1b1e30" />
-              <stop offset="100%" stopColor="#121422" />
+              <stop offset="0%" stopColor={isLightMode ? '#dbe2ec' : '#26293e'} />
+              <stop offset="45%" stopColor={isLightMode ? '#cbd5e1' : '#1b1e30'} />
+              <stop offset="100%" stopColor={isLightMode ? '#b8c4d4' : '#121422'} />
             </linearGradient>
 
             <radialGradient id={`torso-volume-${view}`} cx="50%" cy="28%" r="65%">
-              <stop offset="0%" stopColor="rgba(255, 235, 225, 0.14)" />
-              <stop offset="55%" stopColor="rgba(30, 34, 56, 0.05)" />
-              <stop offset="100%" stopColor="rgba(0, 0, 0, 0.48)" />
+              <stop offset="0%" stopColor={isLightMode ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 235, 225, 0.14)'} />
+              <stop offset="55%" stopColor={isLightMode ? 'rgba(148, 163, 184, 0.06)' : 'rgba(30, 34, 56, 0.05)'} />
+              <stop offset="100%" stopColor={isLightMode ? 'rgba(15, 23, 42, 0.14)' : 'rgba(0, 0, 0, 0.48)'} />
             </radialGradient>
 
             {/* Tendon & Fascia Aponeurosis Gradient */}
             <linearGradient id={`tendon-grad-${view}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="rgba(226, 232, 244, 0.26)" />
-              <stop offset="50%" stopColor="rgba(180, 190, 212, 0.16)" />
-              <stop offset="100%" stopColor="rgba(120, 130, 155, 0.08)" />
+              <stop offset="0%" stopColor={isLightMode ? 'rgba(255, 255, 255, 0.65)' : 'rgba(226, 232, 244, 0.26)'} />
+              <stop offset="50%" stopColor={isLightMode ? 'rgba(226, 232, 240, 0.45)' : 'rgba(180, 190, 212, 0.16)'} />
+              <stop offset="100%" stopColor={isLightMode ? 'rgba(148, 163, 184, 0.2)' : 'rgba(120, 130, 155, 0.08)'} />
             </linearGradient>
 
             {/* Glow Filter for Peak Activated Muscles */}
@@ -997,15 +1014,15 @@ function AnatomicalFigure({
           </defs>
 
           {/* Subtle Anatomical Grid Lines */}
-          <line x1="110" y1="8" x2="110" y2="412" stroke="rgba(255,255,255,0.04)" strokeDasharray="3 3" strokeWidth="0.8" />
-          <ellipse cx="110" cy="407" rx="52" ry="6" fill="rgba(0,0,0,0.45)" />
+          <line x1="110" y1="8" x2="110" y2="412" stroke={isLightMode ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,0.05)'} strokeDasharray="3 3" strokeWidth="0.8" />
+          <ellipse cx="110" cy="407" rx="52" ry="6" fill={isLightMode ? 'rgba(15,23,42,0.12)' : 'rgba(0,0,0,0.45)'} />
 
           {/* ================= ANATOMICAL HUMAN SILHOUETTE & SKELETAL BASE ================= */}
           {/* Head, Cranium, Jaw & Ears */}
           <path
             d="M 110 11 C 99 11, 93 18, 93 28 C 91 29, 90 32, 92 35 C 93 42, 97 48, 103 51 L 117 51 C 123 48, 127 42, 128 35 C 130 32, 129 29, 127 28 C 127 18, 121 11, 110 11 Z"
             fill={`url(#skin-base-${view})`}
-            stroke="rgba(255,255,255,0.22)"
+            stroke={silhouetteStroke}
             strokeWidth="1"
           />
           {isFront ? (
@@ -1024,7 +1041,7 @@ function AnatomicalFigure({
           <path
             d="M 100 49 L 96 60 L 66 70 L 154 70 L 124 60 L 120 49 Z"
             fill={`url(#skin-base-${view})`}
-            stroke="rgba(255,255,255,0.15)"
+            stroke={landmarkStroke}
             strokeWidth="0.9"
           />
 
@@ -1062,7 +1079,7 @@ function AnatomicalFigure({
               Z
             "
             fill={`url(#skin-base-${view})`}
-            stroke="rgba(255,255,255,0.2)"
+            stroke={silhouetteStroke}
             strokeWidth="1.1"
           />
 
@@ -1087,8 +1104,8 @@ function AnatomicalFigure({
                 fill="none"
               />
               {/* Patella (Kneecaps) & Patellar Ligaments */}
-              <ellipse cx="83" cy="308" rx="7" ry="6" fill={`url(#tendon-grad-${view})`} stroke="rgba(255,255,255,0.2)" strokeWidth="0.9" />
-              <ellipse cx="137" cy="308" rx="7" ry="6" fill={`url(#tendon-grad-${view})`} stroke="rgba(255,255,255,0.2)" strokeWidth="0.9" />
+              <ellipse cx="83" cy="308" rx="7" ry="6" fill={`url(#tendon-grad-${view})`} stroke={silhouetteStroke} strokeWidth="0.9" />
+              <ellipse cx="137" cy="308" rx="7" ry="6" fill={`url(#tendon-grad-${view})`} stroke={silhouetteStroke} strokeWidth="0.9" />
               {/* Shin Bone (Tibia Crest) */}
               <path d="M 82 316 L 80 388 M 138 316 L 140 388" stroke="rgba(255,255,255,0.14)" strokeWidth="0.9" />
             </g>
@@ -1103,7 +1120,7 @@ function AnatomicalFigure({
               />
               <line x1="110" y1="48" x2="110" y2="194" stroke="rgba(0,0,0,0.5)" strokeWidth="1.6" />
               {/* Scapular Spine Landmarks */}
-              <path d="M 68 78 Q 84 82 94 78 M 152 78 Q 136 82 126 78" stroke="rgba(255,255,255,0.2)" strokeWidth="1.1" fill="none" />
+              <path d="M 68 78 Q 84 82 94 78 M 152 78 Q 136 82 126 78" stroke={silhouetteStroke} strokeWidth="1.1" fill="none" />
               {/* Popliteal Fossa (Back of Knee) & Achilles Tendons */}
               <path d="M 74 306 Q 84 310 94 306 M 126 306 Q 136 310 146 306" stroke="rgba(255,255,255,0.14)" strokeWidth="0.9" fill="none" />
               <path d="M 79 366 L 81 395 M 84 366 L 82 395 M 141 366 L 139 395 M 136 366 L 138 395" stroke="rgba(226,232,244,0.3)" strokeWidth="1.4" />
@@ -1144,9 +1161,9 @@ function AnatomicalFigure({
                   fill={`url(#grad-${part.id})`}
                   stroke={
                     isPartSelected
-                      ? '#FFFFFF'
+                      ? (isLightMode ? '#0F172A' : '#FFFFFF')
                       : isMuscleSelected
-                        ? '#38BDF8'
+                        ? (isLightMode ? 'var(--accent-red)' : '#38BDF8')
                         : isStale && mode === 'balance'
                           ? '#F59E0B'
                           : colors.stroke
@@ -1184,7 +1201,14 @@ function AnatomicalFigure({
 }
 
 export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
-  const { equipment: userEquipment, barWeight, dumbbellWeight, defaultRestTime, unitSystem } = useUserStore();
+  const { equipment: userEquipment, barWeight, dumbbellWeight, defaultRestTime, unitSystem, theme, customBgHex } = useUserStore();
+  const isLightMode = useMemo(() => {
+    if (typeof document !== 'undefined') {
+      const modeAttr = document.documentElement.getAttribute('data-theme-mode');
+      if (modeAttr === 'light' || modeAttr === 'dark') return modeAttr === 'light';
+    }
+    return isLightTheme(theme);
+  }, [theme, customBgHex]);
   const { startWorkout } = useWorkoutStore();
   const unitLabel = unitSystem === 'metric' ? 'kg' : 'lbs';
 
@@ -1612,6 +1636,7 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
             selectedMuscle={selectedMuscle}
             selectedPart={selectedPart}
             mode={mode}
+            isLightMode={isLightMode}
             onSelectPart={handleSelectPart}
           />
         )}
@@ -1625,6 +1650,7 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
             selectedMuscle={selectedMuscle}
             selectedPart={selectedPart}
             mode={mode}
+            isLightMode={isLightMode}
             onSelectPart={handleSelectPart}
           />
         )}
@@ -1632,66 +1658,79 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
 
       {/* Sequential Intensity Scale Legend */}
       <div className="card" style={{ padding: '10px 14px', border: '1px solid var(--border-subtle)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 5 }}>
-          <span>0% Untrained</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 9.5, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6 }}>
+          <span>Intensity Scale</span>
+          <span style={{ opacity: 0.85 }}>Tap any muscle to inspect</span>
+        </div>
+        <div style={{ height: 7, borderRadius: 999, marginBottom: 5, background: mode === 'recovery' ? 'linear-gradient(90deg, #FF3D5A 0%, #F59E0B 50%, #10E89A 100%)' : 'linear-gradient(90deg, #475569 0%, #6366F1 30%, #EC4899 65%, #FF3D5A 85%, #FBBF24 100%)' }} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8.5, fontWeight: 700, color: 'var(--text-muted)' }}>
+          <span>0%</span>
           <span>25% Light</span>
-          <span>50% Moderate</span>
+          <span>50% Mod</span>
           <span>75% High</span>
           <span>100% Peak</span>
         </div>
-        <div style={{ height: 7, borderRadius: 999, background: mode === 'recovery' ? 'linear-gradient(90deg, #FF3D5A 0%, #F59E0B 50%, #10E89A 100%)' : 'linear-gradient(90deg, #1E1B2E 0%, #6366F1 30%, #EC4899 65%, #FF3D5A 85%, #FBBF24 100%)' }} />
       </div>
 
-      {/* Quick Anatomical Muscle Selector Pills */}
-      <div className="chip-scroll" style={{ marginBottom: 0 }}>
-        {Object.keys(MUSCLE_METADATA).map(m => {
-          const isSel = selectedMuscle === m;
-          const act = Math.round((normalizedByMuscle[m] || 0) * 100);
-          return (
-            <button
-              key={m}
-              onClick={() => {
-                setSelectedMuscle(m);
-                setSelectedPart(null);
-              }}
-              className={`filter-chip ${isSel ? 'active' : ''}`}
-              style={{ fontSize: 11, padding: '6px 12px', textTransform: 'capitalize' }}
-            >
-              <span>{m}</span>
-              <span style={{ opacity: 0.75, fontSize: 9 }}>{act}%</span>
-            </button>
-          );
-        })}
-      </div>
+      {/* Quick Anatomical Muscle Selector Pills (with See All dropdown, soft edges & bounce) */}
+      <ChipScrollBar
+        dropdownTitle="Muscle Groups"
+        ariaLabel="Select muscle group"
+        style={{ marginBottom: 0 }}
+        chipStyle={{ fontSize: 11.5, padding: '6px 12px', minHeight: 34, textTransform: 'capitalize' }}
+        items={Object.keys(MUSCLE_METADATA).map(m => ({
+          id: m,
+          label: m,
+          badge: `${Math.round((normalizedByMuscle[m] || 0) * 100)}%`,
+          isActive: selectedMuscle === m,
+          onClick: () => {
+            setSelectedMuscle(m);
+            setSelectedPart(null);
+          },
+        }))}
+      />
 
       {/* Interactive Anatomical Muscle & Sub-Head Inspector */}
       {selectedMuscle && MUSCLE_METADATA[selectedMuscle] && (
-        <div className="card" style={{ padding: 16, border: '1px solid var(--border-bright)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <h3 style={{ fontSize: 17, fontWeight: 800, textTransform: 'capitalize' }}>
-                  {selectedPart ? selectedPart.headLabel : selectedMuscle}
-                </h3>
-                <span className="badge" style={{ background: 'color-mix(in srgb, var(--accent-purple) 12%, transparent)', color: 'var(--accent-purple)', fontSize: 10 }}>
-                  {selectedPart ? selectedPart.latinName : MUSCLE_METADATA[selectedMuscle].latin}
-                </span>
-              </div>
-              <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 3 }}>
-                {MUSCLE_METADATA[selectedMuscle].role}
-              </p>
-            </div>
+        <div className="card" style={{ padding: 15, border: '1px solid var(--border-bright)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <h3 className="font-display" style={{ fontSize: 18, fontWeight: 800, textTransform: 'capitalize', lineHeight: 1.2, minWidth: 0 }}>
+              {selectedPart ? selectedPart.headLabel : selectedMuscle}
+            </h3>
             <button
+              type="button"
               onClick={() => handleTrainMuscles([selectedMuscle], `${selectedMuscle.toUpperCase()} Hypertrophy Focus`)}
               className="btn-primary"
-              style={{ width: 'auto', minHeight: 36, padding: '8px 14px', fontSize: 11, borderRadius: 10, flexShrink: 0 }}
+              style={{ width: 'auto', minHeight: 34, padding: '6px 12px', fontSize: 11.5, fontWeight: 700, borderRadius: 10, flexShrink: 0, textTransform: 'none', letterSpacing: 0 }}
             >
-              <Play size={12} fill="currentColor" /> Train {selectedMuscle}
+              <Play size={11} fill="currentColor" /> Train
             </button>
           </div>
 
-          {/* 5-Metric Diagnostic Strip (includes Volume) */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6, marginBottom: 14 }}>
+          <div style={{ marginBottom: 12 }}>
+            <span
+              style={{
+                display: 'inline-block',
+                padding: '3px 9px',
+                borderRadius: 7,
+                background: 'color-mix(in srgb, var(--accent-purple) 12%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--accent-purple) 24%, transparent)',
+                color: 'var(--accent-purple)',
+                fontSize: 10.5,
+                fontWeight: 700,
+                fontStyle: 'italic',
+                lineHeight: 1.3,
+              }}
+            >
+              {selectedPart ? selectedPart.latinName : MUSCLE_METADATA[selectedMuscle].latin}
+            </span>
+            <p style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 6, lineHeight: 1.45 }}>
+              {MUSCLE_METADATA[selectedMuscle].role}
+            </p>
+          </div>
+
+          {/* Balanced 2-Row Diagnostic Metrics Strip (Zero Cramping) */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 6 }}>
             {[
               {
                 label: 'Activation',
@@ -1704,24 +1743,33 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
                 color: (muscleRecovery[selectedMuscle] ?? 100) >= 80 ? 'var(--accent-green)' : 'var(--accent-yellow)',
               },
               {
-                label: 'Sets Logged',
-                value: `${muscleSetCounts[selectedMuscle] || 0}`,
-                color: 'var(--accent-purple)',
-              },
-              {
-                label: `Vol (${unitLabel})`,
-                value: `${Math.round(muscleVolumes[selectedMuscle] || 0).toLocaleString()}`,
-                color: 'var(--accent-orange)',
-              },
-              {
                 label: 'Last Trained',
                 value: formatHoursSince(lastTrainedAt[selectedMuscle] || 0),
                 color: 'var(--accent-cyan)',
               },
             ].map((stat, i) => (
-              <div key={i} style={{ padding: '8px 6px', background: 'var(--bg-glass)', borderRadius: 10, textAlign: 'center', border: '1px solid var(--border)' }}>
-                <div className="font-mono" style={{ fontSize: 14, fontWeight: 800, color: stat.color }}>{stat.value}</div>
-                <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600, marginTop: 2 }}>{stat.label}</div>
+              <div key={i} style={{ padding: '9px 6px', background: 'var(--bg-input)', borderRadius: 10, textAlign: 'center', border: '1px solid var(--border-subtle)' }}>
+                <div className="font-mono" style={{ fontSize: 13.5, fontWeight: 800, color: stat.color, whiteSpace: 'nowrap' }}>{stat.value}</div>
+                <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, marginTop: 2 }}>{stat.label}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, marginBottom: 14 }}>
+            {[
+              {
+                label: 'Sets Logged',
+                value: `${muscleSetCounts[selectedMuscle] || 0}`,
+                color: 'var(--accent-purple)',
+              },
+              {
+                label: `Volume (${unitLabel})`,
+                value: `${Math.round(muscleVolumes[selectedMuscle] || 0).toLocaleString()}`,
+                color: 'var(--accent-orange)',
+              },
+            ].map((stat, i) => (
+              <div key={i} style={{ padding: '8px 10px', background: 'var(--bg-input)', borderRadius: 10, border: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>{stat.label}</span>
+                <span className="font-mono" style={{ fontSize: 14, fontWeight: 800, color: stat.color }}>{stat.value}</span>
               </div>
             ))}
           </div>
@@ -1778,12 +1826,15 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
 
       {/* Structural Symmetry & Recovery Balance Card */}
       <div className="card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Activity size={15} color="var(--accent-green)" /> Structural Symmetry & Recovery Balance
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 9, background: 'color-mix(in srgb, var(--accent-green) 14%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-green) 26%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Activity size={15} color="var(--accent-green)" />
+            </div>
+            <div style={{ fontSize: 13.5, fontWeight: 800, lineHeight: 1.2 }}>Symmetry &amp; Recovery</div>
           </div>
-          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-            {filteredSessions.length} session{filteredSessions.length !== 1 ? 's' : ''} analyzed
+          <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-muted)', padding: '3px 8px', borderRadius: 8, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            {filteredSessions.length} session{filteredSessions.length !== 1 ? 's' : ''}
           </span>
         </div>
 
@@ -1822,7 +1873,7 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
             <button
               onClick={() => handleTrainMuscles(Array.from(staleMuscles).slice(0, 5), 'Symmetry & Recovery Focus')}
               className="btn-primary"
-              style={{ width: 'auto', minHeight: 38, padding: '8px 14px', fontSize: 11, borderRadius: 10 }}
+              style={{ width: 'auto', minHeight: 36, padding: '7px 13px', fontSize: 11.5, fontWeight: 700, borderRadius: 10, textTransform: 'none', letterSpacing: 0 }}
             >
               <Sparkles size={13} /> Train Priority Muscles
             </button>

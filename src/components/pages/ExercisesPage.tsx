@@ -13,6 +13,7 @@ import { ALL_EQUIPMENT, matchesUserEquipment, normalizeEquipmentName, sharesTarg
 import { getWorkoutStartingWeight } from '@/lib/utils/workoutDefaults';
 import { getYoutubeSearchUrl, getVideoSearchOptions } from '@/lib/data/youtube-ids';
 import ExerciseMedia from '@/components/ui/ExerciseMedia';
+import { ChipScrollBar } from '@/components/ui/CustomSelect';
 import {
   hasAnimatedExerciseMedia,
   hasGifExerciseMedia,
@@ -240,14 +241,17 @@ export default function ExercisesPage() {
       </motion.div>
 
       {/* Muscle / Body part chips */}
-      <div className="chip-scroll">
-        {BODY_PARTS.map(bp => (
-          <button key={bp} className={`filter-chip ${bodyPartFilter === bp ? 'active' : ''}`}
-            onClick={() => setBodyPartFilter(bodyPartFilter === bp ? 'all' : bp)}>
-            <span style={{ textTransform: 'capitalize' }}>{bp}</span>
-          </button>
-        ))}
-      </div>
+      <ChipScrollBar
+        dropdownTitle="Muscle & Body Parts"
+        ariaLabel="Filter by body part"
+        chipStyle={{ textTransform: 'capitalize' }}
+        items={BODY_PARTS.map(bp => ({
+          id: bp,
+          label: bp,
+          isActive: bodyPartFilter === bp,
+          onClick: () => setBodyPartFilter(bodyPartFilter === bp ? 'all' : bp),
+        }))}
+      />
 
       {/* Equipment filter */}
       <AnimatePresence>

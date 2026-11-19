@@ -15,7 +15,7 @@ import { useWorkoutStore } from '@/lib/store/workoutStore';
 import type { BodyWeight, BodyMeasurement, WaterLog } from '@/lib/types';
 import { ALL_EQUIPMENT, EQUIPMENT_PRESETS } from '@/lib/utils/exerciseResolver';
 import { calculatePlates } from '@/lib/utils/plateCalculator';
-import CustomSelect from '@/components/ui/CustomSelect';
+import CustomSelect, { ChipScrollBar } from '@/components/ui/CustomSelect';
 import {
   THEME_OPTIONS,
   CUSTOM_ACCENT_OPTIONS,
@@ -666,25 +666,17 @@ export default function ProfilePage() {
       </motion.div>
 
       {/* Tab Bar */}
-      <div className="chip-scroll" style={{ marginBottom: 14, paddingBottom: 4 }}>
-        {([
-          { id: 'profile' as const, label: 'Profile & Gear', icon: User },
-          { id: 'appearance' as const, label: 'Appearance', icon: Palette },
-          { id: 'workout' as const, label: 'Workout', icon: Dumbbell },
-          { id: 'tools' as const, label: 'Tools', icon: Wrench },
-          { id: 'data' as const, label: 'Data', icon: Database },
-        ]).map(tab => (
-          <button
-            key={tab.id}
-            type="button"
-            className={`filter-chip ${activeTab === tab.id ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab.id)}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}
-          >
-            <tab.icon size={12} /> {tab.label}
-          </button>
-        ))}
-      </div>
+      <ChipScrollBar
+        dropdownTitle="Settings Sections"
+        ariaLabel="Settings tabs"
+        items={[
+          { id: 'profile', label: 'Profile & Gear', icon: <User size={12} />, isActive: activeTab === 'profile', onClick: () => setActiveTab('profile') },
+          { id: 'appearance', label: 'Appearance', icon: <Palette size={12} />, isActive: activeTab === 'appearance', onClick: () => setActiveTab('appearance') },
+          { id: 'workout', label: 'Workout', icon: <Dumbbell size={12} />, isActive: activeTab === 'workout', onClick: () => setActiveTab('workout') },
+          { id: 'tools', label: 'Tools', icon: <Wrench size={12} />, isActive: activeTab === 'tools', onClick: () => setActiveTab('tools') },
+          { id: 'data', label: 'Data', icon: <Database size={12} />, isActive: activeTab === 'data', onClick: () => setActiveTab('data') },
+        ]}
+      />
 
       {/* ======== PROFILE TAB ======== */}
       {activeTab === 'profile' && (
@@ -758,18 +750,18 @@ export default function ProfilePage() {
 
           {/* Equipment Presets */}
           <div className="section-label" style={{ marginTop: 10 }}>Quick Equipment Presets</div>
-          <div className="chip-scroll" style={{ marginBottom: 4 }}>
-            {EQUIPMENT_PRESETS.map(preset => (
-              <button
-                key={preset.id}
-                className="filter-chip"
-                onClick={() => applyEquipmentPreset(preset.items)}
-                style={{ fontSize: 11, padding: '6px 12px' }}
-              >
-                <span>{preset.icon}</span> {preset.label}
-              </button>
-            ))}
-          </div>
+          <ChipScrollBar
+            dropdownTitle="Equipment Presets"
+            ariaLabel="Quick equipment presets"
+            style={{ marginBottom: 4 }}
+            chipStyle={{ fontSize: 11, padding: '6px 11px', minHeight: 32 }}
+            items={EQUIPMENT_PRESETS.map(preset => ({
+              id: preset.id,
+              label: preset.label,
+              icon: <span>{preset.icon}</span>,
+              onClick: () => applyEquipmentPreset(preset.items),
+            }))}
+          />
 
           {/* Equipment */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
@@ -1575,10 +1567,9 @@ export default function ProfilePage() {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, marginBottom: bodyWeights.length > 0 ? 12 : 0 }}>
-              <input value={newWeight} onChange={e => setNewWeight(e.target.value)} placeholder={`Weight (${unitSystem === 'metric' ? 'kg' : 'lbs'})`} type="number" step="0.1"
-                style={{ flex: 1, minWidth: 0, padding: '10px 14px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', fontFamily: 'inherit', minHeight: 44 }} />
-              <button type="button" onClick={addBodyWeight} className="btn-primary" aria-label="Log body weight" style={{ width: 46, minHeight: 44, padding: 0, borderRadius: 12, flexShrink: 0, textTransform: 'none' }}>
-                <Plus size={17} />
+              <input className="tool-input" value={newWeight} onChange={e => setNewWeight(e.target.value)} placeholder={`Weight (${unitSystem === 'metric' ? 'kg' : 'lbs'})`} type="number" step="0.1" style={{ flex: 1 }} />
+              <button type="button" onClick={addBodyWeight} className="btn-primary" aria-label="Log body weight" style={{ width: 40, height: 38, minHeight: 38, padding: 0, borderRadius: 10, flexShrink: 0, textTransform: 'none' }}>
+                <Plus size={16} />
               </button>
             </div>
             {bodyWeights.length > 1 && (
@@ -1617,10 +1608,8 @@ export default function ProfilePage() {
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1.35fr 1fr', gap: 8, marginBottom: calcOneRM ? 12 : 0 }}>
-              <input value={oneRMWeight} onChange={e => setOneRMWeight(e.target.value)} placeholder={`Weight (${unitSystem === 'metric' ? 'kg' : 'lbs'})`} type="number"
-                style={{ width: '100%', minWidth: 0, padding: '10px 14px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', fontFamily: 'inherit', minHeight: 44 }} />
-              <input value={oneRMReps} onChange={e => setOneRMReps(e.target.value)} placeholder="Reps" type="number"
-                style={{ width: '100%', minWidth: 0, padding: '10px 14px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', fontFamily: 'inherit', minHeight: 44 }} />
+              <input className="tool-input" value={oneRMWeight} onChange={e => setOneRMWeight(e.target.value)} placeholder={`Weight (${unitSystem === 'metric' ? 'kg' : 'lbs'})`} type="number" />
+              <input className="tool-input" value={oneRMReps} onChange={e => setOneRMReps(e.target.value)} placeholder="Reps" type="number" />
             </div>
             {calcOneRM && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
@@ -1684,7 +1673,7 @@ export default function ProfilePage() {
                 type="button"
                 onClick={() => updateWater(-1)}
                 className="btn-secondary"
-                style={{ width: '100%', minHeight: 44, borderRadius: 12, fontSize: 12.5, fontWeight: 700, padding: '10px 12px' }}
+                style={{ width: '100%', minHeight: 38, borderRadius: 10, fontSize: 12, fontWeight: 700, padding: '8px 10px' }}
               >
                 − 1 Glass
               </button>
@@ -1692,7 +1681,7 @@ export default function ProfilePage() {
                 type="button"
                 onClick={() => updateWater(1)}
                 className="btn-primary"
-                style={{ width: '100%', minHeight: 44, borderRadius: 12, fontSize: 12.5, fontWeight: 700, textTransform: 'none', letterSpacing: 0, padding: '10px 12px' }}
+                style={{ width: '100%', minHeight: 38, borderRadius: 10, fontSize: 12, fontWeight: 700, textTransform: 'none', letterSpacing: 0, padding: '8px 10px' }}
               >
                 + 1 Glass ({unitSystem === 'metric' ? '250ml' : '8 oz'})
               </button>
@@ -1711,17 +1700,12 @@ export default function ProfilePage() {
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: measurements.length > 0 ? 10 : 0 }}>
-              <input value={measForm.bodyFat} onChange={e => setMeasForm({ ...measForm, bodyFat: e.target.value })} placeholder="Body Fat %" type="number" step="0.1"
-                style={{ width: '100%', minWidth: 0, padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 13.5, outline: 'none', minHeight: 44 }} />
-              <input value={measForm.chest} onChange={e => setMeasForm({ ...measForm, chest: e.target.value })} placeholder="Chest" type="number" step="0.1"
-                style={{ width: '100%', minWidth: 0, padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 13.5, outline: 'none', minHeight: 44 }} />
-              <input value={measForm.waist} onChange={e => setMeasForm({ ...measForm, waist: e.target.value })} placeholder="Waist" type="number" step="0.1"
-                style={{ width: '100%', minWidth: 0, padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 13.5, outline: 'none', minHeight: 44 }} />
-              <input value={measForm.arms} onChange={e => setMeasForm({ ...measForm, arms: e.target.value })} placeholder="Arms" type="number" step="0.1"
-                style={{ width: '100%', minWidth: 0, padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 13.5, outline: 'none', minHeight: 44 }} />
-              <input value={measForm.thighs} onChange={e => setMeasForm({ ...measForm, thighs: e.target.value })} placeholder="Thighs" type="number" step="0.1"
-                style={{ width: '100%', minWidth: 0, padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 13.5, outline: 'none', minHeight: 44 }} />
-              <button type="button" onClick={addMeasurement} className="btn-primary" style={{ width: '100%', minHeight: 44, borderRadius: 12, fontSize: 12.5, fontWeight: 700, textTransform: 'none', letterSpacing: 0, padding: '10px 12px' }}>
+              <input className="tool-input" value={measForm.bodyFat} onChange={e => setMeasForm({ ...measForm, bodyFat: e.target.value })} placeholder="Body Fat %" type="number" step="0.1" />
+              <input className="tool-input" value={measForm.chest} onChange={e => setMeasForm({ ...measForm, chest: e.target.value })} placeholder="Chest" type="number" step="0.1" />
+              <input className="tool-input" value={measForm.waist} onChange={e => setMeasForm({ ...measForm, waist: e.target.value })} placeholder="Waist" type="number" step="0.1" />
+              <input className="tool-input" value={measForm.arms} onChange={e => setMeasForm({ ...measForm, arms: e.target.value })} placeholder="Arms" type="number" step="0.1" />
+              <input className="tool-input" value={measForm.thighs} onChange={e => setMeasForm({ ...measForm, thighs: e.target.value })} placeholder="Thighs" type="number" step="0.1" />
+              <button type="button" onClick={addMeasurement} className="btn-primary" style={{ width: '100%', height: 38, minHeight: 38, borderRadius: 10, fontSize: 12, fontWeight: 700, textTransform: 'none', letterSpacing: 0, padding: '8px 10px' }}>
                 <Plus size={14} /> Log
               </button>
             </div>
@@ -2345,8 +2329,7 @@ function PlateCalculator({ barWeight, unit }: { barWeight: number; unit: string 
           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Per-side barbell plate breakdown</div>
         </div>
       </div>
-      <input value={targetWeight} onChange={e => setTargetWeight(e.target.value)} placeholder={`Target weight (${unit === 'metric' ? 'kg' : 'lbs'})`} type="number" max={1500}
-        style={{ width: '100%', padding: '10px 14px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', fontFamily: 'inherit', marginBottom: plateResult ? 12 : 0, minHeight: 44 }} />
+      <input className="tool-input" value={targetWeight} onChange={e => setTargetWeight(e.target.value)} placeholder={`Target weight (${unit === 'metric' ? 'kg' : 'lbs'})`} type="number" max={1500} style={{ marginBottom: plateResult ? 10 : 0 }} />
       {plateResult && targetNum === barWeight && (
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600 }}>
           Empty bar (no plates needed)

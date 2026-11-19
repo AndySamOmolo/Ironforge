@@ -9,7 +9,7 @@ import type { WorkoutSession, PersonalRecord } from '@/lib/types';
 import { estimate1RM } from '@/lib/utils/progressionEngine';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid, AreaChart, Area, LineChart, Line } from 'recharts';
 import MuscleHeatmap from '@/components/ui/MuscleHeatmap';
-import CustomSelect from '@/components/ui/CustomSelect';
+import CustomSelect, { ChipScrollBar } from '@/components/ui/CustomSelect';
 
 type TabId = 'overview' | 'strength' | 'records' | 'body' | 'history';
 
@@ -312,22 +312,18 @@ export default function ProgressPage() {
       </motion.div>
 
       {/* Tabs */}
-      <div className="chip-scroll" style={{ marginBottom: 16, paddingBottom: 4 }}>
-        {([
-          { id: 'overview' as const, label: 'Overview', icon: BarChart3 },
-          { id: 'body' as const, label: '3D Body Map', icon: Target },
-          { id: 'history' as const, label: 'Activity Log', icon: History },
-          { id: 'strength' as const, label: 'Strength', icon: TrendingUp },
-          { id: 'records' as const, label: 'Records', icon: Trophy },
-        ]).map(t => (
-          <button key={t.id}
-            className={`filter-chip ${tab === t.id ? 'active' : ''}`}
-            onClick={() => setTab(t.id)}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
-            <t.icon size={12} /> {t.label}
-          </button>
-        ))}
-      </div>
+      <ChipScrollBar
+        dropdownTitle="Progress Views"
+        ariaLabel="Progress tabs"
+        style={{ marginBottom: 14 }}
+        items={[
+          { id: 'overview', label: 'Overview', icon: <BarChart3 size={12} />, isActive: tab === 'overview', onClick: () => setTab('overview') },
+          { id: 'body', label: '3D Body Map', icon: <Target size={12} />, isActive: tab === 'body', onClick: () => setTab('body') },
+          { id: 'history', label: 'Activity Log', icon: <History size={12} />, isActive: tab === 'history', onClick: () => setTab('history') },
+          { id: 'strength', label: 'Strength', icon: <TrendingUp size={12} />, isActive: tab === 'strength', onClick: () => setTab('strength') },
+          { id: 'records', label: 'Records', icon: <Trophy size={12} />, isActive: tab === 'records', onClick: () => setTab('records') },
+        ]}
+      />
 
       {/* ════════ OVERVIEW ════════ */}
       {tab === 'overview' && (
@@ -650,25 +646,19 @@ export default function ProgressPage() {
 
             {/* Quick Benchmark Lift Chips */}
             {loggedExercises.length > 0 && (
-              <div className="chip-scroll" style={{ marginBottom: 12, paddingBottom: 4 }}>
-                {loggedExercises.slice(0, 6).map((ex) => {
-                  const isActive = exerciseChartId === ex.id;
-                  return (
-                    <button
-                      key={ex.id}
-                      type="button"
-                      onClick={() => loadExerciseChart(ex.id)}
-                      className={`filter-chip ${isActive ? 'active' : ''}`}
-                      style={{ fontSize: 10.5, padding: '5px 10px', minHeight: 30, textTransform: 'capitalize' }}
-                    >
-                      {ex.name}
-                      {ex.count > 0 && (
-                        <span style={{ fontSize: 9, opacity: 0.85, fontWeight: 800 }}>• {ex.count}</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+              <ChipScrollBar
+                dropdownTitle="Quick Lifts"
+                ariaLabel="Quick benchmark lifts"
+                style={{ marginBottom: 10 }}
+                chipStyle={{ fontSize: 10.5, padding: '5px 10px', minHeight: 30, textTransform: 'capitalize' }}
+                items={loggedExercises.slice(0, 10).map((ex) => ({
+                  id: String(ex.id),
+                  label: ex.name,
+                  badge: ex.count > 0 ? `• ${ex.count}` : undefined,
+                  isActive: exerciseChartId === ex.id,
+                  onClick: () => loadExerciseChart(ex.id),
+                }))}
+              />
             )}
 
             {exerciseChartData.length > 0 && (
