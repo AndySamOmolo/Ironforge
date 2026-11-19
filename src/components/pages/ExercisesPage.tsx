@@ -125,56 +125,118 @@ export default function ExercisesPage() {
   return (
     <div className="page-container">
       {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 44, height: 44, borderRadius: 14, background: 'var(--gradient-fire)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 20px var(--glow-red)' }}>
-              <Dumbbell size={22} color="white" />
+      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 11, minWidth: 0, flex: 1 }}>
+            <div
+              className="icon-badge"
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 12,
+                background: 'var(--gradient-fire)',
+                boxShadow: '0 4px 16px var(--glow-red)',
+                color: 'var(--text-on-accent)',
+                flexShrink: 0,
+              }}
+            >
+              <Dumbbell size={20} />
             </div>
-            <div>
-              <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.03em' }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <h1 className="font-display" style={{ fontSize: 23, fontWeight: 800, letterSpacing: '-0.025em', lineHeight: 1.15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 <span className="gradient-text">Exercise Library</span>
               </h1>
-              <p style={{ color: 'var(--text-muted)', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Sparkles size={10} /> {isLoading ? 'Loading exercise catalog...' : `${exercises.length.toLocaleString()} exercises • ${filteredExercises.length.toLocaleString()} shown`}
+              <p style={{ color: 'var(--text-muted)', fontSize: 11.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <Sparkles size={11} color="var(--accent-purple)" style={{ flexShrink: 0 }} />
+                <span>{isLoading ? 'Loading exercise catalog...' : `${exercises.length.toLocaleString()} exercises • ${filteredExercises.length.toLocaleString()} shown`}</span>
               </p>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-            <button
-              onClick={() => setActiveTab('plans')}
-              className="btn-secondary"
-              style={{ fontSize: 11, padding: '8px 12px', borderRadius: 12, fontWeight: 700, flexShrink: 0 }}
-              title="Switch to Workout Plans"
-            >
-              ← Plans
-            </button>
-            <button
-              onClick={() => setOnlyMyEquipment(!onlyMyEquipment)}
-              className={`filter-chip ${onlyMyEquipment ? 'active' : ''}`}
-              style={{ fontSize: 11, padding: '8px 12px', flexShrink: 0 }}
-              title="Filter by your selected equipment"
-            >
-              {onlyMyEquipment && <Check size={12} />} My Gear ({userEquipment?.length || 0})
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setActiveTab('plans')}
+            className="btn-secondary"
+            style={{ fontSize: 11.5, padding: '8px 12px', minHeight: 36, borderRadius: 10, fontWeight: 700, flexShrink: 0, whiteSpace: 'nowrap' }}
+            title="Switch to Workout Plans"
+          >
+            ← Plans
+          </button>
         </div>
       </motion.div>
 
-      {/* Search */}
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
-        style={{ position: 'relative', marginBottom: 16 }}>
-        <Search size={16} style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-        <input className="search-bar" type="text" placeholder="Search exercises, muscles, equipment..."
-          value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-        {searchQuery && (
-          <button aria-label="Clear search" onClick={() => setSearchQuery('')} style={{ position: 'absolute', right: 48, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
-            <X size={14} />
+      {/* Search & Quick Gear Toggle */}
+      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.04 }}
+        style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+          <Search size={16} style={{ position: 'absolute', left: 14, color: 'var(--text-muted)', pointerEvents: 'none', zIndex: 2 }} />
+          <input
+            className="search-bar"
+            type="text"
+            placeholder="Search exercises, muscles, equipment..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ paddingLeft: 42, paddingRight: searchQuery ? 84 : 50, minHeight: 46 }}
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={() => setSearchQuery('')}
+              style={{ position: 'absolute', right: 48, background: 'var(--bg-subtle-fill)', border: 'none', borderRadius: '50%', width: 26, height: 26, color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2 }}
+            >
+              <X size={13} />
+            </button>
+          )}
+          <button
+            type="button"
+            aria-label="Toggle equipment filters"
+            aria-expanded={showFilters}
+            onClick={() => setShowFilters(!showFilters)}
+            style={{
+              position: 'absolute',
+              right: 8,
+              background: showFilters || activeFilters > 0 ? 'var(--accent-purple)' : 'var(--bg-subtle-fill)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 9,
+              width: 32,
+              height: 32,
+              cursor: 'pointer',
+              color: showFilters || activeFilters > 0 ? 'var(--text-on-ocean)' : 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.2s',
+              zIndex: 2,
+            }}
+          >
+            <Filter size={14} />
           </button>
-        )}
-        <button aria-label="Toggle equipment filters" aria-expanded={showFilters} onClick={() => setShowFilters(!showFilters)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: activeFilters > 0 ? 'var(--accent-purple)' : 'transparent', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', color: activeFilters > 0 ? 'white' : 'var(--text-muted)', transition: 'all 0.2s' }}>
-          <Filter size={14} />
-        </button>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => setOnlyMyEquipment(!onlyMyEquipment)}
+            className={`filter-chip ${onlyMyEquipment ? 'active' : ''}`}
+            style={{ fontSize: 11, padding: '6px 12px', minHeight: 32, flexShrink: 0 }}
+            title="Filter by your selected equipment"
+          >
+            {onlyMyEquipment && <Check size={12} />} My Gear ({userEquipment?.length || 0})
+          </button>
+          {equipmentFilter !== 'all' && (
+            <button
+              type="button"
+              onClick={() => setEquipmentFilter('all')}
+              className="filter-chip"
+              style={{ fontSize: 11, padding: '5px 10px', minHeight: 30, textTransform: 'capitalize' }}
+            >
+              {equipmentFilter} <X size={11} />
+            </button>
+          )}
+          <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>
+            {isLoading ? 'Loading...' : `${filteredExercises.length.toLocaleString()} shown`}
+          </div>
+        </div>
       </motion.div>
 
       {/* Muscle / Body part chips */}
@@ -386,7 +448,7 @@ function ExerciseDetailModal({
         <button
           onClick={onClose}
           aria-label="Close modal"
-          style={{ position: 'absolute', top: 18, right: 18, zIndex: 10, width: 32, height: 32, borderRadius: '50%', background: 'rgba(7,7,16,0.75)', border: '1px solid var(--border-bright)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+          style={{ position: 'absolute', top: 18, right: 18, zIndex: 10, width: 32, height: 32, borderRadius: '50%', background: 'var(--bg-elevated)', border: '1px solid var(--border-bright)', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
         >
           <X size={16} />
         </button>
@@ -473,7 +535,7 @@ function ExerciseDetailModal({
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={onClose} className="btn-secondary" style={{ flex: 1, borderRadius: 'var(--r-md)' }}>Close</button>
           <button onClick={onStartWorkout} className="btn-primary" style={{ flex: 2, borderRadius: 'var(--r-md)' }}>
-            <Play size={15} fill="white" /> Start Workout
+            <Play size={15} fill="currentColor" /> Start Workout
           </button>
         </div>
       </motion.div>

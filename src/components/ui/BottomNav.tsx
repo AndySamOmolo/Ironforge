@@ -201,11 +201,11 @@ export default function BottomNav() {
               >
                 <div style={{
                   position: 'absolute', width: 64, height: 64, borderRadius: '50%',
-                  border: '2px solid rgba(255,61,90,0.25)',
+                  border: '2px solid var(--border-active)',
                   animation: 'pulse-dot 3s ease-in-out infinite',
                   pointerEvents: 'none',
                 }} />
-                <Play size={24} fill="white" />
+                <Play size={24} fill="currentColor" />
               </button>
             );
           }
@@ -263,9 +263,9 @@ export default function BottomNav() {
                 </button>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <button onClick={handleStartActivePlanDay} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', border: '1px solid rgba(255,61,90,0.3)' }}>
+                <button onClick={handleStartActivePlanDay} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', border: '1px solid color-mix(in srgb, var(--accent-red) 30%, transparent)' }}>
                   <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--gradient-fire)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Play size={18} fill="white" color="white" />
+                    <Play size={18} fill="currentColor" color="var(--text-on-accent)" />
                   </div>
                   <div>
                     <div style={{ fontSize: 15, fontWeight: 800 }}>{activePlanName ? `Next Day in ${activePlanName}` : 'Choose an Active Plan'}</div>
@@ -273,7 +273,7 @@ export default function BottomNav() {
                   </div>
                 </button>
 
-                <button onClick={handleStartSmartMix} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', border: '1px solid rgba(139,92,246,0.3)' }}>
+                <button onClick={handleStartSmartMix} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', border: '1px solid color-mix(in srgb, var(--accent-purple) 30%, transparent)' }}>
                   <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--gradient-ocean)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Shuffle size={18} color="white" />
                   </div>
@@ -283,7 +283,7 @@ export default function BottomNav() {
                   </div>
                 </button>
 
-                <button onClick={handleStartFreestyle} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', border: '1px solid rgba(16,232,154,0.3)' }}>
+                <button onClick={handleStartFreestyle} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', border: '1px solid color-mix(in srgb, var(--accent-green) 30%, transparent)' }}>
                   <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--gradient-mint)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Zap size={18} color="white" />
                   </div>

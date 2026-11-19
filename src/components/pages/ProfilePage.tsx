@@ -5,7 +5,8 @@ import { motion } from 'framer-motion';
 import {
   User, Dumbbell, Scale, Calculator, Trash2, Download, Check, X, Plus,
   Volume2, Type, Minimize, RotateCcw, Vibrate, Smartphone, Timer,
-  ArrowUp, Database, Zap, Bell, Sparkles, Eye, LayoutGrid, Sliders, Shuffle, Clock,
+  ArrowUp, Database, Zap, Bell, BellRing, Sparkles, Eye, LayoutGrid, Sliders, Shuffle, Clock,
+  Settings, Palette, Wrench, Droplets, Ruler, ShieldCheck, Sun, Moon, Send, ExternalLink, Copy, Upload, Pipette,
 } from 'lucide-react';
 import { useReminderStore } from '@/lib/store/reminderStore';
 import { db } from '@/lib/db/schema';
@@ -21,6 +22,8 @@ import {
   FONT_OPTIONS,
   DEFAULT_APPEARANCE,
   applyAppearanceToDOM,
+  serializeAppearancePreset,
+  parseAppearancePreset,
 } from '@/lib/utils/appearance';
 
 const FONT_SIZE_OPTIONS = [
@@ -58,9 +61,9 @@ export default function ProfilePage() {
     dumbbellWeight, setDumbbellWeight,
     equipment, setEquipment, defaultRestTime, setDefaultRestTime,
     restTimerEnabled, toggleRestTimer,
-    soundEnabled, toggleSound, hapticEnabled, toggleHaptic,
-    theme, customAccent, font, fontSize, numberFont, headerStyle,
-    density, gridColumns, buttonStyle, cardStyle, borderRadius,
+    soundEnabled, toggleSound, hapticEnabled, toggleHaptic, notificationsEnabled, toggleNotifications,
+    theme, customAccent, customAccentHex, customSecondaryHex, customBgHex, font, fontSize, fontWeightScale, numberFont, headerStyle,
+    density, gridColumns, buttonStyle, cardStyle, cardBlur, surfaceTint, borderRadius,
     animationLevel, navStyle, bgStyle, accentIntensity, glowIntensity,
     borderThickness, glassOpacity, contrastMode, colorMode, textShadow,
     weightIncrement, autoAdvance, autoStartRest, keepScreenOn,
@@ -80,6 +83,7 @@ export default function ProfilePage() {
   const [todayWater, setTodayWater] = useState<WaterLog | null>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
+  const [presetStatus, setPresetStatus] = useState<string | null>(null);
 
   useEffect(() => {
     loadBodyWeights();
@@ -183,8 +187,12 @@ export default function ProfilePage() {
     const nextAppearance = {
       theme,
       customAccent,
+      customAccentHex,
+      customSecondaryHex,
+      customBgHex,
       font,
       fontSize,
+      fontWeightScale,
       numberFont,
       headerStyle,
       density,
@@ -192,6 +200,8 @@ export default function ProfilePage() {
       gridColumns,
       buttonStyle,
       cardStyle,
+      cardBlur,
+      surfaceTint,
       borderRadius,
       animationLevel,
       navStyle,
@@ -218,6 +228,38 @@ export default function ProfilePage() {
     loadFromProfile(DEFAULT_APPEARANCE);
     applyAppearanceToDOM(DEFAULT_APPEARANCE);
     saveProfileFields(DEFAULT_APPEARANCE);
+  };
+
+  const copyThemePreset = async () => {
+    const json = serializeAppearancePreset({
+      theme, customAccent, customAccentHex, customSecondaryHex, customBgHex,
+      font, fontSize, fontWeightScale, numberFont, headerStyle, density,
+      compactMode: density === 'compact', gridColumns, buttonStyle, cardStyle,
+      cardBlur, surfaceTint, borderRadius, animationLevel, navStyle, bgStyle,
+      accentIntensity, glowIntensity, borderThickness, glassOpacity, contrastMode,
+      colorMode, textShadow,
+    });
+    try {
+      await navigator.clipboard.writeText(json);
+      setPresetStatus('Theme preset copied to clipboard');
+      setTimeout(() => setPresetStatus(null), 3000);
+    } catch {
+      window.prompt('Copy your theme preset JSON:', json);
+    }
+  };
+
+  const importThemePreset = () => {
+    const raw = window.prompt('Paste an IronForge theme preset JSON:');
+    if (!raw) return;
+    const parsed = parseAppearancePreset(raw);
+    if (!parsed) {
+      setPresetStatus('Invalid theme preset JSON');
+      setTimeout(() => setPresetStatus(null), 3500);
+      return;
+    }
+    updateAppearance(parsed);
+    setPresetStatus('Theme preset applied!');
+    setTimeout(() => setPresetStatus(null), 3000);
   };
 
   const updateWorkoutSetting = <K extends keyof typeof store>(key: K, value: (typeof store)[K]) => {
@@ -565,9 +607,9 @@ export default function ProfilePage() {
         width: 46,
         height: 26,
         borderRadius: 999,
-        border: enabled ? '1px solid rgba(16,232,154,0.45)' : '1px solid var(--border-bright)',
+        border: enabled ? '1px solid color-mix(in srgb, var(--accent-green) 45%, transparent)' : '1px solid var(--border-bright)',
         background: enabled ? 'var(--gradient-mint)' : 'var(--bg-input)',
-        boxShadow: enabled ? '0 0 12px rgba(16,232,154,0.25)' : 'inset 0 1px 3px rgba(0,0,0,0.35)',
+        boxShadow: enabled ? '0 0 12px color-mix(in srgb, var(--accent-green) 25%, transparent)' : 'inset 0 1px 3px rgba(0,0,0,0.35)',
         cursor: 'pointer',
         position: 'relative',
         transition: 'all 0.22s ease',
@@ -610,23 +652,36 @@ export default function ProfilePage() {
   return (
     <div className="page-container">
       <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 12 }}>
-        <h1 className="font-display" style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
-          <span className="gradient-text">Settings</span>
-        </h1>
-        <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 3 }}>Customize your equipment, appearance &amp; workout engine</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="icon-badge" style={{ width: 38, height: 38, borderRadius: 10, background: 'color-mix(in srgb, var(--accent-purple) 14%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-purple) 28%, transparent)' }}>
+            <Settings size={18} color="var(--accent-purple)" />
+          </div>
+          <div>
+            <h1 className="font-display" style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.15 }}>
+              <span className="gradient-text">Settings</span>
+            </h1>
+            <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 1 }}>Customize your equipment, appearance &amp; workout engine</p>
+          </div>
+        </div>
       </motion.div>
 
       {/* Tab Bar */}
       <div className="chip-scroll" style={{ marginBottom: 14, paddingBottom: 4 }}>
         {([
-          { id: 'profile' as const, label: '👤 Profile & Gear' },
-          { id: 'appearance' as const, label: '🎨 Appearance' },
-          { id: 'workout' as const, label: '💪 Workout' },
-          { id: 'tools' as const, label: '🧮 Tools' },
-          { id: 'data' as const, label: '💾 Data' },
+          { id: 'profile' as const, label: 'Profile & Gear', icon: User },
+          { id: 'appearance' as const, label: 'Appearance', icon: Palette },
+          { id: 'workout' as const, label: 'Workout', icon: Dumbbell },
+          { id: 'tools' as const, label: 'Tools', icon: Wrench },
+          { id: 'data' as const, label: 'Data', icon: Database },
         ]).map(tab => (
-          <button key={tab.id} className={`filter-chip ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}>
-            {tab.label}
+          <button
+            key={tab.id}
+            type="button"
+            className={`filter-chip ${activeTab === tab.id ? 'active' : ''}`}
+            onClick={() => setActiveTab(tab.id)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}
+          >
+            <tab.icon size={12} /> {tab.label}
           </button>
         ))}
       </div>
@@ -652,7 +707,7 @@ export default function ProfilePage() {
                     weightIncrement: nextState.weightIncrement,
                   });
                 }}
-                  style={{ padding: '7px 18px', borderRadius: 8, border: 'none', background: unitSystem === sys ? 'var(--gradient-fire)' : 'transparent', color: unitSystem === sys ? 'white' : 'var(--text-muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer', textTransform: 'capitalize' }}>
+                  style={{ padding: '7px 18px', borderRadius: 8, border: 'none', background: unitSystem === sys ? 'var(--gradient-fire)' : 'transparent', color: unitSystem === sys ? 'var(--text-on-accent)' : 'var(--text-muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer', textTransform: 'capitalize' }}>
                   {sys}
                 </button>
               ))}
@@ -727,7 +782,7 @@ export default function ProfilePage() {
                 <div className="equipment-check-box">
                   {equipment.includes(eq) && <Check size={12} color="white" />}
                 </div>
-                <span style={{ fontSize: 13, fontWeight: 600, textTransform: 'capitalize' }}>{eq}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, textTransform: 'capitalize', textAlign: 'left', flex: 1, minWidth: 0, lineHeight: 1.25 }}>{eq}</span>
               </button>
             ))}
           </div>
@@ -739,55 +794,98 @@ export default function ProfilePage() {
         <>
           {/* Sticky Live Preview Banner — stays pinned at top while scrolling all appearance controls */}
           <div className="card hero-gradient live-preview-sticky" style={{ padding: '12px 14px', marginBottom: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span className="badge" style={{ background: 'rgba(16,232,154,0.14)', color: 'var(--accent-green)', border: '1px solid rgba(16,232,154,0.32)', fontSize: 10, fontWeight: 800, padding: '3px 9px' }}>
-                  <Sparkles size={10} /> Live Preview • Pinned
-                </span>
-                <span className="filter-chip active" style={{ fontSize: 9.5, padding: '2px 8px', minHeight: 22, pointerEvents: 'none' }}>
-                  Accent
-                </span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <span className="badge" style={{ background: 'color-mix(in srgb, var(--accent-green) 14%, transparent)', color: 'var(--accent-green)', border: '1px solid color-mix(in srgb, var(--accent-green) 32%, transparent)', fontSize: 9.5, fontWeight: 800, padding: '2px 8px' }}>
+                <Sparkles size={10} /> Live Studio
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <button type="button" onClick={copyThemePreset} className="btn-ghost" title="Copy theme JSON" style={{ fontSize: 10.5, padding: '4px 7px', minHeight: 26, color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                  <Copy size={11} /> Copy
+                </button>
+                <button type="button" onClick={importThemePreset} className="btn-ghost" title="Import theme JSON" style={{ fontSize: 10.5, padding: '4px 7px', minHeight: 26, color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                  <Upload size={11} /> Import
+                </button>
+                <button type="button" onClick={resetAppearance} className="btn-ghost" title="Reset appearance defaults" style={{ fontSize: 10.5, padding: '4px 7px', minHeight: 26, color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                  <RotateCcw size={11} /> Reset
+                </button>
               </div>
-              <button onClick={resetAppearance} className="btn-ghost" style={{ fontSize: 11, padding: '4px 8px', minHeight: 28, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <RotateCcw size={11} /> Reset Defaults
-              </button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <h3 className="font-display" style={{ fontSize: 16.5, fontWeight: 800, lineHeight: 1.2 }}>
-                  <span className="gradient-text">IronForge Studio</span>
-                </h3>
-                <p style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  Theme: <strong style={{ textTransform: 'capitalize', color: 'var(--text-primary)' }}>{theme}</strong> • Card: <strong style={{ textTransform: 'capitalize', color: 'var(--text-primary)' }}>{cardStyle}</strong> • Button: <strong style={{ textTransform: 'capitalize', color: 'var(--text-primary)' }}>{buttonStyle}</strong> • Font: <strong style={{ textTransform: 'capitalize', color: 'var(--text-primary)' }}>{font}</strong>
-                </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+                <div className="day-badge day-badge--next" style={{ width: 38, height: 38, minWidth: 38, minHeight: 38 }}>
+                  <span className="day-badge__eyebrow">DAY</span>
+                  <span className="day-badge__num" style={{ fontSize: 14 }}>01</span>
+                </div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <h3 className="font-display" style={{ fontSize: 15.5, fontWeight: 800, lineHeight: 1.2 }}>
+                    <span className="gradient-text">IronForge Studio</span>
+                  </h3>
+                  <p style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <strong style={{ textTransform: 'capitalize', color: 'var(--text-primary)' }}>{theme}</strong> • {cardStyle} • {buttonStyle} • {font}
+                  </p>
+                </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                <div className="font-mono" style={{ fontSize: 17, fontWeight: 800, color: 'var(--accent-green)' }}>
-                  {unitSystem === 'metric' ? '100kg' : '225lbs'}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                <span className="btn-primary" style={{ width: 'auto', minHeight: 28, padding: '4px 10px', fontSize: 10, borderRadius: 8, pointerEvents: 'none', textTransform: 'none' }}>
+                  Start
+                </span>
+                <div className="font-mono" style={{ fontSize: 14, fontWeight: 800, color: 'var(--accent-green)' }}>
+                  {unitSystem === 'metric' ? '100kg' : '225lb'}
                 </div>
               </div>
             </div>
+            {presetStatus && (
+              <div style={{ marginTop: 7, fontSize: 10.5, fontWeight: 700, color: 'var(--accent-green)' }}>
+                {presetStatus}
+              </div>
+            )}
           </div>
 
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-          {/* Theme Selector (24 Themes) */}
+          {/* Theme Selector — Grouped into Light Mode & Dark/OLED */}
           <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Theme ({THEME_OPTIONS.length} Options — Dark, OLED & Light)</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(62px, 1fr))', gap: 8 }}>
-              {THEME_OPTIONS.map(t => {
+            <div className="section-label" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
+              <Sun size={11} color="var(--accent-yellow)" /> Light Mode Themes ({THEME_OPTIONS.filter(t => t.isLight).length})
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(64px, 1fr))', gap: 8, marginBottom: 16 }}>
+              {THEME_OPTIONS.filter(t => t.isLight).map(t => {
                 const isActive = theme === t.id;
                 return (
-                  <button key={t.id} onClick={() => updateAppearance({ theme: t.id })} style={{
-                    padding: '10px 4px', borderRadius: 'var(--r-md)', border: isActive ? `2px solid ${t.colors[0]}` : '1px solid var(--border)',
+                  <button key={t.id} type="button" onClick={() => updateAppearance({ theme: t.id })} style={{
+                    padding: '10px 4px', borderRadius: 'var(--r-md)',
+                    border: isActive ? `2px solid ${t.colors[0]}` : '1px solid rgba(15, 23, 42, 0.14)',
                     background: t.colors[2], cursor: 'pointer', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 6,
-                    boxShadow: isActive ? `0 0 12px ${t.colors[0]}40` : 'none', minHeight: 62, transition: 'all 0.2s',
-                  }} title={t.label}>
+                    boxShadow: isActive ? `0 0 12px ${t.colors[0]}38` : '0 1px 3px rgba(15,23,42,0.06)', minHeight: 62, transition: 'all 0.2s',
+                  }} title={`${t.label} (Light)`}>
                     <div style={{ display: 'flex', gap: 3 }}>
-                      <div style={{ width: 12, height: 12, borderRadius: '50%', background: t.colors[0], border: '1px solid rgba(0,0,0,0.2)' }} />
-                      <div style={{ width: 12, height: 12, borderRadius: '50%', background: t.colors[1], border: '1px solid rgba(0,0,0,0.2)' }} />
+                      <div style={{ width: 12, height: 12, borderRadius: '50%', background: t.colors[0], border: '1px solid rgba(0,0,0,0.14)' }} />
+                      <div style={{ width: 12, height: 12, borderRadius: '50%', background: t.colors[1], border: '1px solid rgba(0,0,0,0.14)' }} />
                     </div>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: isActive ? t.colors[0] : (t.id === 'daylight' || t.id === 'sand' ? '#334155' : '#94a3b8'), letterSpacing: 0.4 }}>{t.label}</span>
+                    <span style={{ fontSize: 9.5, fontWeight: 700, color: isActive ? t.colors[0] : '#334155', letterSpacing: 0.3 }}>{t.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="section-label" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
+              <Moon size={11} color="var(--accent-purple)" /> Dark &amp; OLED Themes ({THEME_OPTIONS.filter(t => !t.isLight).length})
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(64px, 1fr))', gap: 8 }}>
+              {THEME_OPTIONS.filter(t => !t.isLight).map(t => {
+                const isActive = theme === t.id;
+                return (
+                  <button key={t.id} type="button" onClick={() => updateAppearance({ theme: t.id })} style={{
+                    padding: '10px 4px', borderRadius: 'var(--r-md)',
+                    border: isActive ? `2px solid ${t.colors[0]}` : '1px solid rgba(255, 255, 255, 0.1)',
+                    background: t.colors[2], cursor: 'pointer', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 6,
+                    boxShadow: isActive ? `0 0 12px ${t.colors[0]}45` : 'none', minHeight: 62, transition: 'all 0.2s',
+                  }} title={`${t.label} (Dark)`}>
+                    <div style={{ display: 'flex', gap: 3 }}>
+                      <div style={{ width: 12, height: 12, borderRadius: '50%', background: t.colors[0], border: '1px solid rgba(255,255,255,0.2)' }} />
+                      <div style={{ width: 12, height: 12, borderRadius: '50%', background: t.colors[1], border: '1px solid rgba(255,255,255,0.2)' }} />
+                    </div>
+                    <span style={{ fontSize: 9.5, fontWeight: 700, color: isActive ? t.colors[0] : '#cbd5e1', letterSpacing: 0.3 }}>{t.label}</span>
                   </button>
                 );
               })}
@@ -801,7 +899,7 @@ export default function ProfilePage() {
               {CUSTOM_ACCENT_OPTIONS.map(acc => {
                 const isActive = customAccent === acc.id;
                 return (
-                  <button key={acc.id} onClick={() => updateAppearance({ customAccent: acc.id })} style={{
+                  <button key={acc.id} onClick={() => updateAppearance({ customAccent: acc.id, customAccentHex: '', customSecondaryHex: '' })} style={{
                     padding: '10px 4px', borderRadius: 10, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
                     background: isActive ? 'var(--bg-elevated)' : 'var(--bg-glass)',
                     border: isActive ? `2px solid ${acc.color || 'var(--accent-red)'}` : '1px solid var(--border)',
@@ -814,6 +912,59 @@ export default function ProfilePage() {
                   </button>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Custom Hex Color Studio (Unlimited Colors) */}
+          <div className="card" style={{ padding: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <div className="section-label" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <Pipette size={11} color="var(--accent-purple)" /> Custom Hex Color Studio
+              </div>
+              {(customAccentHex || customSecondaryHex || customBgHex) && (
+                <button
+                  type="button"
+                  onClick={() => updateAppearance({ customAccentHex: '', customSecondaryHex: '', customBgHex: '' })}
+                  className="btn-ghost"
+                  style={{ fontSize: 10.5, padding: '2px 8px', minHeight: 24, color: 'var(--accent-red)' }}
+                >
+                  Clear Custom Colors
+                </button>
+              )}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              {[
+                { key: 'customAccentHex' as const, label: 'Primary', value: customAccentHex || '#FF3D5A', active: Boolean(customAccentHex) },
+                { key: 'customSecondaryHex' as const, label: 'Secondary', value: customSecondaryHex || '#8B5CF6', active: Boolean(customSecondaryHex) },
+                { key: 'customBgHex' as const, label: 'Canvas BG', value: customBgHex || '#070710', active: Boolean(customBgHex) },
+              ].map((item) => (
+                <label
+                  key={item.key}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '10px 6px',
+                    borderRadius: 12,
+                    background: 'var(--bg-input)',
+                    border: item.active ? '1.5px solid var(--accent-red)' : '1px solid var(--border-subtle)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="color"
+                    value={item.value}
+                    onChange={(e) => updateAppearance({ [item.key]: e.target.value })}
+                    aria-label={`Pick ${item.label} color`}
+                    style={{ width: 32, height: 32, border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}
+                  />
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-primary)' }}>{item.label}</span>
+                  <span className="font-mono" style={{ fontSize: 9, color: 'var(--text-muted)' }}>
+                    {item.active ? item.value.toUpperCase() : 'Theme'}
+                  </span>
+                </label>
+              ))}
             </div>
           </div>
 
@@ -854,7 +1005,7 @@ export default function ProfilePage() {
                     padding: '12px 4px', borderRadius: 12, cursor: 'pointer', textAlign: 'center',
                     background: fontSize === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
                     border: fontSize === opt.id ? 'none' : '1px solid var(--border)',
-                    color: fontSize === opt.id ? 'white' : 'var(--text-secondary)',
+                    color: fontSize === opt.id ? 'var(--text-on-accent)' : 'var(--text-secondary)',
                   }}>
                   <div style={{ fontSize: opt.sample, fontWeight: 800, marginBottom: 4 }}>Aa</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
@@ -877,7 +1028,7 @@ export default function ProfilePage() {
                     padding: '12px 6px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                     background: numberFont === opt.id ? 'var(--gradient-ocean)' : 'var(--bg-glass)',
                     border: numberFont === opt.id ? 'none' : '1px solid var(--border)',
-                    color: numberFont === opt.id ? 'white' : 'var(--text-secondary)',
+                    color: numberFont === opt.id ? 'var(--text-on-ocean)' : 'var(--text-secondary)',
                   }}>
                   <div style={{ fontSize: 13, fontWeight: 800, fontFamily: opt.ff, marginBottom: 4 }}>{opt.sample}</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
@@ -901,7 +1052,7 @@ export default function ProfilePage() {
                     padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                     background: headerStyle === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
                     border: headerStyle === opt.id ? 'none' : '1px solid var(--border)',
-                    color: headerStyle === opt.id ? 'white' : 'var(--text-secondary)',
+                    color: headerStyle === opt.id ? 'var(--text-on-accent)' : 'var(--text-secondary)',
                   }}>
                   <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
@@ -924,7 +1075,7 @@ export default function ProfilePage() {
                     padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                     background: density === opt.id ? 'var(--gradient-mint)' : 'var(--bg-glass)',
                     border: density === opt.id ? 'none' : '1px solid var(--border)',
-                    color: density === opt.id ? 'white' : 'var(--text-secondary)',
+                    color: density === opt.id ? 'var(--text-on-mint)' : 'var(--text-secondary)',
                   }}>
                   <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
@@ -947,7 +1098,7 @@ export default function ProfilePage() {
                     padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                     background: gridColumns === opt.id ? 'var(--gradient-ocean)' : 'var(--bg-glass)',
                     border: gridColumns === opt.id ? 'none' : '1px solid var(--border)',
-                    color: gridColumns === opt.id ? 'white' : 'var(--text-secondary)',
+                    color: gridColumns === opt.id ? 'var(--text-on-ocean)' : 'var(--text-secondary)',
                   }}>
                   <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
@@ -973,7 +1124,7 @@ export default function ProfilePage() {
                   padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                   background: buttonStyle === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
                   border: buttonStyle === opt.id ? 'none' : '1px solid var(--border)',
-                  color: buttonStyle === opt.id ? 'white' : 'var(--text-secondary)',
+                  color: buttonStyle === opt.id ? 'var(--text-on-accent)' : 'var(--text-secondary)',
                 }}>
                   <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.preview}</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
@@ -999,7 +1150,7 @@ export default function ProfilePage() {
                   padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                   background: cardStyle === opt.id ? 'var(--gradient-ocean)' : 'var(--bg-glass)',
                   border: cardStyle === opt.id ? 'none' : '1px solid var(--border)',
-                  color: cardStyle === opt.id ? 'white' : 'var(--text-secondary)',
+                  color: cardStyle === opt.id ? 'var(--text-on-ocean)' : 'var(--text-secondary)',
                 }}>
                   <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.preview}</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
@@ -1023,7 +1174,7 @@ export default function ProfilePage() {
                   padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                   background: borderRadius === opt.id ? 'var(--gradient-mint)' : 'var(--bg-glass)',
                   border: borderRadius === opt.id ? 'none' : '1px solid var(--border)',
-                  color: borderRadius === opt.id ? 'white' : 'var(--text-secondary)',
+                  color: borderRadius === opt.id ? 'var(--text-on-mint)' : 'var(--text-secondary)',
                 }}>
                   <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
@@ -1047,7 +1198,7 @@ export default function ProfilePage() {
                   padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                   background: bgStyle === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
                   border: bgStyle === opt.id ? 'none' : '1px solid var(--border)',
-                  color: bgStyle === opt.id ? 'white' : 'var(--text-secondary)',
+                  color: bgStyle === opt.id ? 'var(--text-on-accent)' : 'var(--text-secondary)',
                 }}>
                   <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
@@ -1072,7 +1223,7 @@ export default function ProfilePage() {
                   padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                   background: navStyle === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
                   border: navStyle === opt.id ? 'none' : '1px solid var(--border)',
-                  color: navStyle === opt.id ? 'white' : 'var(--text-secondary)',
+                  color: navStyle === opt.id ? 'var(--text-on-accent)' : 'var(--text-secondary)',
                 }}>
                   <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
@@ -1095,7 +1246,7 @@ export default function ProfilePage() {
                   padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                   background: animationLevel === opt.id ? 'var(--gradient-sunset)' : 'var(--bg-glass)',
                   border: animationLevel === opt.id ? 'none' : '1px solid var(--border)',
-                  color: animationLevel === opt.id ? 'white' : 'var(--text-secondary)',
+                  color: animationLevel === opt.id ? 'var(--text-on-accent)' : 'var(--text-secondary)',
                 }}>
                   <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
@@ -1113,7 +1264,7 @@ export default function ProfilePage() {
                   padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                   background: accentIntensity === opt.id ? 'var(--gradient-hero)' : 'var(--bg-glass)',
                   border: accentIntensity === opt.id ? 'none' : '1px solid var(--border)',
-                  color: accentIntensity === opt.id ? 'white' : 'var(--text-secondary)',
+                  color: accentIntensity === opt.id ? 'var(--text-on-accent)' : 'var(--text-secondary)',
                 }}>
                   <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
@@ -1136,7 +1287,7 @@ export default function ProfilePage() {
                   padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                   background: glowIntensity === opt.id ? 'var(--gradient-mint)' : 'var(--bg-glass)',
                   border: glowIntensity === opt.id ? 'none' : '1px solid var(--border)',
-                  color: glowIntensity === opt.id ? 'white' : 'var(--text-secondary)',
+                  color: glowIntensity === opt.id ? 'var(--text-on-mint)' : 'var(--text-secondary)',
                 }}>
                   <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
@@ -1159,7 +1310,7 @@ export default function ProfilePage() {
                   padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                   background: borderThickness === opt.id ? 'var(--gradient-ocean)' : 'var(--bg-glass)',
                   border: borderThickness === opt.id ? 'none' : '1px solid var(--border)',
-                  color: borderThickness === opt.id ? 'white' : 'var(--text-secondary)',
+                  color: borderThickness === opt.id ? 'var(--text-on-ocean)' : 'var(--text-secondary)',
                 }}>
                   <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
@@ -1182,7 +1333,7 @@ export default function ProfilePage() {
                   padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                   background: glassOpacity === opt.id ? 'var(--gradient-mint)' : 'var(--bg-glass)',
                   border: glassOpacity === opt.id ? 'none' : '1px solid var(--border)',
-                  color: glassOpacity === opt.id ? 'white' : 'var(--text-secondary)',
+                  color: glassOpacity === opt.id ? 'var(--text-on-mint)' : 'var(--text-secondary)',
                 }}>
                   <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
@@ -1200,7 +1351,7 @@ export default function ProfilePage() {
                   padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                   background: contrastMode === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
                   border: contrastMode === opt.id ? 'none' : '1px solid var(--border)',
-                  color: contrastMode === opt.id ? 'white' : 'var(--text-secondary)',
+                  color: contrastMode === opt.id ? 'var(--text-on-accent)' : 'var(--text-secondary)',
                 }}>
                   <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
@@ -1218,10 +1369,77 @@ export default function ProfilePage() {
                   padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
                   background: colorMode === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
                   border: colorMode === opt.id ? 'none' : '1px solid var(--border)',
-                  color: colorMode === opt.id ? 'white' : 'var(--text-secondary)',
+                  color: colorMode === opt.id ? 'var(--text-on-accent)' : 'var(--text-secondary)',
                 }}>
                   <div style={{ fontSize: 16 }}>{opt.icon}</div>
                   <div style={{ fontSize: 8, fontWeight: 700, marginTop: 2 }}>{opt.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Font Weight Scale */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Typography Weight</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {[
+                { id: 'light', label: 'Light' },
+                { id: 'normal', label: 'Balanced' },
+                { id: 'bold', label: 'Heavy' },
+              ].map(opt => (
+                <button key={opt.id} type="button" onClick={() => updateAppearance({ fontWeightScale: opt.id })} style={{
+                  padding: '10px 6px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                  background: fontWeightScale === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
+                  border: fontWeightScale === opt.id ? 'none' : '1px solid var(--border)',
+                  color: fontWeightScale === opt.id ? 'var(--text-on-accent)' : 'var(--text-secondary)',
+                  fontSize: 11, fontWeight: opt.id === 'light' ? 500 : opt.id === 'bold' ? 900 : 700,
+                }}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Card Backdrop Blur */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Backdrop Blur Intensity</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+              {[
+                { id: 'none', label: 'Off' },
+                { id: 'low', label: 'Soft' },
+                { id: 'normal', label: 'Normal' },
+                { id: 'high', label: 'Heavy' },
+              ].map(opt => (
+                <button key={opt.id} type="button" onClick={() => updateAppearance({ cardBlur: opt.id })} style={{
+                  padding: '10px 6px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                  background: cardBlur === opt.id ? 'var(--gradient-ocean)' : 'var(--bg-glass)',
+                  border: cardBlur === opt.id ? 'none' : '1px solid var(--border)',
+                  color: cardBlur === opt.id ? 'var(--text-on-ocean)' : 'var(--text-secondary)',
+                  fontSize: 11, fontWeight: 700,
+                }}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Accent Surface Tinting */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Accent Surface Tint</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {[
+                { id: 'none', label: 'Neutral' },
+                { id: 'subtle', label: 'Subtle Wash' },
+                { id: 'vivid', label: 'Vivid Tint' },
+              ].map(opt => (
+                <button key={opt.id} type="button" onClick={() => updateAppearance({ surfaceTint: opt.id })} style={{
+                  padding: '10px 6px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                  background: surfaceTint === opt.id ? 'var(--gradient-mint)' : 'var(--bg-glass)',
+                  border: surfaceTint === opt.id ? 'none' : '1px solid var(--border)',
+                  color: surfaceTint === opt.id ? 'var(--text-on-mint)' : 'var(--text-secondary)',
+                  fontSize: 11, fontWeight: 700,
+                }}>
+                  {opt.label}
                 </button>
               ))}
             </div>
@@ -1263,7 +1481,7 @@ export default function ProfilePage() {
                 { id: 'high' as const, label: 'High Variety' },
               ]).map(v => (
                 <button key={v.id} onClick={() => updateWorkoutSetting('exerciseVariety', v.id)}
-                  style={{ padding: '8px 10px', borderRadius: 9, border: exerciseVariety === v.id ? 'none' : '1px solid var(--border)', background: exerciseVariety === v.id ? 'var(--gradient-fire)' : 'var(--bg-glass)', color: exerciseVariety === v.id ? 'white' : 'var(--text-muted)', fontSize: 11, fontWeight: 700, cursor: 'pointer', textAlign: 'center' }}>
+                  style={{ padding: '8px 10px', borderRadius: 9, border: exerciseVariety === v.id ? 'none' : '1px solid var(--border)', background: exerciseVariety === v.id ? 'var(--gradient-fire)' : 'var(--bg-glass)', color: exerciseVariety === v.id ? 'var(--text-on-accent)' : 'var(--text-muted)', fontSize: 11, fontWeight: 700, cursor: 'pointer', textAlign: 'center' }}>
                   {v.label}
                 </button>
               ))}
@@ -1274,7 +1492,7 @@ export default function ProfilePage() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6 }}>
               {[30, 60, 90, 120, 180, 300].map(t => (
                 <button key={t} onClick={() => { setDefaultRestTime(t); saveProfileFields({ defaultRestTime: t }); }}
-                  style={{ padding: '8px 4px', borderRadius: 9, border: defaultRestTime === t ? 'none' : '1px solid var(--border)', background: defaultRestTime === t ? 'var(--gradient-fire)' : 'var(--bg-glass)', color: defaultRestTime === t ? 'white' : 'var(--text-muted)', fontSize: 11, fontWeight: 700, cursor: 'pointer', textAlign: 'center' }}>
+                  style={{ padding: '8px 4px', borderRadius: 9, border: defaultRestTime === t ? 'none' : '1px solid var(--border)', background: defaultRestTime === t ? 'var(--gradient-fire)' : 'var(--bg-glass)', color: defaultRestTime === t ? 'var(--text-on-accent)' : 'var(--text-muted)', fontSize: 11, fontWeight: 700, cursor: 'pointer', textAlign: 'center' }}>
                   {t >= 60 ? `${t / 60}m` : `${t}s`}
                 </button>
               ))}
@@ -1285,7 +1503,7 @@ export default function ProfilePage() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6 }}>
               {[0.5, 1, 1.25, 2.5, 5, 10].map(inc => (
                 <button key={inc} onClick={() => updateWorkoutSetting('weightIncrement', inc)}
-                  style={{ padding: '8px 4px', borderRadius: 9, border: weightIncrement === inc ? 'none' : '1px solid var(--border)', background: weightIncrement === inc ? 'var(--gradient-ocean)' : 'var(--bg-glass)', color: weightIncrement === inc ? 'white' : 'var(--text-muted)', fontSize: 11, fontWeight: 700, cursor: 'pointer', textAlign: 'center' }}>
+                  style={{ padding: '8px 4px', borderRadius: 9, border: weightIncrement === inc ? 'none' : '1px solid var(--border)', background: weightIncrement === inc ? 'var(--gradient-ocean)' : 'var(--bg-glass)', color: weightIncrement === inc ? 'var(--text-on-ocean)' : 'var(--text-muted)', fontSize: 11, fontWeight: 700, cursor: 'pointer', textAlign: 'center' }}>
                   {inc}
                 </button>
               ))}
@@ -1324,6 +1542,20 @@ export default function ProfilePage() {
             <Toggle enabled={keepScreenOn} onToggle={() => updateWorkoutSetting('keepScreenOn', !keepScreenOn)} />
           </SettingRow>
 
+          <SettingRow icon={BellRing} iconColor="var(--accent-green)" label="Rest Timer Alerts" description="Send a notification when rest time ends">
+            <Toggle
+              enabled={notificationsEnabled}
+              onToggle={async () => {
+                const next = !notificationsEnabled;
+                if (next) {
+                  await useReminderStore.getState().requestPermission();
+                }
+                toggleNotifications();
+                saveProfileFields({ notificationsEnabled: next });
+              }}
+            />
+          </SettingRow>
+
           {/* Workout Reminders */}
           <ReminderSection />
         </motion.div>
@@ -1331,23 +1563,29 @@ export default function ProfilePage() {
 
       {/* ======== TOOLS TAB ======== */}
       {activeTab === 'tools' && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div className="card" style={{ padding: 16 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Scale size={16} color="var(--accent-green)" /> Body Weight
-            </h3>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="card" style={{ padding: 15 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: 'color-mix(in srgb, var(--accent-green) 14%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-green) 26%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Scale size={15} color="var(--accent-green)" />
+              </div>
+              <div>
+                <h3 style={{ fontSize: 14.5, fontWeight: 800, lineHeight: 1.2 }}>Body Weight</h3>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Track weight trend over time</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: bodyWeights.length > 0 ? 12 : 0 }}>
               <input value={newWeight} onChange={e => setNewWeight(e.target.value)} placeholder={`Weight (${unitSystem === 'metric' ? 'kg' : 'lbs'})`} type="number" step="0.1"
-                style={{ flex: 1, padding: '12px 14px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', fontFamily: 'inherit', minHeight: 46 }} />
-              <button onClick={addBodyWeight} aria-label="Log body weight" style={{ padding: '12px 18px', background: 'var(--gradient-mint)', border: 'none', borderRadius: 12, color: 'white', fontWeight: 700, cursor: 'pointer', minHeight: 46 }}>
-                <Plus size={16} />
+                style={{ flex: 1, minWidth: 0, padding: '10px 14px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', fontFamily: 'inherit', minHeight: 44 }} />
+              <button type="button" onClick={addBodyWeight} className="btn-primary" aria-label="Log body weight" style={{ width: 46, minHeight: 44, padding: 0, borderRadius: 12, flexShrink: 0, textTransform: 'none' }}>
+                <Plus size={17} />
               </button>
             </div>
             {bodyWeights.length > 1 && (
               <svg width="100%" viewBox="0 0 300 80" style={{ marginBottom: 8 }}>
                 <polyline fill="none" stroke="var(--accent-green)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" points={weightChartPoints} />
                 <polyline fill="url(#weightGrad)" stroke="none" points={`10,70 ${weightChartPoints} 290,70`} />
-                <defs><linearGradient id="weightGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="rgba(16,232,154,0.15)" /><stop offset="100%" stopColor="rgba(16,232,154,0)" /></linearGradient></defs>
+                <defs><linearGradient id="weightGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="color-mix(in srgb, var(--accent-green) 18%, transparent)" /><stop offset="100%" stopColor="color-mix(in srgb, var(--accent-green) 1%, transparent)" /></linearGradient></defs>
               </svg>
             )}
             {bodyWeights.slice(0, 5).map(bw => (
@@ -1356,6 +1594,7 @@ export default function ProfilePage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span className="font-mono" style={{ fontWeight: 700 }}>{bw.weight} {bw.unit}</span>
                   <button
+                    type="button"
                     aria-label="Delete entry"
                     onClick={async () => { if (bw.id) { await db.bodyWeight.delete(bw.id); loadBodyWeights(); } }}
                     style={{ background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center' }}
@@ -1367,15 +1606,21 @@ export default function ProfilePage() {
             ))}
           </div>
 
-          <div className="card" style={{ padding: 16 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Calculator size={16} color="var(--accent-purple)" /> 1RM Calculator
-            </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.35fr 1fr', gap: 10, marginBottom: 12 }}>
+          <div className="card" style={{ padding: 15 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: 'color-mix(in srgb, var(--accent-purple) 14%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-purple) 26%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Calculator size={15} color="var(--accent-purple)" />
+              </div>
+              <div>
+                <h3 style={{ fontSize: 14.5, fontWeight: 800, lineHeight: 1.2 }}>1RM Calculator</h3>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Estimate one-rep max &amp; load percentages</div>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.35fr 1fr', gap: 8, marginBottom: calcOneRM ? 12 : 0 }}>
               <input value={oneRMWeight} onChange={e => setOneRMWeight(e.target.value)} placeholder={`Weight (${unitSystem === 'metric' ? 'kg' : 'lbs'})`} type="number"
-                style={{ width: '100%', minWidth: 0, padding: '12px 14px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', fontFamily: 'inherit', minHeight: 46 }} />
+                style={{ width: '100%', minWidth: 0, padding: '10px 14px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', fontFamily: 'inherit', minHeight: 44 }} />
               <input value={oneRMReps} onChange={e => setOneRMReps(e.target.value)} placeholder="Reps" type="number"
-                style={{ width: '100%', minWidth: 0, padding: '12px 14px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', fontFamily: 'inherit', minHeight: 46 }} />
+                style={{ width: '100%', minWidth: 0, padding: '10px 14px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', fontFamily: 'inherit', minHeight: 44 }} />
             </div>
             {calcOneRM && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
@@ -1384,7 +1629,7 @@ export default function ProfilePage() {
                   { label: 'Brzycki', value: calcOneRM.brzycki, color: 'var(--accent-purple)' },
                   { label: 'Lombardi', value: calcOneRM.lombardi, color: 'var(--accent-green)' },
                 ].map(est => (
-                  <div key={est.label} style={{ padding: 12, borderRadius: 12, background: 'var(--bg-glass)', border: '1px solid var(--border)', textAlign: 'center' }}>
+                  <div key={est.label} style={{ padding: 12, borderRadius: 12, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
                     <div className="font-mono" style={{ fontSize: 20, fontWeight: 800, color: est.color }}>{est.value}</div>
                     <div className="section-label" style={{ marginTop: 2 }}>{est.label}</div>
                   </div>
@@ -1395,9 +1640,9 @@ export default function ProfilePage() {
             {calcOneRM && (
               <div style={{ marginTop: 12 }}>
                 <div className="section-label" style={{ marginBottom: 6 }}>Training Percentages (Epley)</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
                   {[95, 90, 85, 80, 75, 70, 65, 60].map(pct => (
-                    <div key={pct} style={{ padding: '8px 4px', borderRadius: 8, background: 'var(--bg-glass)', border: '1px solid var(--border)', textAlign: 'center' }}>
+                    <div key={pct} style={{ padding: '8px 4px', borderRadius: 10, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
                       <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{pct}%</div>
                       <div className="font-mono" style={{ fontSize: 13, fontWeight: 700 }}>{Math.round(calcOneRM.epley * pct / 100)}</div>
                     </div>
@@ -1410,13 +1655,19 @@ export default function ProfilePage() {
           <PlateCalculator barWeight={barWeight} unit={unitSystem} />
 
           {/* Daily Hydration Tracker */}
-          <div className="card" style={{ padding: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-                💧 Daily Hydration
-              </h3>
-              <span className="font-mono" style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent-cyan)' }}>
-                {todayWater?.glasses || 0} / {todayWater?.targetGlasses || 8} glasses ({unitSystem === 'metric' ? `${((todayWater?.glasses || 0) * 0.25).toFixed(2)}L` : `${(todayWater?.glasses || 0) * 8} fl oz`})
+          <div className="card" style={{ padding: 15 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 10, background: 'color-mix(in srgb, var(--accent-cyan) 14%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-cyan) 26%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Droplets size={15} color="var(--accent-cyan)" />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: 14.5, fontWeight: 800, lineHeight: 1.2 }}>Daily Hydration</h3>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Daily water intake goal</div>
+                </div>
+              </div>
+              <span className="font-mono" style={{ fontSize: 12, fontWeight: 800, color: 'var(--accent-cyan)', textAlign: 'right' }}>
+                {todayWater?.glasses || 0}/{todayWater?.targetGlasses || 8} ({unitSystem === 'metric' ? `${((todayWater?.glasses || 0) * 0.25).toFixed(2)}L` : `${(todayWater?.glasses || 0) * 8}oz`})
               </span>
             </div>
             <div className="progress-bar" style={{ height: 8, marginBottom: 12 }}>
@@ -1424,22 +1675,24 @@ export default function ProfilePage() {
                 className="progress-bar-fill"
                 style={{
                   width: `${Math.min(100, ((todayWater?.glasses || 0) / (todayWater?.targetGlasses || 8)) * 100)}%`,
-                  background: 'var(--gradient-ocean)',
+                  background: 'var(--gradient-fire)',
                 }}
               />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: 8 }}>
               <button
+                type="button"
                 onClick={() => updateWater(-1)}
                 className="btn-secondary"
-                style={{ width: '100%', minHeight: 44, borderRadius: 10, fontSize: 12, fontWeight: 700 }}
+                style={{ width: '100%', minHeight: 44, borderRadius: 12, fontSize: 12.5, fontWeight: 700, padding: '10px 12px' }}
               >
                 − 1 Glass
               </button>
               <button
+                type="button"
                 onClick={() => updateWater(1)}
                 className="btn-primary"
-                style={{ width: '100%', minHeight: 44, borderRadius: 10, fontSize: 12, fontWeight: 700, background: 'var(--gradient-ocean)', color: '#fff', textShadow: 'none', boxShadow: 'none', padding: '10px 12px' }}
+                style={{ width: '100%', minHeight: 44, borderRadius: 12, fontSize: 12.5, fontWeight: 700, textTransform: 'none', letterSpacing: 0, padding: '10px 12px' }}
               >
                 + 1 Glass ({unitSystem === 'metric' ? '250ml' : '8 oz'})
               </button>
@@ -1447,22 +1700,28 @@ export default function ProfilePage() {
           </div>
 
           {/* Body Measurements Tracker */}
-          <div className="card" style={{ padding: 16 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-              📏 Body Measurements ({unitSystem === 'metric' ? 'cm' : 'in'})
-            </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 10 }}>
+          <div className="card" style={{ padding: 15 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: 'color-mix(in srgb, var(--accent-orange) 14%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-orange) 26%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Ruler size={15} color="var(--accent-orange)" />
+              </div>
+              <div>
+                <h3 style={{ fontSize: 14.5, fontWeight: 800, lineHeight: 1.2 }}>Body Measurements ({unitSystem === 'metric' ? 'cm' : 'in'})</h3>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Log body fat &amp; tape measurements</div>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: measurements.length > 0 ? 10 : 0 }}>
               <input value={measForm.bodyFat} onChange={e => setMeasForm({ ...measForm, bodyFat: e.target.value })} placeholder="Body Fat %" type="number" step="0.1"
-                style={{ width: '100%', minWidth: 0, padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 13, outline: 'none' }} />
+                style={{ width: '100%', minWidth: 0, padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 13.5, outline: 'none', minHeight: 44 }} />
               <input value={measForm.chest} onChange={e => setMeasForm({ ...measForm, chest: e.target.value })} placeholder="Chest" type="number" step="0.1"
-                style={{ width: '100%', minWidth: 0, padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 13, outline: 'none' }} />
+                style={{ width: '100%', minWidth: 0, padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 13.5, outline: 'none', minHeight: 44 }} />
               <input value={measForm.waist} onChange={e => setMeasForm({ ...measForm, waist: e.target.value })} placeholder="Waist" type="number" step="0.1"
-                style={{ width: '100%', minWidth: 0, padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 13, outline: 'none' }} />
+                style={{ width: '100%', minWidth: 0, padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 13.5, outline: 'none', minHeight: 44 }} />
               <input value={measForm.arms} onChange={e => setMeasForm({ ...measForm, arms: e.target.value })} placeholder="Arms" type="number" step="0.1"
-                style={{ width: '100%', minWidth: 0, padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 13, outline: 'none' }} />
+                style={{ width: '100%', minWidth: 0, padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 13.5, outline: 'none', minHeight: 44 }} />
               <input value={measForm.thighs} onChange={e => setMeasForm({ ...measForm, thighs: e.target.value })} placeholder="Thighs" type="number" step="0.1"
-                style={{ width: '100%', minWidth: 0, padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 13, outline: 'none' }} />
-              <button onClick={addMeasurement} className="btn-primary" style={{ width: '100%', minHeight: 42, borderRadius: 10, fontSize: 12, fontWeight: 700, color: '#fff', textShadow: 'none', boxShadow: 'none' }}>
+                style={{ width: '100%', minWidth: 0, padding: '10px 12px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 13.5, outline: 'none', minHeight: 44 }} />
+              <button type="button" onClick={addMeasurement} className="btn-primary" style={{ width: '100%', minHeight: 44, borderRadius: 12, fontSize: 12.5, fontWeight: 700, textTransform: 'none', letterSpacing: 0, padding: '10px 12px' }}>
                 <Plus size={14} /> Log
               </button>
             </div>
@@ -1515,17 +1774,17 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          <div className="card" style={{ padding: 16, border: '1px solid rgba(16,232,154,0.2)' }}>
-            <h3 style={{ fontSize: 14, fontWeight: 800, marginBottom: 8, color: 'var(--accent-green)' }}>
-              🔒 Privacy &amp; Data Policy
+          <div className="card" style={{ padding: 16, border: '1px solid color-mix(in srgb, var(--accent-green) 20%, transparent)' }}>
+            <h3 style={{ fontSize: 14, fontWeight: 800, marginBottom: 8, color: 'var(--accent-green)', display: 'flex', alignItems: 'center', gap: 7 }}>
+              <ShieldCheck size={15} /> Privacy &amp; Data Policy
             </h3>
             <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.55 }}>
               All workout sessions, sets, personal records, body weight, measurements, hydration logs, and appearance preferences are stored <strong>100% locally on your device</strong> inside <code>IronForgeDB</code> (IndexedDB) and <code>localStorage</code>. Zero analytics, telemetry, or personal data is ever transmitted to external servers. External YouTube tutorial links only open when explicitly clicked. You can export a full JSON backup or permanently erase all stored data at any time below.
             </p>
           </div>
 
-          <button className="card" onClick={exportData} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', width: '100%', textAlign: 'left', border: '1px solid rgba(16,232,154,0.15)' }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(16,232,154,0.1)', border: '1px solid rgba(16,232,154,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <button className="card" onClick={exportData} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', width: '100%', textAlign: 'left', border: '1px solid color-mix(in srgb, var(--accent-green) 15%, transparent)' }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'color-mix(in srgb, var(--accent-green) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-green) 20%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Download size={16} color="var(--accent-green)" />
             </div>
             <div style={{ flex: 1 }}>
@@ -1555,8 +1814,8 @@ export default function ProfilePage() {
             });
             useWorkoutStore.getState().endWorkout();
             loadDBStats();
-          }} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', width: '100%', textAlign: 'left', border: '1px solid rgba(251,191,36,0.15)' }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          }} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', width: '100%', textAlign: 'left', border: '1px solid color-mix(in srgb, var(--accent-yellow) 15%, transparent)' }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'color-mix(in srgb, var(--accent-yellow) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-yellow) 20%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <RotateCcw size={16} color="var(--accent-yellow)" />
             </div>
             <div>
@@ -1565,8 +1824,8 @@ export default function ProfilePage() {
             </div>
           </button>
 
-          <button className="card" onClick={handleFactoryReset} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', width: '100%', textAlign: 'left', border: '1px solid rgba(255,61,90,0.15)' }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,61,90,0.1)', border: '1px solid rgba(255,61,90,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <button className="card" onClick={handleFactoryReset} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', width: '100%', textAlign: 'left', border: '1px solid color-mix(in srgb, var(--accent-red) 15%, transparent)' }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'color-mix(in srgb, var(--accent-red) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-red) 20%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Trash2 size={16} color="var(--accent-red)" />
             </div>
             <div>
@@ -1590,24 +1849,46 @@ export default function ProfilePage() {
 
 /* ===== REMINDER SECTION ===== */
 function ReminderSection() {
-  const { reminders, loadReminders, addReminder, deleteReminder, toggleReminder, requestPermission, permissionGranted, startBackgroundCheck } = useReminderStore();
+  const {
+    reminders,
+    permissionGranted,
+    permissionStatus,
+    loadReminders,
+    addReminder,
+    deleteReminder,
+    toggleReminder,
+    requestPermission,
+    openDeviceNotificationSettings,
+    sendTestNotification,
+    startBackgroundCheck,
+  } = useReminderStore();
   const [showAdd, setShowAdd] = useState(false);
-  const [newDay, setNewDay] = useState(1);
+  const [newDay, setNewDay] = useState(new Date().getDay());
   const [newHour, setNewHour] = useState(18);
   const [newMinute, setNewMinute] = useState(0);
   const [newLabel, setNewLabel] = useState('Workout time!');
+  const [testFeedback, setTestFeedback] = useState<{ ok: boolean; message: string } | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const isNativeAndroid = typeof window !== 'undefined' && Boolean((window as unknown as { IronForgeNative?: unknown }).IronForgeNative);
 
   useEffect(() => { loadReminders(); }, [loadReminders]);
-  useEffect(() => { if (permissionGranted && reminders.some(r => r.isEnabled)) startBackgroundCheck(); }, [permissionGranted, reminders, startBackgroundCheck]);
+  useEffect(() => { if (reminders.some(r => r.isEnabled)) startBackgroundCheck(); }, [reminders, startBackgroundCheck]);
+
+  const handleTest = async () => {
+    setIsTesting(true);
+    try {
+      const res = await sendTestNotification();
+      setTestFeedback({ ok: res.ok, message: res.message });
+      setTimeout(() => setTestFeedback(null), 5000);
+    } finally {
+      setIsTesting(false);
+    }
+  };
 
   const handleAdd = async () => {
-    if (!permissionGranted) {
-      const granted = await requestPermission();
-      if (!granted) {
-        alert('Notification permission was denied. Please enable notifications in your browser or device settings to save reminders.');
-        return;
-      }
+    if (!permissionGranted && permissionStatus === 'default') {
+      await requestPermission();
     }
     await addReminder({ dayOfWeek: newDay, timeHour: newHour, timeMinute: newMinute, isEnabled: true, label: newLabel.trim() || 'Workout time!' });
     setShowAdd(false);
@@ -1615,15 +1896,8 @@ function ReminderSection() {
   };
 
   const handleQuickPreset = async (hour: number, minute: number, label: string) => {
-    if (!permissionGranted) {
-      const granted = await requestPermission();
-      if (!granted) {
-        setNewHour(hour);
-        setNewMinute(minute);
-        setNewLabel(label);
-        setShowAdd(true);
-        return;
-      }
+    if (!permissionGranted && permissionStatus === 'default') {
+      await requestPermission();
     }
     const todayDow = new Date().getDay();
     await addReminder({ dayOfWeek: todayDow, timeHour: hour, timeMinute: minute, isEnabled: true, label });
@@ -1633,15 +1907,15 @@ function ReminderSection() {
   return (
     <div className="card" style={{ padding: '14px 15px', marginTop: 4, overflow: 'visible', border: '1px solid var(--border-subtle)' }}>
       {/* Unified Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 11, minWidth: 0, flex: 1 }}>
           <div
             style={{
               width: 36,
               height: 36,
               borderRadius: 10,
-              background: 'rgba(251, 191, 36, 0.12)',
-              border: '1px solid rgba(251, 191, 36, 0.28)',
+              background: 'color-mix(in srgb, var(--accent-yellow) 14%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--accent-yellow) 28%, transparent)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -1650,8 +1924,15 @@ function ReminderSection() {
           >
             <Bell size={16} color="var(--accent-yellow)" />
           </div>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 800 }}>Workout Reminders</div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <span>Workout Reminders</span>
+              {permissionGranted && (
+                <span className="badge" style={{ fontSize: 9, padding: '2px 7px', background: 'color-mix(in srgb, var(--accent-green) 14%, transparent)', color: 'var(--accent-green)', border: '1px solid color-mix(in srgb, var(--accent-green) 32%, transparent)' }}>
+                  Active
+                </span>
+              )}
+            </div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
               {reminders.length > 0
                 ? `${reminders.filter((r) => r.isEnabled).length} active training alert${reminders.filter((r) => r.isEnabled).length !== 1 ? 's' : ''}`
@@ -1659,27 +1940,69 @@ function ReminderSection() {
             </div>
           </div>
         </div>
-        {!showAdd && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
           <button
             type="button"
-            onClick={() => setShowAdd(true)}
+            onClick={handleTest}
+            disabled={isTesting}
             className="btn-secondary"
+            title="Send a test notification right now"
             style={{
-              padding: '7px 12px',
+              padding: '7px 10px',
               minHeight: 34,
               borderRadius: 10,
-              fontSize: 11.5,
+              fontSize: 11,
               fontWeight: 700,
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 5,
+              gap: 4,
               border: '1px solid var(--border-bright)',
             }}
           >
-            <Plus size={13} color="var(--accent-purple)" /> Add
+            <Send size={12} color="var(--accent-green)" /> {isTesting ? '...' : 'Test'}
           </button>
-        )}
+          {!showAdd && (
+            <button
+              type="button"
+              onClick={() => setShowAdd(true)}
+              className="btn-secondary"
+              style={{
+                padding: '7px 10px',
+                minHeight: 34,
+                borderRadius: 10,
+                fontSize: 11,
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                border: '1px solid var(--border-bright)',
+              }}
+            >
+              <Plus size={13} color="var(--accent-purple)" /> Add
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Test Feedback Pill */}
+      {testFeedback && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            padding: '8px 11px',
+            marginBottom: 10,
+            borderRadius: 10,
+            fontSize: 11,
+            fontWeight: 700,
+            background: testFeedback.ok ? 'color-mix(in srgb, var(--accent-green) 12%, transparent)' : 'color-mix(in srgb, var(--accent-red) 12%, transparent)',
+            border: `1px solid ${testFeedback.ok ? 'color-mix(in srgb, var(--accent-green) 35%, transparent)' : 'color-mix(in srgb, var(--accent-red) 35%, transparent)'}`,
+            color: testFeedback.ok ? 'var(--accent-green)' : 'var(--accent-red)',
+          }}
+        >
+          {testFeedback.message}
+        </div>
+      )}
 
       {/* Sleek Horizontal Permission Banner */}
       {!permissionGranted && (
@@ -1688,8 +2011,8 @@ function ReminderSection() {
             padding: '10px 12px',
             marginBottom: 12,
             borderRadius: 12,
-            background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.1) 0%, rgba(255, 61, 90, 0.08) 100%)',
-            border: '1px solid rgba(251, 191, 36, 0.28)',
+            background: 'color-mix(in srgb, var(--accent-yellow) 10%, var(--bg-input))',
+            border: '1px solid color-mix(in srgb, var(--accent-yellow) 32%, transparent)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -1697,28 +2020,40 @@ function ReminderSection() {
           }}
         >
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 12, color: 'var(--accent-yellow)', fontWeight: 800 }}>Notifications Paused</div>
+            <div style={{ fontSize: 12, color: 'var(--accent-yellow)', fontWeight: 800 }}>
+              {permissionStatus === 'denied'
+                ? 'OS Notifications Blocked'
+                : permissionStatus === 'unsupported'
+                  ? 'In-App Alerts Only'
+                  : 'Notifications Paused'}
+            </div>
             <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 1 }}>
-              Allow device alerts so reminders fire on time
+              {permissionStatus === 'denied'
+                ? 'Enable notifications in device settings for background alerts'
+                : permissionStatus === 'unsupported'
+                  ? 'This browser does not support OS alerts; in-app banners will still show'
+                  : 'Allow device alerts so reminders & rest timers fire on time'}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={requestPermission}
-            className="btn-primary"
-            style={{
-              width: 'auto',
-              minHeight: 34,
-              padding: '6px 12px',
-              borderRadius: 9,
-              fontSize: 11,
-              fontWeight: 800,
-              flexShrink: 0,
-              textTransform: 'none',
-            }}
-          >
-            <Bell size={12} /> Enable
-          </button>
+          {permissionStatus === 'denied' && isNativeAndroid ? (
+            <button
+              type="button"
+              onClick={openDeviceNotificationSettings}
+              className="btn-primary"
+              style={{ width: 'auto', minHeight: 34, padding: '6px 12px', borderRadius: 9, fontSize: 11, fontWeight: 800, flexShrink: 0, textTransform: 'none' }}
+            >
+              <ExternalLink size={12} /> Settings
+            </button>
+          ) : permissionStatus !== 'unsupported' ? (
+            <button
+              type="button"
+              onClick={requestPermission}
+              className="btn-primary"
+              style={{ width: 'auto', minHeight: 34, padding: '6px 12px', borderRadius: 9, fontSize: 11, fontWeight: 800, flexShrink: 0, textTransform: 'none' }}
+            >
+              <Bell size={12} /> Enable
+            </button>
+          ) : null}
         </div>
       )}
 
@@ -1737,17 +2072,17 @@ function ReminderSection() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
             {[
-              { icon: '🌅', title: 'Morning Session', time: '07:00', h: 7, m: 0 },
-              { icon: '☀️', title: 'Lunch Express', time: '12:30', h: 12, m: 30 },
-              { icon: '🔥', title: 'Evening Lift', time: '18:00', h: 18, m: 0 },
-              { icon: '🌙', title: 'Night Session', time: '20:30', h: 20, m: 30 },
+              { title: 'Morning Session', time: '07:00', h: 7, m: 0 },
+              { title: 'Lunch Express', time: '12:30', h: 12, m: 30 },
+              { title: 'Evening Lift', time: '18:00', h: 18, m: 0 },
+              { title: 'Night Session', time: '20:30', h: 20, m: 30 },
             ].map((p) => (
               <button
                 key={p.time}
                 type="button"
                 onClick={() => handleQuickPreset(p.h, p.m, p.title)}
                 style={{
-                  padding: '8px 10px',
+                  padding: '9px 10px',
                   borderRadius: 10,
                   background: 'var(--bg-glass)',
                   border: '1px solid var(--border-bright)',
@@ -1762,7 +2097,7 @@ function ReminderSection() {
                 }}
               >
                 <span style={{ fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span>{p.icon}</span> {p.title}
+                  <Clock size={11} color="var(--accent-purple)" /> {p.title}
                 </span>
                 <span className="font-mono" style={{ fontSize: 10, fontWeight: 800, color: 'var(--accent-green)' }}>
                   {p.time}
@@ -1786,8 +2121,8 @@ function ReminderSection() {
                 padding: '10px 12px',
                 borderRadius: 12,
                 background: 'var(--bg-input)',
-                border: r.isEnabled ? '1px solid rgba(16,232,154,0.28)' : '1px solid var(--border-subtle)',
-                opacity: r.isEnabled ? 1 : 0.6,
+                border: r.isEnabled ? '1px solid color-mix(in srgb, var(--accent-green) 35%, transparent)' : '1px solid var(--border-subtle)',
+                opacity: r.isEnabled ? 1 : 0.65,
               }}
             >
               <div
@@ -1795,8 +2130,8 @@ function ReminderSection() {
                   width: 34,
                   height: 34,
                   borderRadius: 9,
-                  background: r.isEnabled ? 'rgba(16,232,154,0.12)' : 'var(--bg-glass)',
-                  border: `1px solid ${r.isEnabled ? 'rgba(16,232,154,0.25)' : 'var(--border)'}`,
+                  background: r.isEnabled ? 'color-mix(in srgb, var(--accent-green) 14%, transparent)' : 'var(--bg-glass)',
+                  border: `1px solid ${r.isEnabled ? 'color-mix(in srgb, var(--accent-green) 30%, transparent)' : 'var(--border)'}`,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -1826,7 +2161,7 @@ function ReminderSection() {
                   width: 44,
                   height: 24,
                   borderRadius: 999,
-                  border: r.isEnabled ? '1px solid rgba(16,232,154,0.45)' : '1px solid var(--border-bright)',
+                  border: r.isEnabled ? '1px solid color-mix(in srgb, var(--accent-green) 45%, transparent)' : '1px solid var(--border-bright)',
                   background: r.isEnabled ? 'var(--gradient-mint)' : 'var(--bg-glass)',
                   cursor: 'pointer',
                   position: 'relative',
@@ -1895,7 +2230,7 @@ function ReminderSection() {
                     borderRadius: 8,
                     border: newDay === i ? 'none' : '1px solid var(--border-bright)',
                     background: newDay === i ? 'var(--gradient-fire)' : 'var(--bg-glass)',
-                    color: newDay === i ? 'white' : 'var(--text-secondary)',
+                    color: newDay === i ? 'var(--text-on-accent)' : 'var(--text-secondary)',
                     fontSize: 10.5,
                     fontWeight: 800,
                     cursor: 'pointer',
@@ -1928,7 +2263,7 @@ function ReminderSection() {
                 ariaLabel="Reminder minute"
                 value={newMinute}
                 onChange={(val) => setNewMinute(parseInt(val, 10))}
-                options={[0, 15, 30, 45].map((m) => ({
+                options={[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => ({
                   value: m,
                   label: `:${String(m).padStart(2, '0')} min`,
                 }))}
@@ -2000,12 +2335,18 @@ function PlateCalculator({ barWeight, unit }: { barWeight: number; unit: string 
   }, [plateResult]);
 
   return (
-    <div className="card" style={{ padding: 16 }}>
-      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Dumbbell size={16} color="var(--accent-red)" /> Plate Calculator
-      </h3>
+    <div className="card" style={{ padding: 15 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        <div style={{ width: 34, height: 34, borderRadius: 10, background: 'color-mix(in srgb, var(--accent-red) 14%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-red) 26%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Dumbbell size={15} color="var(--accent-red)" />
+        </div>
+        <div>
+          <h3 style={{ fontSize: 14.5, fontWeight: 800, lineHeight: 1.2 }}>Plate Calculator</h3>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Per-side barbell plate breakdown</div>
+        </div>
+      </div>
       <input value={targetWeight} onChange={e => setTargetWeight(e.target.value)} placeholder={`Target weight (${unit === 'metric' ? 'kg' : 'lbs'})`} type="number" max={1500}
-        style={{ width: '100%', padding: '12px 14px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', fontFamily: 'inherit', marginBottom: 12, minHeight: 46 }} />
+        style={{ width: '100%', padding: '10px 14px', background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 14, outline: 'none', fontFamily: 'inherit', marginBottom: plateResult ? 12 : 0, minHeight: 44 }} />
       {plateResult && targetNum === barWeight && (
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600 }}>
           Empty bar (no plates needed)

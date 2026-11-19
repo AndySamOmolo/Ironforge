@@ -260,8 +260,12 @@ export interface UserProfile {
   notificationsEnabled: boolean;
   theme: string;
   customAccent?: string;
+  customAccentHex?: string;
+  customSecondaryHex?: string;
+  customBgHex?: string;
   font?: string;
   fontSize?: string;
+  fontWeightScale?: string;
   numberFont?: string;
   headerStyle?: string;
   density?: string;
@@ -269,6 +273,8 @@ export interface UserProfile {
   gridColumns?: string;
   buttonStyle?: string;
   cardStyle?: string;
+  cardBlur?: string;
+  surfaceTint?: string;
   borderRadius?: string;
   animationLevel?: string;
   navStyle?: string;

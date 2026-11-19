@@ -216,7 +216,7 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
           role="status"
           aria-live="polite"
           className="badge"
-          style={{ background: 'rgba(16,232,154,0.1)', color: 'var(--accent-green)', border: '1px solid rgba(16,232,154,0.25)', fontSize: 10 }}
+          style={{ background: 'color-mix(in srgb, var(--accent-green) 10%, transparent)', color: 'var(--accent-green)', border: '1px solid color-mix(in srgb, var(--accent-green) 25%, transparent)', fontSize: 10 }}
         >
           ✓ Workout Saved
         </span>
@@ -225,7 +225,7 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
       <div style={{
         position: 'absolute', top: '20%', left: '50%', transform: 'translateX(-50%)',
         width: 500, height: 500,
-        background: 'radial-gradient(circle, rgba(255,59,92,0.08) 0%, transparent 60%)',
+        background: 'radial-gradient(circle, color-mix(in srgb, var(--accent-red) 8%, transparent) 0%, transparent 60%)',
         pointerEvents: 'none',
       }} />
 
@@ -236,11 +236,11 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
         className="celebrate-in"
         style={{
           width: 88, height: 88, borderRadius: '50%',
-          background: 'linear-gradient(135deg, rgba(255,209,102,0.2), rgba(255,140,66,0.15))',
-          border: '2px solid rgba(255,209,102,0.3)',
+          background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent-yellow) 20%, transparent), color-mix(in srgb, var(--accent-orange) 15%, transparent))',
+          border: '2px solid color-mix(in srgb, var(--accent-yellow) 30%, transparent)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           marginBottom: 16, position: 'relative',
-          boxShadow: '0 0 40px rgba(255,209,102,0.15)',
+          boxShadow: '0 0 40px color-mix(in srgb, var(--accent-yellow) 15%, transparent)',
         }}
       >
         <Trophy size={40} color="#FFD166" />
@@ -294,8 +294,8 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
         <div
           style={{
             width: '100%', maxWidth: 400, marginBottom: 14, padding: '10px 16px',
-            borderRadius: 14, background: volumeChange >= 0 ? 'rgba(16,232,154,0.06)' : 'rgba(255,61,90,0.06)',
-            border: `1px solid ${volumeChange >= 0 ? 'rgba(16,232,154,0.2)' : 'rgba(255,61,90,0.2)'}`,
+            borderRadius: 14, background: volumeChange >= 0 ? 'color-mix(in srgb, var(--accent-green) 6%, transparent)' : 'color-mix(in srgb, var(--accent-red) 6%, transparent)',
+            border: `1px solid ${volumeChange >= 0 ? 'color-mix(in srgb, var(--accent-green) 20%, transparent)' : 'color-mix(in srgb, var(--accent-red) 20%, transparent)'}`,
             textAlign: 'center',
           }}
         >
@@ -314,8 +314,8 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
         <div style={{ width: '100%', maxWidth: 400, marginBottom: 14 }}>
           <div style={{
             padding: 14, borderRadius: 16,
-            background: 'linear-gradient(135deg, rgba(255,209,102,0.1), rgba(255,140,66,0.06))',
-            border: '1px solid rgba(255,209,102,0.25)',
+            background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent-yellow) 10%, transparent), color-mix(in srgb, var(--accent-orange) 6%, transparent))',
+            border: '1px solid color-mix(in srgb, var(--accent-yellow) 25%, transparent)',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
               <Star size={16} color="var(--accent-yellow)" />
@@ -341,7 +341,7 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
             {musclesTrained.map(m => (
               <span key={m} style={{
                 padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 600,
-                background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)',
+                background: 'color-mix(in srgb, var(--accent-purple) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-purple) 20%, transparent)',
                 color: 'var(--accent-purple)', textTransform: 'capitalize',
               }}>{m}</span>
             ))}

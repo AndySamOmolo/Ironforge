@@ -33,7 +33,7 @@ export default function SeedingScreen({ onRetry, error }: SeedingScreenProps) {
         transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
         style={{
           position: 'absolute', width: 300, height: 300,
-          border: '1px solid rgba(255,59,92,0.05)', borderRadius: '50%',
+          border: '1px solid color-mix(in srgb, var(--accent-red) 5%, transparent)', borderRadius: '50%',
         }}
       />
       <motion.div
@@ -41,7 +41,7 @@ export default function SeedingScreen({ onRetry, error }: SeedingScreenProps) {
         transition={{ duration: 30, repeat: Infinity, ease: 'linear' }}
         style={{
           position: 'absolute', width: 450, height: 450,
-          border: '1px solid rgba(124,106,255,0.04)', borderRadius: '50%',
+          border: '1px solid color-mix(in srgb, var(--accent-purple) 4%, transparent)', borderRadius: '50%',
         }}
       />
 
@@ -52,9 +52,9 @@ export default function SeedingScreen({ onRetry, error }: SeedingScreenProps) {
         className="streak-ring"
         style={{
           width: 88, height: 88, borderRadius: '50%',
-          background: error ? 'rgba(255,61,90,0.15)' : 'var(--gradient-fire)',
+          background: error ? 'color-mix(in srgb, var(--accent-red) 15%, transparent)' : 'var(--gradient-fire)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: error ? '0 0 50px rgba(255,61,90,0.2)' : '0 0 50px var(--glow-red), 0 0 100px rgba(255,59,92,0.1)',
+          boxShadow: error ? '0 0 50px color-mix(in srgb, var(--accent-red) 20%, transparent)' : '0 0 50px var(--glow-red), 0 0 100px color-mix(in srgb, var(--accent-red) 10%, transparent)',
         }}
       >
         {error ? <AlertTriangle size={38} color="#FF3D5A" /> : <Dumbbell size={38} color="white" strokeWidth={2.5} />}

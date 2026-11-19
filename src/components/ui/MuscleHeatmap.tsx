@@ -937,7 +937,7 @@ function AnatomicalFigure({
           borderRadius: 16,
           border: '1px solid rgba(255,255,255,0.08)',
           background:
-            'radial-gradient(ellipse 80% 50% at 50% 15%, rgba(255, 90, 110, 0.10), transparent 70%), radial-gradient(ellipse 70% 45% at 50% 85%, rgba(124, 106, 255, 0.08), transparent 70%), linear-gradient(180deg, #0b0d18 0%, #06070d 100%)',
+            'radial-gradient(ellipse 80% 50% at 50% 15%, rgba(255, 90, 110, 0.10), transparent 70%), radial-gradient(ellipse 70% 45% at 50% 85%, color-mix(in srgb, var(--accent-purple) 8%, transparent), transparent 70%), linear-gradient(180deg, #0b0d18 0%, #06070d 100%)',
           padding: '6px 4px',
           position: 'relative',
           overflow: 'hidden',
@@ -1543,7 +1543,7 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
             ] as const).map(opt => (
               <button
                 key={opt.id}
-                className={range === opt.id ? 'btn-primary btn-high-contrast' : 'btn-secondary'}
+                className={range === opt.id ? 'btn-primary' : 'btn-secondary'}
                 onClick={() => setRange(opt.id)}
                 style={{ minHeight: 28, padding: '4px 10px', fontSize: 10, borderRadius: 8, width: 'auto' }}
               >
@@ -1584,7 +1584,7 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
                 style={{
                   padding: '4px 10px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 10, fontWeight: 700,
                   background: viewFilter === v.id ? 'var(--accent-purple)' : 'transparent',
-                  color: viewFilter === v.id ? '#fff' : 'var(--text-muted)',
+                  color: viewFilter === v.id ? 'var(--text-on-ocean)' : 'var(--text-muted)',
                 }}
               >
                 {v.label}
@@ -1673,7 +1673,7 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
                 <h3 style={{ fontSize: 17, fontWeight: 800, textTransform: 'capitalize' }}>
                   {selectedPart ? selectedPart.headLabel : selectedMuscle}
                 </h3>
-                <span className="badge" style={{ background: 'rgba(139,92,246,0.12)', color: 'var(--accent-purple)', fontSize: 10 }}>
+                <span className="badge" style={{ background: 'color-mix(in srgb, var(--accent-purple) 12%, transparent)', color: 'var(--accent-purple)', fontSize: 10 }}>
                   {selectedPart ? selectedPart.latinName : MUSCLE_METADATA[selectedMuscle].latin}
                 </span>
               </div>
@@ -1686,7 +1686,7 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
               className="btn-primary"
               style={{ width: 'auto', minHeight: 36, padding: '8px 14px', fontSize: 11, borderRadius: 10, flexShrink: 0 }}
             >
-              <Play size={12} fill="white" /> Train {selectedMuscle}
+              <Play size={12} fill="currentColor" /> Train {selectedMuscle}
             </button>
           </div>
 
@@ -1737,7 +1737,7 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
                       <span style={{ fontSize: 11, fontWeight: 700 }}>{head.label}</span>
                       <span className="font-mono" style={{ fontSize: 11, color: 'var(--accent-green)', fontWeight: 700 }}>{head.score}%</span>
                     </div>
-                    <div style={{ height: 5, borderRadius: 999, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                    <div style={{ height: 5, borderRadius: 999, background: 'var(--bg-track)', overflow: 'hidden' }}>
                       <div
                         style={{
                           height: '100%',
@@ -1793,7 +1793,7 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
               <span style={{ color: 'var(--accent-red)' }}>Push {symmetryMetrics.hasData ? symmetryMetrics.pushPullPct : 0}%</span>
               <span style={{ color: 'var(--accent-green)' }}>Pull {symmetryMetrics.hasData ? 100 - symmetryMetrics.pushPullPct : 0}%</span>
             </div>
-            <div style={{ display: 'flex', height: 6, borderRadius: 999, overflow: 'hidden', background: 'rgba(255,255,255,0.06)' }}>
+            <div style={{ display: 'flex', height: 6, borderRadius: 999, overflow: 'hidden', background: 'var(--bg-track)' }}>
               <div style={{ width: `${symmetryMetrics.hasData ? symmetryMetrics.pushPullPct : 0}%`, background: 'var(--accent-red)' }} />
               <div style={{ width: `${symmetryMetrics.hasData ? 100 - symmetryMetrics.pushPullPct : 0}%`, background: 'var(--accent-green)' }} />
             </div>
@@ -1804,7 +1804,7 @@ export default function MuscleHeatmap({ sessions }: MuscleHeatmapProps) {
               <span style={{ color: 'var(--accent-purple)' }}>Upper {symmetryMetrics.hasData ? symmetryMetrics.upperLowerPct : 0}%</span>
               <span style={{ color: 'var(--accent-yellow)' }}>Lower {symmetryMetrics.hasData ? 100 - symmetryMetrics.upperLowerPct : 0}%</span>
             </div>
-            <div style={{ display: 'flex', height: 6, borderRadius: 999, overflow: 'hidden', background: 'rgba(255,255,255,0.06)' }}>
+            <div style={{ display: 'flex', height: 6, borderRadius: 999, overflow: 'hidden', background: 'var(--bg-track)' }}>
               <div style={{ width: `${symmetryMetrics.hasData ? symmetryMetrics.upperLowerPct : 0}%`, background: 'var(--accent-purple)' }} />
               <div style={{ width: `${symmetryMetrics.hasData ? 100 - symmetryMetrics.upperLowerPct : 0}%`, background: 'var(--accent-yellow)' }} />
             </div>

@@ -32,7 +32,7 @@ jobs:
           lfs: true
 
       - name: Set up Node.js 22
-        uses: actions/setup-node@49933ea5288ca88642d1e84afbd3f7d6820020af # v4.4.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: 'npm'
@@ -67,9 +67,10 @@ jobs:
       - name: Merge exercise dataset & copy local assets
         run: npm run merge:exercise-data
 
-      - name: Verify exercise catalog integrity & run unit tests
+      - name: Verify exercise catalog integrity, TypeScript & unit tests
         run: |
           node scripts/test-api.mjs
+          npx tsc --noEmit
           npm test
 
       - name: Build Next.js static export
@@ -90,8 +91,11 @@ jobs:
         run: |
           if [ -n "${ANDROID_KEYSTORE_BASE64}" ]; then
             echo "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > android/app/release-keystore.jks
-          elif [ ! -f android/app/release-keystore.jks ]; then
-            keytool -genkeypair -v \
+            echo "Using repository secret ANDROID_KEYSTORE_BASE64 for consistent signing."
+          elif [ -f android/app/release-keystore.jks ]; then
+            echo "Using persistent committed android/app/release-keystore.jks for seamless in-place updates."
+          else
+            keytool -genkeypair -noprompt \
               -keystore android/app/release-keystore.jks \
               -keyalg RSA -keysize 2048 -validity 10000 \
               -alias "${ANDROID_KEY_ALIAS:-ironforge}" \
@@ -99,6 +103,14 @@ jobs:
               -keypass "${ANDROID_KEY_PASSWORD:-ironforge123}" \
               -dname "CN=IronForge, OU=Mobile, O=IronForge, L=Nairobi, S=Nairobi, C=KE"
           fi
+
+      - name: Compute Monotonic Android Version
+        run: |
+          VERSION_CODE=$((100 + GITHUB_RUN_NUMBER))
+          VERSION_NAME="1.1.${GITHUB_RUN_NUMBER}"
+          echo "ANDROID_VERSION_CODE=${VERSION_CODE}" >> $GITHUB_ENV
+          echo "ANDROID_VERSION_NAME=${VERSION_NAME}" >> $GITHUB_ENV
+          echo "Building IronForge v${VERSION_NAME} (versionCode ${VERSION_CODE})"
 
       - name: Build Debug APK
         working-directory: ./android

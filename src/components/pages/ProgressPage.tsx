@@ -301,7 +301,7 @@ export default function ProgressPage() {
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-          <div className="icon-badge" style={{ background: 'rgba(0,229,160,0.1)', width: 38, height: 38, borderRadius: 10 }}>
+          <div className="icon-badge" style={{ background: 'color-mix(in srgb, var(--accent-green) 10%, transparent)', width: 38, height: 38, borderRadius: 10 }}>
             <BarChart3 size={18} color="var(--accent-green)" />
           </div>
           <div>
@@ -334,10 +334,10 @@ export default function ProgressPage() {
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16 }}>
             {[
-              { icon: Dumbbell, value: sessions.length, label: 'Total Workouts', color: 'var(--accent-purple)', bg: 'rgba(124,106,255,0.08)' },
-              { icon: Activity, value: `${activeDays30d}d`, label: 'Active Days (30D)', color: 'var(--accent-green)', bg: 'rgba(0,229,160,0.08)' },
-              { icon: Clock, value: `${avgDuration}m`, label: `Avg Time (${fmtDur(totalDurationSec)} total)`, color: 'var(--accent-orange)', bg: 'rgba(255,140,66,0.08)' },
-              { icon: Flame, value: `${currentStreak}d`, label: `Streak (Best: ${longestStreak}d)`, color: 'var(--accent-red)', bg: 'rgba(255,61,90,0.08)' },
+              { icon: Dumbbell, value: sessions.length, label: 'Total Workouts', color: 'var(--accent-purple)', bg: 'color-mix(in srgb, var(--accent-purple) 8%, transparent)' },
+              { icon: Activity, value: `${activeDays30d}d`, label: 'Active Days (30D)', color: 'var(--accent-green)', bg: 'color-mix(in srgb, var(--accent-green) 8%, transparent)' },
+              { icon: Clock, value: `${avgDuration}m`, label: `Avg Time (${fmtDur(totalDurationSec)} total)`, color: 'var(--accent-orange)', bg: 'color-mix(in srgb, var(--accent-orange) 8%, transparent)' },
+              { icon: Flame, value: `${currentStreak}d`, label: `Streak (Best: ${longestStreak}d)`, color: 'var(--accent-red)', bg: 'color-mix(in srgb, var(--accent-red) 8%, transparent)' },
             ].map((stat, i) => (
               <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}
                 className="stat-card" style={{ alignItems: 'center', textAlign: 'center' }}>
@@ -355,11 +355,11 @@ export default function ProgressPage() {
             <div style={{ height: 180 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={getWeeklyData()} barSize={24}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
                   <XAxis dataKey="day" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis domain={totalVolume === 0 ? [0, 1000] : ['auto', 'auto']} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={35} />
                   <Tooltip contentStyle={{ background: 'var(--bg-sheet)', border: '1px solid var(--border-bright)', borderRadius: 12, fontSize: 12 }} />
-                  <defs><linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#FF3B5C" stopOpacity={0.9} /><stop offset="100%" stopColor="#FF6B3D" stopOpacity={0.6} /></linearGradient></defs>
+                  <defs><linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--accent-red)" stopOpacity={0.9} /><stop offset="100%" stopColor="var(--accent-orange)" stopOpacity={0.6} /></linearGradient></defs>
                   <Bar dataKey="volume" fill="url(#barGrad)" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -371,12 +371,12 @@ export default function ProgressPage() {
             <div style={{ height: 150 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={getTrendData()}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
                   <XAxis dataKey="week" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} />
                   <YAxis domain={totalVolume === 0 ? [0, 1000] : ['auto', 'auto']} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={35} />
                   <Tooltip contentStyle={{ background: 'var(--bg-sheet)', border: '1px solid var(--border-bright)', borderRadius: 12, fontSize: 12 }} />
-                  <defs><linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#7C6AFF" stopOpacity={0.3} /><stop offset="100%" stopColor="#7C6AFF" stopOpacity={0.0} /></linearGradient></defs>
-                  <Area type="monotone" dataKey="volume" stroke="#7C6AFF" strokeWidth={2} fill="url(#areaGrad)" dot={{ r: 4, fill: '#7C6AFF', strokeWidth: 0 }} />
+                  <defs><linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--accent-purple)" stopOpacity={0.3} /><stop offset="100%" stopColor="var(--accent-purple)" stopOpacity={0.0} /></linearGradient></defs>
+                  <Area type="monotone" dataKey="volume" stroke="var(--accent-purple)" strokeWidth={2} fill="url(#areaGrad)" dot={{ r: 4, fill: 'var(--accent-purple)', strokeWidth: 0 }} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -420,7 +420,7 @@ export default function ProgressPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8 }}>
             <div style={{ display: 'flex', gap: 4 }}>
               {(['all', 'month', 'week'] as const).map(f => (
-                <button key={f} className={historyFilter === f && !selectedCalendarDate ? 'btn-primary btn-high-contrast' : 'btn-secondary'}
+                <button key={f} className={historyFilter === f && !selectedCalendarDate ? 'btn-primary' : 'btn-secondary'}
                   onClick={() => { setHistoryFilter(f); setSelectedCalendarDate(null); setHistoryPage(0); }}
                   style={{ minHeight: 32, padding: '5px 12px', fontSize: 11, borderRadius: 8, width: 'auto' }}>
                   {f === 'all' ? 'All' : f === 'month' ? '30D' : '7D'}
@@ -436,7 +436,7 @@ export default function ProgressPage() {
                 </button>
               )}
             </div>
-            <button className={calendarView ? 'btn-primary btn-high-contrast' : 'btn-secondary'}
+            <button className={calendarView ? 'btn-primary' : 'btn-secondary'}
               onClick={() => setCalendarView(!calendarView)}
               style={{ minHeight: 32, padding: '5px 12px', fontSize: 11, borderRadius: 8, width: 'auto' }}>
               <Calendar size={12} /> {calendarView ? 'Hide Grid' : '12W Grid'}
@@ -464,7 +464,7 @@ export default function ProgressPage() {
                             width: 16, height: 16, minHeight: 28, borderRadius: 3.5, padding: 0, cursor: 'pointer',
                             background: cell.count === 0 ? 'var(--bg-glass)' : cell.count === 1 ? 'var(--accent-green)' : 'var(--accent-red)',
                             opacity: cell.count === 0 ? 0.24 : 0.65 + Math.min(cell.count * 0.2, 0.35),
-                            border: isSel ? '1.5px solid #ffffff' : cell.isToday ? '1.5px solid var(--accent-purple)' : 'none',
+                            border: isSel ? '1.5px solid var(--text-primary)' : cell.isToday ? '1.5px solid var(--accent-purple)' : 'none',
                           }}
                         />
                       );
@@ -477,13 +477,13 @@ export default function ProgressPage() {
                 <span style={{ fontSize: 8, color: 'var(--text-dim)' }}>Today</span>
               </div>
               {selectedCalendarDate && (
-                <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 10, background: 'rgba(124,106,255,0.12)', border: '1px solid rgba(124,106,255,0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
+                <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 10, background: 'color-mix(in srgb, var(--accent-purple) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-purple) 30%, transparent)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
                   <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
                     📅 {new Date(`${selectedCalendarDate}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} • {filteredHistory.length} workout{filteredHistory.length !== 1 ? 's' : ''}
                   </span>
                   <button
                     onClick={() => setSelectedCalendarDate(null)}
-                    style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 999, padding: '3px 8px', color: 'var(--text-primary)', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}
+                    style={{ background: 'var(--bg-subtle-fill)', border: 'none', borderRadius: 999, padding: '3px 8px', color: 'var(--text-primary)', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}
                   >
                     Clear ×
                   </button>
@@ -513,7 +513,7 @@ export default function ProgressPage() {
                       display: 'flex', alignItems: 'center', gap: 12, width: '100%', background: 'none', border: 'none',
                       color: 'var(--text-primary)', cursor: 'pointer', padding: 0, textAlign: 'left',
                     }}>
-                      <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(16,232,154,0.08)', border: '1px solid rgba(16,232,154,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <div style={{ width: 40, height: 40, borderRadius: 10, background: 'color-mix(in srgb, var(--accent-green) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-green) 20%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         <Dumbbell size={16} color="var(--accent-green)" />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -588,7 +588,7 @@ export default function ProgressPage() {
                                 <button onClick={() => setDeleteConfirm(null)} className="btn-secondary" style={{ padding: '4px 10px', fontSize: 11, minHeight: 28 }}>No</button>
                               </div>
                             ) : (
-                              <button onClick={() => setDeleteConfirm(s.id!)} style={{ padding: '4px 10px', background: 'rgba(255,61,90,0.08)', border: '1px solid rgba(255,61,90,0.2)', borderRadius: 6, color: 'var(--accent-red)', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <button onClick={() => setDeleteConfirm(s.id!)} style={{ padding: '4px 10px', background: 'color-mix(in srgb, var(--accent-red) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-red) 20%, transparent)', borderRadius: 6, color: 'var(--accent-red)', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                                 <Trash2 size={10} /> Delete
                               </button>
                             )}
@@ -622,7 +622,7 @@ export default function ProgressPage() {
                   Search or pick any lift to inspect top weight &amp; estimated 1RM trends
                 </div>
               </div>
-              <div className="icon-badge" style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.25)' }}>
+              <div className="icon-badge" style={{ width: 34, height: 34, borderRadius: 10, background: 'color-mix(in srgb, var(--accent-purple) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-purple) 25%, transparent)' }}>
                 <TrendingUp size={16} color="var(--accent-purple)" />
               </div>
             </div>
@@ -702,12 +702,12 @@ export default function ProgressPage() {
                 <div style={{ height: 190 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={exerciseChartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
                       <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} />
                       <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} width={35} />
                       <Tooltip contentStyle={{ background: 'var(--bg-sheet)', border: '1px solid var(--border-bright)', borderRadius: 12, fontSize: 12 }} />
-                      <Line type="monotone" dataKey="est1RM" name="Est. 1RM" stroke="#10E89A" strokeWidth={2.5} dot={{ r: 4, fill: '#10E89A' }} />
-                      <Line type="monotone" dataKey="weight" name="Top Weight" stroke="#FF3B5C" strokeWidth={2.5} dot={{ r: 4, fill: '#FF3B5C' }} />
+                      <Line type="monotone" dataKey="est1RM" name="Est. 1RM" stroke="var(--accent-green)" strokeWidth={2.5} dot={{ r: 4, fill: 'var(--accent-green)' }} />
+                      <Line type="monotone" dataKey="weight" name="Top Weight" stroke="var(--accent-red)" strokeWidth={2.5} dot={{ r: 4, fill: 'var(--accent-red)' }} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -748,7 +748,7 @@ export default function ProgressPage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {sessions.slice(0, 8).map((s, i) => (
                   <div key={s.id || i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: i < 7 ? '1px solid var(--border-subtle)' : 'none' }}>
-                    <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(255,59,92,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: 'color-mix(in srgb, var(--accent-red) 10%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <Dumbbell size={14} color="var(--accent-red)" />
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -784,7 +784,7 @@ export default function ProgressPage() {
               {prs.slice(0, visibleCount).map((pr, i) => (
                 <motion.div key={pr.id || i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }}
                   className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, rgba(255,209,102,0.15), rgba(255,140,66,0.1))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent-yellow) 15%, transparent), color-mix(in srgb, var(--accent-orange) 10%, transparent))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <Trophy size={18} color="var(--accent-yellow)" />
                   </div>
                   <div style={{ flex: 1 }}>

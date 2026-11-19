@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
 import { useUserStore } from '@/lib/store/userStore';
+import { notifyRestComplete } from '@/lib/store/reminderStore';
 import { db } from '@/lib/db/schema';
 import { MUSCLE_COLORS, SetType } from '@/lib/types';
 import type { Exercise } from '@/lib/types';
@@ -33,7 +34,7 @@ const SET_TYPE_BADGE: Record<string, { label: string; color: string; bg: string;
   [SetType.Normal]: { label: '', color: 'var(--text-muted)', bg: 'var(--bg-elevated)', title: 'Normal Set (tap to change)' },
   [SetType.Warmup]: { label: 'W', color: '#F59E0B', bg: 'rgba(245,158,11,0.16)', title: 'Warmup Set' },
   [SetType.DropSet]: { label: 'D', color: '#A855F7', bg: 'rgba(168,85,247,0.16)', title: 'Drop Set' },
-  [SetType.Failure]: { label: 'F', color: '#FF3D5A', bg: 'rgba(255,61,90,0.16)', title: 'To Failure' },
+  [SetType.Failure]: { label: 'F', color: '#FF3D5A', bg: 'color-mix(in srgb, var(--accent-red) 16%, transparent)', title: 'To Failure' },
   [SetType.AMRAP]: { label: 'A', color: '#22D3EE', bg: 'rgba(34,211,238,0.16)', title: 'AMRAP Set' },
 };
 
@@ -64,6 +65,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     keepScreenOn,
     showTimer,
     countdownSound,
+    notificationsEnabled,
   } = useUserStore();
 
   const [showNumpad, setShowNumpad] = useState<{ field: 'weight' | 'reps'; exerciseIdx: number; setIdx: number } | null>(null);
@@ -80,7 +82,24 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
   const [showNotes, setShowNotes] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [restMinimized, setRestMinimized] = useState(false);
-  const [gifExpanded, setGifExpanded] = useState(false);
+  const [gifExpanded, setGifExpanded] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return window.localStorage.getItem('ironforge_gif_expanded_v1') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [mediaAspectRatio, setMediaAspectRatio] = useState<number>(1);
+  const toggleGifExpanded = useCallback(() => {
+    setGifExpanded((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem('ironforge_gif_expanded_v1', String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
   const [showRestBar, setShowRestBar] = useState(false);
   const [screenAwakeLocked, setScreenAwakeLocked] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
@@ -164,6 +183,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
         }
         if (cancelled) return;
         setExerciseInfo(ex || null);
+        setMediaAspectRatio(1);
 
         const exId = ex?.id || currentExercise.exerciseId;
         if (exId) {
@@ -289,10 +309,13 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     if (restTimerActive && restTimeRemaining === 0) {
       playFeedbackTone('rest');
       triggerHaptic('success');
+      if (notificationsEnabled) {
+        void notifyRestComplete(exercises[currentExerciseIndex]?.exerciseName);
+      }
     } else if (restTimerActive && countdownSound && restTimeRemaining > 0 && restTimeRemaining <= 3) {
       playFeedbackTone('tick');
     }
-  }, [restTimeRemaining, restTimerActive, countdownSound, playFeedbackTone, triggerHaptic]);
+  }, [restTimeRemaining, restTimerActive, countdownSound, playFeedbackTone, triggerHaptic, notificationsEnabled, exercises, currentExerciseIndex]);
 
   const formatTime = (sec: number) => {
     const h = Math.floor(sec / 3600); const m = Math.floor((sec % 3600) / 60); const s = sec % 60;
@@ -425,7 +448,8 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
               sessionId: savedSessionId,
               exerciseId: ex.exerciseId,
               exerciseName: ex.exerciseName,
-              order: exOrder,
+              wasSwapped: Boolean(ex.originalExerciseName && ex.originalExerciseName !== ex.exerciseName),
+              orderIndex: exOrder,
               notes: ex.notes?.trim() || undefined,
             });
             sessionExIdByOrder.set(exOrder, seId);
@@ -742,8 +766,8 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                   minHeight: 28,
                   padding: '3px 8px',
                   borderRadius: 8,
-                  background: isPaused ? 'rgba(251,191,36,0.12)' : 'rgba(16,232,154,0.12)',
-                  border: isPaused ? '1px solid rgba(251,191,36,0.3)' : '1px solid rgba(16,232,154,0.3)',
+                  background: isPaused ? 'color-mix(in srgb, var(--accent-yellow) 12%, transparent)' : 'color-mix(in srgb, var(--accent-green) 12%, transparent)',
+                  border: isPaused ? '1px solid color-mix(in srgb, var(--accent-yellow) 30%, transparent)' : '1px solid color-mix(in srgb, var(--accent-green) 30%, transparent)',
                   color: isPaused ? 'var(--accent-yellow)' : 'var(--accent-green)',
                   cursor: 'pointer',
                   display: 'inline-flex',
@@ -768,7 +792,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                   minHeight: 28,
                   padding: '3px 7px',
                   borderRadius: 8,
-                  background: showRestBar || restTimerActive ? 'rgba(139,92,246,0.18)' : 'var(--bg-glass)',
+                  background: showRestBar || restTimerActive ? 'color-mix(in srgb, var(--accent-purple) 18%, transparent)' : 'var(--bg-glass)',
                   border: showRestBar || restTimerActive ? '1px solid var(--accent-purple)' : '1px solid var(--border)',
                   color: showRestBar || restTimerActive ? 'var(--accent-purple)' : 'var(--text-secondary)',
                   cursor: 'pointer',
@@ -798,7 +822,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
         </div>
 
         {/* Slim Progress Bar */}
-        <div style={{ height: 2.5, background: 'rgba(255,255,255,0.05)', borderRadius: 2 }}>
+        <div style={{ height: 2.5, background: 'var(--bg-track)', borderRadius: 2 }}>
           <motion.div style={{ height: '100%', background: 'var(--gradient-fire)', borderRadius: 2 }} animate={{ width: `${progress}%` }} transition={{ duration: 0.4 }} />
         </div>
 
@@ -824,7 +848,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                         padding: '3px 8px', borderRadius: 7, fontSize: 10, fontWeight: 700, cursor: 'pointer',
                         background: restTimerActive && restTimeDuration === sec ? 'var(--gradient-fire)' : 'var(--bg-glass)',
                         border: restTimerActive && restTimeDuration === sec ? 'none' : '1px solid var(--border)',
-                        color: restTimerActive && restTimeDuration === sec ? '#fff' : 'var(--text-secondary)',
+                        color: restTimerActive && restTimeDuration === sec ? 'var(--text-on-accent)' : 'var(--text-secondary)',
                       }}
                     >
                       {sec < 60 ? `${sec}s` : `${sec / 60}m`}
@@ -866,7 +890,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
               padding: '5px 11px',
               borderRadius: 10,
               border: idx === currentExerciseIndex ? '1.5px solid var(--accent-red)' : '1px solid var(--border)',
-              background: ex.isComplete ? 'rgba(16,232,154,0.08)' : idx === currentExerciseIndex ? 'rgba(255,61,90,0.1)' : 'var(--bg-glass)',
+              background: ex.isComplete ? 'color-mix(in srgb, var(--accent-green) 8%, transparent)' : idx === currentExerciseIndex ? 'color-mix(in srgb, var(--accent-red) 10%, transparent)' : 'var(--bg-glass)',
               color: ex.isComplete ? 'var(--accent-green)' : idx === currentExerciseIndex ? 'var(--text-primary)' : 'var(--text-muted)',
               fontSize: 11.5,
               fontWeight: idx === currentExerciseIndex ? 800 : 600,
@@ -883,7 +907,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
           onClick={openAddExerciseModal}
           style={{
             flexShrink: 0, padding: '5px 10px', borderRadius: 10,
-            border: '1px dashed var(--accent-purple)', background: 'rgba(139,92,246,0.08)',
+            border: '1px dashed var(--accent-purple)', background: 'color-mix(in srgb, var(--accent-purple) 8%, transparent)',
             color: 'var(--accent-purple)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
             display: 'flex', alignItems: 'center', gap: 3, minHeight: 31,
           }}
@@ -908,18 +932,21 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
         >
           {hasVisualMedia && !hasImgError && (
             <div
-              onClick={() => setGifExpanded((prev) => !prev)}
+              onClick={toggleGifExpanded}
               role="button"
               tabIndex={0}
               aria-label={gifExpanded ? 'Collapse exercise animation' : 'Expand exercise animation'}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setGifExpanded((prev) => !prev); } }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleGifExpanded(); } }}
               className="gif-upscale-container"
               style={{
                 width: gifExpanded ? '100%' : 112,
-                height: gifExpanded ? 220 : 112,
-                borderRadius: 12,
+                height: gifExpanded ? 'auto' : 112,
+                aspectRatio: gifExpanded ? `${Math.min(1.45, Math.max(0.85, mediaAspectRatio))}` : '1 / 1',
+                maxHeight: gifExpanded ? '48vh' : 112,
+                margin: gifExpanded ? '0 auto' : undefined,
+                borderRadius: 14,
                 overflow: 'hidden',
-                background: '#0a0a14',
+                background: '#ffffff',
                 position: 'relative',
                 border: '1px solid var(--border-bright)',
                 flexShrink: 0,
@@ -933,34 +960,65 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                 alt={currentExercise.exerciseName}
                 loading="eager"
                 frameIntervalMs={700}
-                style={{ width: '100%', height: '100%', objectFit: 'contain', imageRendering: 'auto', transform: 'scale(1.08)', transformOrigin: 'center', position: 'relative', zIndex: 1 }}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: gifExpanded ? 'contain' : 'cover',
+                  imageRendering: 'auto',
+                  display: 'block',
+                  background: '#ffffff',
+                  position: 'relative',
+                  zIndex: 1,
+                }}
+                onNaturalAspectRatio={(ratio) => {
+                  if (Number.isFinite(ratio) && ratio > 0.4 && ratio < 2.5) {
+                    setMediaAspectRatio(ratio);
+                  }
+                }}
                 onMediaModeChange={setActiveMediaMode}
                 onExhausted={() => setImgErrors(prev => new Set(prev).add(mediaErrorKey))}
               />
               <div
                 style={{
                   position: 'absolute',
-                  bottom: 5,
-                  left: 5,
-                  right: 5,
-                  background: 'rgba(0,0,0,0.72)',
+                  top: 7,
+                  left: 7,
+                  background: 'rgba(10, 12, 20, 0.78)',
                   backdropFilter: 'blur(6px)',
-                  borderRadius: 6,
-                  padding: '2px 6px',
+                  borderRadius: 999,
+                  padding: '3px 8px',
                   fontSize: 8.5,
                   fontWeight: 800,
-                  color: 'var(--accent-green)',
-                  display: 'flex',
+                  color: '#34D399',
+                  display: 'inline-flex',
                   alignItems: 'center',
-                  justifyContent: 'space-between',
+                  gap: 4,
                   zIndex: 2,
+                  letterSpacing: 0.4,
                 }}
               >
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent-green)' }} />
-                  {activeMediaMode === 'gif' ? 'GIF' : 'DEMO'}
-                </span>
-                <span style={{ color: '#fff', opacity: 0.85 }}>{gifExpanded ? '↙' : '⤢'}</span>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#34D399' }} />
+                {activeMediaMode === 'gif' ? 'GIF' : 'DEMO'}
+              </div>
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: 7,
+                  right: 7,
+                  background: 'rgba(10, 12, 20, 0.78)',
+                  backdropFilter: 'blur(6px)',
+                  borderRadius: 9,
+                  width: 28,
+                  height: 28,
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 2,
+                  border: '1px solid rgba(255,255,255,0.16)',
+                }}
+              >
+                {gifExpanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
               </div>
             </div>
           )}
@@ -982,8 +1040,8 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                       width: 7.5,
                       height: 7.5,
                       borderRadius: '50%',
-                      background: set.isComplete ? 'var(--accent-green)' : i === currentSetIndex ? 'var(--accent-red)' : 'rgba(255,255,255,0.12)',
-                      boxShadow: set.isComplete ? '0 0 6px rgba(16,232,154,0.4)' : i === currentSetIndex ? '0 0 6px var(--glow-red)' : 'none',
+                      background: set.isComplete ? 'var(--accent-green)' : i === currentSetIndex ? 'var(--accent-red)' : 'var(--bg-track)',
+                      boxShadow: set.isComplete ? '0 0 6px color-mix(in srgb, var(--accent-green) 40%, transparent)' : i === currentSetIndex ? '0 0 6px var(--glow-red)' : 'none',
                     }}
                   />
                 ))}
@@ -1007,8 +1065,8 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
 
             {/* Compact Action Toolbar */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
-              <button onClick={() => setShowNotes(true)} title="Notes & Form Guide" aria-label="Notes & Instructions" style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.25)', color: 'var(--accent-yellow)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><StickyNote size={14} /></button>
-              <button onClick={handleSwap} title="Swap Exercise" aria-label="Swap Exercise" style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.25)', color: 'var(--accent-purple)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ArrowLeftRight size={14} /></button>
+              <button onClick={() => setShowNotes(true)} title="Notes & Form Guide" aria-label="Notes & Instructions" style={{ width: 32, height: 32, borderRadius: 8, background: 'color-mix(in srgb, var(--accent-yellow) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-yellow) 25%, transparent)', color: 'var(--accent-yellow)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><StickyNote size={14} /></button>
+              <button onClick={handleSwap} title="Swap Exercise" aria-label="Swap Exercise" style={{ width: 32, height: 32, borderRadius: 8, background: 'color-mix(in srgb, var(--accent-purple) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-purple) 25%, transparent)', color: 'var(--accent-purple)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ArrowLeftRight size={14} /></button>
               {exercises.length > 1 && (
                 <button
                   onClick={() => {
@@ -1019,7 +1077,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                   }}
                   title="Remove Exercise"
                   aria-label="Remove Exercise"
-                  style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(255,61,90,0.1)', border: '1px solid rgba(255,61,90,0.25)', color: 'var(--accent-red)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  style={{ width: 32, height: 32, borderRadius: 8, background: 'color-mix(in srgb, var(--accent-red) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-red) 25%, transparent)', color: 'var(--accent-red)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                   <Trash2 size={13} />
                 </button>
@@ -1034,7 +1092,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
 
         {/* Progressive Overload Suggestion Banner (Compact) */}
         {overloadTip && overloadTip.suggestedWeight > 0 && (
-          <div className="card" style={{ padding: '8px 12px', marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, border: '1px solid rgba(16,232,154,0.22)', background: 'rgba(16,232,154,0.05)' }}>
+          <div className="card" style={{ padding: '8px 12px', marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, border: '1px solid color-mix(in srgb, var(--accent-green) 22%, transparent)', background: 'color-mix(in srgb, var(--accent-green) 5%, transparent)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, flex: 1, minWidth: 0 }}>
               <TrendingUp size={14} color="var(--accent-green)" style={{ flexShrink: 0 }} />
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -1077,7 +1135,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                   alignItems: 'center',
                   gap: 6,
                   padding: '7px 8px',
-                  ...(setIdx === currentSetIndex ? { borderColor: 'rgba(255,61,90,0.38)' } : {}),
+                  ...(setIdx === currentSetIndex ? { borderColor: 'color-mix(in srgb, var(--accent-red) 38%, transparent)' } : {}),
                 }}
               >
                 <button
@@ -1129,8 +1187,8 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                       width: 44,
                       height: 34,
                       borderRadius: 9,
-                      border: '1px solid rgba(16,232,154,0.35)',
-                      background: 'rgba(16,232,154,0.12)',
+                      border: '1px solid color-mix(in srgb, var(--accent-green) 35%, transparent)',
+                      background: 'color-mix(in srgb, var(--accent-green) 12%, transparent)',
                       color: 'var(--accent-green)',
                       fontSize: 10,
                       fontWeight: 800,
@@ -1227,10 +1285,10 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
             exit={{ y: 80, opacity: 0 }}
             style={{
               position: 'fixed', left: 16, right: 16, bottom: 'calc(16px + env(safe-area-inset-bottom))',
-              zIndex: 120, background: 'rgba(10, 12, 24, 0.96)', backdropFilter: 'blur(20px)',
-              border: '1px solid rgba(16,232,154,0.35)', borderRadius: 16, padding: '10px 14px',
+              zIndex: 120, background: 'var(--bg-floating)', backdropFilter: 'blur(20px)',
+              border: '1px solid color-mix(in srgb, var(--accent-green) 35%, transparent)', borderRadius: 16, padding: '10px 14px',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-              boxShadow: '0 12px 32px rgba(0,0,0,0.55)',
+              boxShadow: 'var(--shadow-elevated)',
             }}
           >
             <div
@@ -1312,7 +1370,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                 <X size={16} />
               </button>
               <div style={{ textAlign: 'center', padding: '4px 0 8px' }}>
-                <div style={{ width: 52, height: 52, borderRadius: 16, background: 'rgba(255,61,90,0.1)', border: '1px solid rgba(255,61,90,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+                <div style={{ width: 52, height: 52, borderRadius: 16, background: 'color-mix(in srgb, var(--accent-red) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-red) 20%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
                   <AlertTriangle size={26} color="var(--accent-red)" />
                 </div>
                 <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>Discard Workout?</h3>
@@ -1342,7 +1400,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
               <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 20, textTransform: 'capitalize' }}>{currentExercise.exerciseName}</div>
               <div className="progress-ring-container" style={{ width: 200, height: 200, margin: '0 auto' }}>
                 <svg width="200" height="200" viewBox="0 0 200 200">
-                  <circle cx="100" cy="100" r="88" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="6" />
+                  <circle cx="100" cy="100" r="88" fill="none" stroke="var(--bg-track)" strokeWidth="6" />
                   <circle cx="100" cy="100" r="88" fill="none" stroke={restTimeRemaining > 10 ? 'var(--accent-green)' : restTimeRemaining > 5 ? 'var(--accent-yellow)' : 'var(--accent-red)'} strokeWidth="6" strokeLinecap="round" strokeDasharray={2 * Math.PI * 88} strokeDashoffset={2 * Math.PI * 88 * (1 - restTimeRemaining / Math.max(1, restTimeDuration))} transform="rotate(-90 100 100)" style={{ transition: 'stroke-dashoffset 1s linear, stroke 0.5s' }} />
                 </svg>
                 <div className="progress-ring-text"><div className="font-mono" style={{ fontSize: 52, fontWeight: 800 }}>{restTimeRemaining}</div><div style={{ fontSize: 12, color: 'var(--text-muted)' }}>sec</div></div>
@@ -1495,7 +1553,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                           ) : hasAnimatedExerciseMedia(ex) ? (
                             <div style={{ fontSize: 9, color: 'var(--accent-cyan)', fontWeight: 700 }}>ANIM</div>
                           ) : null}
-                          <div style={{ padding: '4px 7px', borderRadius: 7, background: `rgba(16,232,154,${Math.min(0.95, Math.max(0.25, score / 160))})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: 'white', flexShrink: 0 }}>{Math.min(99, Math.max(72, Math.round(score / 1.85)))}%</div>
+                          <div style={{ padding: '4px 7px', borderRadius: 7, background: `color-mix(in srgb, var(--accent-green) ${Math.round(Math.min(95, Math.max(25, (score / 160) * 100)))}%, transparent)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: 'var(--text-on-mint)', flexShrink: 0 }}>{Math.min(99, Math.max(72, Math.round(score / 1.85)))}%</div>
                         </button>
                       ))}
                     </div>

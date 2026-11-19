@@ -467,7 +467,7 @@ export default function HomePage() {
       {/* Above-the-Fold Active Plan / Onboarding Banner */}
       {!activePlan && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 }}
-          className="card" style={{ marginBottom: 18, padding: 16, border: '1px solid rgba(255,61,90,0.28)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          className="card" style={{ marginBottom: 18, padding: 16, border: '1px solid color-mix(in srgb, var(--accent-red) 28%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
             <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--gradient-ocean)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <Target size={20} color="white" />
@@ -482,7 +482,7 @@ export default function HomePage() {
           <button
             className="btn-primary"
             onClick={() => setActiveTab('plans')}
-            style={{ width: 'auto', minHeight: 38, padding: '8px 14px', fontSize: 11, fontWeight: 800, borderRadius: 10, flexShrink: 0, color: '#fff', boxShadow: 'none', textShadow: 'none' }}
+            style={{ width: 'auto', minHeight: 38, padding: '8px 14px', fontSize: 11, fontWeight: 800, borderRadius: 10, flexShrink: 0, color: 'var(--text-on-accent)', boxShadow: 'none', textShadow: 'none' }}
           >
             Browse Plans
           </button>
@@ -510,7 +510,7 @@ export default function HomePage() {
                     padding: '4px 8px', borderRadius: 7, fontSize: 10, fontWeight: 700, cursor: 'pointer',
                     background: heatmapMetric === m.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
                     border: heatmapMetric === m.id ? 'none' : '1px solid var(--border)',
-                    color: heatmapMetric === m.id ? '#fff' : 'var(--text-muted)',
+                    color: heatmapMetric === m.id ? 'var(--text-on-accent)' : 'var(--text-muted)',
                   }}
                 >
                   {m.label}
@@ -558,13 +558,13 @@ export default function HomePage() {
                       aria-label={`${d.label} ${d.dateKey}: ${d.count} workout${d.count !== 1 ? 's' : ''}`}
                       style={{
                         padding: '7px 2px 6px', borderRadius: 12, cursor: 'pointer', textAlign: 'center',
-                        background: isActive ? 'rgba(16,232,154,0.12)' : 'var(--bg-input)',
+                        background: isActive ? 'color-mix(in srgb, var(--accent-green) 12%, transparent)' : 'var(--bg-input)',
                         border: isSelected
                           ? '1.5px solid var(--accent-purple)'
                           : d.isToday
                             ? '1.5px solid var(--accent-red)'
                             : isActive
-                              ? '1px solid rgba(16,232,154,0.35)'
+                              ? '1px solid color-mix(in srgb, var(--accent-green) 35%, transparent)'
                               : '1px solid var(--border-subtle)',
                         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
                       }}
@@ -574,8 +574,8 @@ export default function HomePage() {
                       </span>
                       <div style={{
                         width: 23, height: 23, borderRadius: '50%',
-                        background: isActive ? 'var(--accent-green)' : 'rgba(255,255,255,0.05)',
-                        color: isActive ? '#06120e' : 'var(--text-secondary)',
+                        background: isActive ? 'var(--accent-green)' : 'var(--bg-subtle-fill)',
+                        color: isActive ? 'var(--text-on-mint)' : 'var(--text-secondary)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: 10.5, fontWeight: 800,
                       }}>
@@ -645,7 +645,7 @@ export default function HomePage() {
                   <span>
                     {heatmapMetric === 'workouts' ? '0' : heatmapMetric === 'volume' ? `0${unitLabel}` : '0m'}
                   </span>
-                  <span style={{ width: 8, height: 8, borderRadius: 2, background: 'rgba(255,255,255,0.085)', border: '1px solid rgba(255,255,255,0.16)' }} />
+                  <span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--bg-track)', border: '1px solid var(--border-subtle)' }} />
                   <span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--accent-purple)' }} />
                   <span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--accent-cyan)' }} />
                   <span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--accent-green)' }} />
@@ -682,7 +682,7 @@ export default function HomePage() {
                         }
 
                         const cellBg = !hasActivity
-                          ? 'rgba(255, 255, 255, 0.075)'
+                          ? 'var(--bg-track)'
                           : intensity >= 0.75
                             ? 'var(--accent-green)'
                             : intensity >= 0.4
@@ -704,8 +704,8 @@ export default function HomePage() {
                                 : isToday
                                   ? '1.5px solid var(--accent-red)'
                                   : hasActivity
-                                    ? '1px solid rgba(255,255,255,0.24)'
-                                    : '1px solid rgba(255,255,255,0.14)',
+                                    ? '1px solid var(--border-bright)'
+                                    : '1px solid var(--border-subtle)',
                               boxShadow: isSelected
                                 ? '0 0 8px var(--glow-purple)'
                                 : hasActivity && intensity >= 0.75
@@ -746,7 +746,7 @@ export default function HomePage() {
                   </div>
                 </div>
                 {selectedDaySummary && selectedDaySummary.count > 0 ? (
-                  <span className="badge" style={{ background: 'rgba(16,232,154,0.14)', color: 'var(--accent-green)', fontSize: 10, fontWeight: 800 }}>
+                  <span className="badge" style={{ background: 'color-mix(in srgb, var(--accent-green) 14%, transparent)', color: 'var(--accent-green)', fontSize: 10, fontWeight: 800 }}>
                     {heatmapMetric === 'volume'
                       ? `${selectedDaySummary.volume.toLocaleString()} ${unitLabel}`
                       : heatmapMetric === 'duration'
@@ -791,7 +791,7 @@ export default function HomePage() {
                   {getRelativeTime(lastWorkout.startedAt)}
                 </div>
               </div>
-              <span className="badge" style={{ background: 'rgba(16,232,154,0.08)', color: 'var(--accent-green)', fontSize: 10 }}>✓ Complete</span>
+              <span className="badge" style={{ background: 'color-mix(in srgb, var(--accent-green) 8%, transparent)', color: 'var(--accent-green)', fontSize: 10 }}>✓ Complete</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
               {[
@@ -816,7 +816,7 @@ export default function HomePage() {
           style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <h2 className="font-display" style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.01em' }}>Quick Start</h2>
-            <span className="badge" style={{ background: 'rgba(139,92,246,0.1)', color: 'var(--accent-purple)', border: '1px solid rgba(139,92,246,0.2)' }}>
+            <span className="badge" style={{ background: 'color-mix(in srgb, var(--accent-purple) 10%, transparent)', color: 'var(--accent-purple)', border: '1px solid color-mix(in srgb, var(--accent-purple) 20%, transparent)' }}>
               <Zap size={10} /> {activePlan.name}
             </span>
           </div>
@@ -828,29 +828,30 @@ export default function HomePage() {
                   className="card"
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left',
-                    border: isNextUp ? '1.5px solid rgba(16,232,154,0.45)' : '1px solid var(--border-subtle)',
+                    border: isNextUp ? '1.5px solid color-mix(in srgb, var(--accent-green) 45%, transparent)' : '1px solid var(--border-subtle)',
                     minHeight: 64, padding: '12px 16px',
                   }}>
                   <button
                     onClick={() => handleQuickStart(day, 0)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', textAlign: 'left' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0, background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', textAlign: 'left', padding: 0 }}
                   >
-                    <div style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--gradient-fire)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14, color: 'white', fontFamily: "'JetBrains Mono'" }}>
-                      D{day.dayNumber}
+                    <div className={`day-badge ${isNextUp ? 'day-badge--next' : ''}`}>
+                      <span className="day-badge__eyebrow">DAY</span>
+                      <span className="day-badge__num">{String(day.dayNumber).padStart(2, '0')}</span>
                     </div>
-                    <div>
-                      <div style={{ fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14.5, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', lineHeight: 1.25 }}>
                         <span>{day.name}</span>
                         {isNextUp && (
-                          <span className="badge" style={{ background: 'rgba(16,232,154,0.14)', color: 'var(--accent-green)', border: '1px solid rgba(16,232,154,0.3)', fontSize: 9, fontWeight: 800, letterSpacing: 0.5 }}>
+                          <span className="badge" style={{ background: 'color-mix(in srgb, var(--accent-green) 15%, transparent)', color: 'var(--accent-green)', border: '1px solid color-mix(in srgb, var(--accent-green) 35%, transparent)', fontSize: 9, fontWeight: 800, letterSpacing: 0.5, padding: '2px 7px' }}>
                             NEXT UP
                           </span>
                         )}
                       </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{day.exercises.length} exercises • Balanced & equipment-filtered</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{day.exercises.length} exercises • Equipment matched</div>
                     </div>
                   </button>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, marginLeft: 8 }}>
                     <button
                       onClick={() => handleQuickStart(day, Math.floor(Math.random() * 50) + 1)}
                       title="Start with varied exercises"
@@ -907,7 +908,7 @@ export default function HomePage() {
                     onClick={() => toggleExpandSession(session)}
                     style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', textAlign: 'left', padding: 0 }}
                   >
-                    <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(16,232,154,0.08)', border: '1px solid rgba(16,232,154,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 10, background: 'color-mix(in srgb, var(--accent-green) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-green) 20%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <Trophy size={16} color="var(--accent-green)" />
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>

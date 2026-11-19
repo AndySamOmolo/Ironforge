@@ -33,9 +33,9 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 const DIFFICULTY_LABELS: Record<string, { color: string; bg: string }> = {
-  beginner: { color: 'var(--accent-green)', bg: 'rgba(16,232,154,0.08)' },
-  intermediate: { color: 'var(--accent-yellow)', bg: 'rgba(251,191,36,0.08)' },
-  expert: { color: 'var(--accent-red)', bg: 'rgba(255,61,90,0.08)' },
+  beginner: { color: 'var(--accent-green)', bg: 'color-mix(in srgb, var(--accent-green) 8%, transparent)' },
+  intermediate: { color: 'var(--accent-yellow)', bg: 'color-mix(in srgb, var(--accent-yellow) 8%, transparent)' },
+  expert: { color: 'var(--accent-red)', bg: 'color-mix(in srgb, var(--accent-red) 8%, transparent)' },
 };
 
 export default function PlansPage() {
@@ -362,7 +362,7 @@ export default function PlansPage() {
                       <div className="equipment-check-box">
                         {selectedEquipment.includes(eq) && <Check size={12} color="white" />}
                       </div>
-                      <span style={{ fontSize: 12, fontWeight: 600, textTransform: 'capitalize', color: 'var(--text-secondary)' }}>{eq}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, textTransform: 'capitalize', color: 'var(--text-secondary)', textAlign: 'left', flex: 1, minWidth: 0, lineHeight: 1.25 }}>{eq}</span>
                     </button>
                   ))}
                 </div>
@@ -386,7 +386,7 @@ export default function PlansPage() {
                         padding: '10px 6px', borderRadius: 10, cursor: 'pointer', textAlign: 'center',
                         background: (exerciseVariety || 'medium') === v.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
                         border: (exerciseVariety || 'medium') === v.id ? 'none' : '1px solid var(--border)',
-                        color: (exerciseVariety || 'medium') === v.id ? 'white' : 'var(--text-secondary)',
+                        color: (exerciseVariety || 'medium') === v.id ? 'var(--text-on-accent)' : 'var(--text-secondary)',
                       }}
                     >
                       <div style={{ fontSize: 11, fontWeight: 700 }}>{v.label}</div>
@@ -430,7 +430,7 @@ export default function PlansPage() {
                     ? '1.5px solid color-mix(in srgb, var(--accent-green) 45%, transparent)'
                     : '1px solid var(--border-subtle)',
                   boxShadow: plan.isActive
-                    ? '0 10px 30px rgba(0, 0, 0, 0.35), 0 0 20px rgba(16, 232, 154, 0.08)'
+                    ? '0 10px 30px rgba(0, 0, 0, 0.35), 0 0 20px color-mix(in srgb, var(--accent-green) 8%, transparent)'
                     : undefined,
                 }}
               >
@@ -446,7 +446,7 @@ export default function PlansPage() {
                     flexDirection: 'column',
                     alignItems: 'stretch',
                     background: plan.isActive
-                      ? 'radial-gradient(ellipse 90% 60% at 50% 0%, rgba(16,232,154,0.07), transparent 75%)'
+                      ? 'radial-gradient(ellipse 90% 60% at 50% 0%, color-mix(in srgb, var(--accent-green) 7%, transparent), transparent 75%)'
                       : 'none',
                     border: 'none',
                     cursor: 'pointer',
@@ -461,9 +461,9 @@ export default function PlansPage() {
                         <span
                           className="badge"
                           style={{
-                            background: 'rgba(16,232,154,0.14)',
+                            background: 'color-mix(in srgb, var(--accent-green) 14%, transparent)',
                             color: 'var(--accent-green)',
-                            border: '1px solid rgba(16,232,154,0.35)',
+                            border: '1px solid color-mix(in srgb, var(--accent-green) 35%, transparent)',
                             fontSize: 10,
                             fontWeight: 800,
                             padding: '3px 9px',
@@ -560,8 +560,8 @@ export default function PlansPage() {
 
                   {/* Visual Body-Part Balance Bar */}
                   {balance && (
-                    <div style={{ padding: '8px 10px', borderRadius: 10, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' }}>
-                      <div style={{ display: 'flex', height: 6, borderRadius: 999, overflow: 'hidden', background: 'rgba(255,255,255,0.06)', gap: 2 }}>
+                    <div style={{ padding: '8px 10px', borderRadius: 10, background: 'var(--bg-subtle-fill)', border: '1px solid var(--border)' }}>
+                      <div style={{ display: 'flex', height: 6, borderRadius: 999, overflow: 'hidden', background: 'var(--bg-track)', gap: 2 }}>
                         {balance.categories.filter(c => c.sets > 0).map(c => (
                           <div key={c.id} style={{ flex: c.sets, background: c.color, borderRadius: 999 }} title={`${c.label}: ${c.percentage}%`} />
                         ))}
@@ -597,24 +597,9 @@ export default function PlansPage() {
                             >
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
-                                  <div
-                                    className="font-mono"
-                                    style={{
-                                      width: 34,
-                                      height: 34,
-                                      borderRadius: 10,
-                                      background: 'var(--gradient-fire)',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      fontWeight: 800,
-                                      fontSize: 12,
-                                      color: 'white',
-                                      flexShrink: 0,
-                                      boxShadow: '0 3px 10px var(--glow-red)',
-                                    }}
-                                  >
-                                    D{day.dayNumber}
+                                  <div className="day-badge">
+                                    <span className="day-badge__eyebrow">DAY</span>
+                                    <span className="day-badge__num">{String(day.dayNumber).padStart(2, '0')}</span>
                                   </div>
                                   <div style={{ minWidth: 0, flex: 1 }}>
                                     <div style={{ fontSize: 13.5, fontWeight: 800, lineHeight: 1.25 }}>{day.name}</div>
@@ -700,7 +685,7 @@ export default function PlansPage() {
                               style={{
                                 flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                                 padding: '12px 16px', borderRadius: 14, minHeight: 46,
-                                background: 'rgba(16,232,154,0.06)', border: '1px solid rgba(16,232,154,0.2)',
+                                background: 'color-mix(in srgb, var(--accent-green) 6%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-green) 20%, transparent)',
                                 color: 'var(--accent-green)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
                               }}>
                               <Target size={14} /> Set as Active Plan
@@ -712,7 +697,7 @@ export default function PlansPage() {
                               style={{
                                 flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                                 padding: '12px 16px', borderRadius: 14, minHeight: 46,
-                                background: 'rgba(255,61,90,0.06)', border: '1px solid rgba(255,61,90,0.2)',
+                                background: 'color-mix(in srgb, var(--accent-red) 6%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-red) 20%, transparent)',
                                 color: 'var(--accent-red)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
                               }}>
                               <XCircle size={14} /> Remove Active

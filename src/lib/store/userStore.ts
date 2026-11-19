@@ -14,8 +14,12 @@ export interface UserState {
   notificationsEnabled: boolean;
   theme: string;
   customAccent: string;
+  customAccentHex: string;
+  customSecondaryHex: string;
+  customBgHex: string;
   font: string;
   fontSize: string;
+  fontWeightScale: string;
   numberFont: string;
   headerStyle: string;
   density: string;
@@ -23,6 +27,8 @@ export interface UserState {
   gridColumns: string;
   buttonStyle: string;
   cardStyle: string;
+  cardBlur: string;
+  surfaceTint: string;
   borderRadius: string;
   animationLevel: string;
   navStyle: string;
@@ -102,8 +108,12 @@ export const useUserStore = create<UserState>((set) => ({
   notificationsEnabled: false,
   theme: 'dark',
   customAccent: 'default',
+  customAccentHex: '',
+  customSecondaryHex: '',
+  customBgHex: '',
   font: 'inter',
   fontSize: 'normal',
+  fontWeightScale: 'normal',
   numberFont: 'mono',
   headerStyle: 'gradient',
   density: 'normal',
@@ -111,6 +121,8 @@ export const useUserStore = create<UserState>((set) => ({
   gridColumns: '2',
   buttonStyle: 'default',
   cardStyle: 'glass',
+  cardBlur: 'normal',
+  surfaceTint: 'none',
   borderRadius: 'default',
   animationLevel: 'normal',
   navStyle: 'default',

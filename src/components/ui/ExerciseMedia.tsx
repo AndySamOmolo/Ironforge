@@ -14,6 +14,7 @@ type ExerciseMediaProps = {
   frameIntervalMs?: number;
   onExhausted?: () => void;
   onMediaModeChange?: (mode: 'gif' | 'animated-images' | 'static-image' | 'none') => void;
+  onNaturalAspectRatio?: (ratio: number) => void;
 };
 
 export default function ExerciseMedia({
@@ -27,6 +28,7 @@ export default function ExerciseMedia({
   frameIntervalMs = 750,
   onExhausted,
   onMediaModeChange,
+  onNaturalAspectRatio,
 }: ExerciseMediaProps) {
   // Stable value key so parent timer re-renders never reset active group/frame state
   const mediaKey = `${(gifUrl || '').trim()}|${(imageUrls || []).join(',')}|${(images || []).join(',')}`;
@@ -152,6 +154,14 @@ export default function ExerciseMedia({
       style={style}
       loading={loading}
       decoding="async"
+      onLoad={(e) => {
+        if (onNaturalAspectRatio) {
+          const { naturalWidth, naturalHeight } = e.currentTarget;
+          if (naturalWidth > 0 && naturalHeight > 0) {
+            onNaturalAspectRatio(naturalWidth / naturalHeight);
+          }
+        }
+      }}
       onError={handleError}
     />
   );

@@ -17,8 +17,8 @@ import WorkoutCompletePage from '@/components/pages/WorkoutCompletePage';
 import BottomNav from '@/components/ui/BottomNav';
 import SeedingScreen from '@/components/ui/SeedingScreen';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
-import { useReminderStore } from '@/lib/store/reminderStore';
-import { Play, Pause, Maximize2 } from 'lucide-react';
+import { useReminderStore, notifyRestComplete } from '@/lib/store/reminderStore';
+import { Play, Pause, Maximize2, Bell, X } from 'lucide-react';
 
 const TAB_TITLES: Record<string, string> = {
   home: 'IronForge — Dashboard',
@@ -30,7 +30,8 @@ const TAB_TITLES: Record<string, string> = {
 
 export default function App() {
   const { activeTab, setActiveTab, showSeedingScreen, setShowSeedingScreen, setSeedingProgress } = useUIStore();
-  const { setIsSeeded, setIsLoading, loadFromProfile, animationLevel } = useUserStore();
+  const { setIsSeeded, setIsLoading, loadFromProfile, animationLevel, notificationsEnabled } = useUserStore();
+  const { activeBanner, dismissInAppBanner } = useReminderStore();
   const {
     isActive: workoutActive,
     isMinimized: workoutMinimized,
@@ -41,6 +42,7 @@ export default function App() {
     elapsedTime,
     isPaused,
     restTimerActive,
+    restTimeRemaining,
     togglePause,
     tickTimer,
     tickRestTimer,
@@ -110,8 +112,12 @@ export default function App() {
           notificationsEnabled: p.notificationsEnabled ?? false,
           theme: p.theme ?? 'dark',
           customAccent: p.customAccent ?? 'default',
+          customAccentHex: p.customAccentHex ?? '',
+          customSecondaryHex: p.customSecondaryHex ?? '',
+          customBgHex: p.customBgHex ?? '',
           font: p.font ?? 'inter',
           fontSize: p.fontSize ?? 'normal',
+          fontWeightScale: p.fontWeightScale ?? 'normal',
           numberFont: p.numberFont ?? 'mono',
           headerStyle: p.headerStyle ?? 'gradient',
           density: p.density ?? (p.compactMode ? 'compact' : 'normal'),
@@ -119,6 +125,8 @@ export default function App() {
           gridColumns: p.gridColumns ?? '2',
           buttonStyle: p.buttonStyle ?? 'default',
           cardStyle: p.cardStyle ?? 'glass',
+          cardBlur: p.cardBlur ?? 'normal',
+          surfaceTint: p.surfaceTint ?? 'none',
           borderRadius: p.borderRadius ?? 'default',
           animationLevel: p.animationLevel ?? 'normal',
           navStyle: p.navStyle ?? 'default',
@@ -232,6 +240,13 @@ export default function App() {
     }, 1000);
     return () => clearInterval(id);
   }, [workoutActive, workoutMinimized, restTimerActive, tickTimer, tickRestTimer]);
+
+  // Notify when rest timer finishes while workout is minimized
+  useEffect(() => {
+    if (workoutActive && workoutMinimized && restTimerActive && restTimeRemaining === 0 && notificationsEnabled) {
+      void notifyRestComplete(activeExercises[currentExerciseIndex]?.exerciseName);
+    }
+  }, [workoutActive, workoutMinimized, restTimerActive, restTimeRemaining, notificationsEnabled, activeExercises, currentExerciseIndex]);
 
   useEffect(() => {
     if (!showCatalogUpdateToast) {
@@ -357,6 +372,46 @@ export default function App() {
 
   return (
     <MotionConfig reducedMotion={animationLevel === 'none' ? 'always' : 'never'}>
+      {activeBanner && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            top: 'calc(12px + env(safe-area-inset-top, 0px))',
+            left: 12,
+            right: 12,
+            maxWidth: 456,
+            margin: '0 auto',
+            zIndex: 450,
+            background: 'var(--bg-toast)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid var(--border-active)',
+            borderRadius: 14,
+            padding: '11px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            boxShadow: 'var(--shadow-toast)',
+          }}
+        >
+          <div style={{ width: 34, height: 34, borderRadius: 10, background: 'color-mix(in srgb, var(--accent-green) 16%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-green) 35%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Bell size={16} color="var(--accent-green)" />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text-primary)' }}>{activeBanner.title}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 1 }}>{activeBanner.body}</div>
+          </div>
+          <button
+            type="button"
+            onClick={dismissInAppBanner}
+            aria-label="Dismiss notification"
+            style={{ background: 'var(--bg-subtle-fill)', border: 'none', borderRadius: 8, width: 28, height: 28, color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
       {showComplete ? (
         <WorkoutCompletePage onFinish={handleFinishComplete} />
       ) : workoutActive && !workoutMinimized ? (
@@ -366,9 +421,9 @@ export default function App() {
           {initError && (
             <div style={{
               position: 'fixed', top: 0, left: 0, right: 0, zIndex: 200,
-              background: 'rgba(255,61,90,0.12)', backdropFilter: 'blur(8px)',
+              background: 'color-mix(in srgb, var(--accent-red) 12%, transparent)', backdropFilter: 'blur(8px)',
               padding: '12px 16px', display: 'flex', alignItems: 'center',
-              justifyContent: 'space-between', borderBottom: '1px solid rgba(255,61,90,0.2)',
+              justifyContent: 'space-between', borderBottom: '1px solid color-mix(in srgb, var(--accent-red) 20%, transparent)',
             }}>
               <span style={{ fontSize: 12, color: 'var(--accent-red)', fontWeight: 600, flex: 1, marginRight: 10 }}>{initError}</span>
               <button
@@ -404,16 +459,16 @@ export default function App() {
                 zIndex: 95,
                 maxWidth: 456,
                 margin: '0 auto',
-                background: 'rgba(14, 16, 28, 0.96)',
+                background: 'var(--bg-floating)',
                 backdropFilter: 'blur(20px)',
-                border: '1px solid rgba(255, 61, 90, 0.4)',
+                border: '1px solid var(--border-active)',
                 borderRadius: 16,
                 padding: '10px 14px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 gap: 10,
-                boxShadow: '0 12px 32px rgba(0, 0, 0, 0.6)',
+                boxShadow: 'var(--shadow-elevated)',
               }}
             >
               <div onClick={resumeWorkout} style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}>
