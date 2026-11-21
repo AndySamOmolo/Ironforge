@@ -114,7 +114,13 @@ jobs:
 
       - name: Build Debug APK
         working-directory: ./android
-        run: ./gradlew assembleDebug --no-daemon
+        run: |
+          for attempt in 1 2 3; do
+            ./gradlew assembleDebug --no-daemon && break
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            echo "Gradle assembleDebug failed (attempt $attempt), retrying in 15s..."
+            sleep 15
+          done
 
       - name: Build Release APK
         working-directory: ./android
@@ -122,7 +128,13 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --no-daemon
+        run: |
+          for attempt in 1 2 3; do
+            ./gradlew assembleRelease --no-daemon && break
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            echo "Gradle assembleRelease failed (attempt $attempt), retrying in 15s..."
+            sleep 15
+          done
 
       - name: Copy APK to root directory
         run: |
