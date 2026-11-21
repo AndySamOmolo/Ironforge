@@ -57,7 +57,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     addExercise, removeExercise,
     tickTimer, restTimerActive, restTimeRemaining, restTimeDuration,
     startRestTimer, stopRestTimer, tickRestTimer, endWorkout, togglePause,
-    addPR, setSessionId, completeWorkoutSession, minimizeWorkout, resetTimer,
+    addPR, setNewPRs, syncExercisePRs, setSessionId, completeWorkoutSession, minimizeWorkout, resetTimer,
   } = useWorkoutStore();
   const {
     defaultRestTime,
@@ -293,6 +293,28 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}` : `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
+  const handleEditSetWeight = useCallback((exerciseIdx: number, setIdx: number, nextWeight: number) => {
+    updateSetWeight(exerciseIdx, setIdx, nextWeight);
+    const ex = useWorkoutStore.getState().exercises[exerciseIdx];
+    if (ex?.sets[setIdx]?.isComplete) {
+      syncExercisePRs(exerciseIdx, historicalBest1RM);
+    }
+  }, [updateSetWeight, syncExercisePRs, historicalBest1RM]);
+
+  const handleEditSetReps = useCallback((exerciseIdx: number, setIdx: number, nextReps: number) => {
+    updateSetReps(exerciseIdx, setIdx, nextReps);
+    const ex = useWorkoutStore.getState().exercises[exerciseIdx];
+    if (ex?.sets[setIdx]?.isComplete) {
+      syncExercisePRs(exerciseIdx, historicalBest1RM);
+    }
+  }, [updateSetReps, syncExercisePRs, historicalBest1RM]);
+
+  const handleUncompleteSet = useCallback((exerciseIdx: number, setIdx: number) => {
+    triggerHaptic('light');
+    uncompleteSet(exerciseIdx, setIdx);
+    syncExercisePRs(exerciseIdx, historicalBest1RM);
+  }, [uncompleteSet, syncExercisePRs, historicalBest1RM, triggerHaptic]);
+
   const handleCompleteSet = useCallback(async (exerciseIdx: number, setIdx: number) => {
     const exercise = exercises[exerciseIdx];
     const set = exercise.sets[setIdx];
@@ -301,17 +323,17 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
 
     const isWarmup = set.setType === SetType.Warmup;
     const currentSet1RM = !isWarmup && weight > 0 && reps > 0 ? estimate1RM(weight, reps) : 0;
-    const sessionBest1RM = exercise.sets.reduce((max, s, idx) => {
+    const prevBest1RM = exercise.sets.reduce((max, s, idx) => {
       if (idx === setIdx || !s.isComplete || s.setType === SetType.Warmup) return max;
       return Math.max(max, estimate1RM(s.weight || 0, s.reps || 0));
     }, historicalBest1RM);
 
-    const isNewPR = currentSet1RM > 0 && currentSet1RM > sessionBest1RM;
+    const isNewPR = currentSet1RM > 0 && currentSet1RM > prevBest1RM;
 
     completeSet(exerciseIdx, setIdx, weight, reps, isNewPR);
+    syncExercisePRs(exerciseIdx, historicalBest1RM);
 
     if (isNewPR) {
-      addPR(exercise.exerciseName, weight, reps);
       playFeedbackTone('pr');
       triggerHaptic('success');
     } else {
@@ -323,12 +345,23 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
       setRestMinimized(false);
       startRestTimer(exercise.restTime || defaultRestTime);
     }
+
     const updated = [...exercise.sets];
     updated[setIdx] = { ...updated[setIdx], isComplete: true };
-    if (autoAdvance && updated.every(s => s.isComplete) && currentExerciseIndex < exercises.length - 1) {
-      setTimeout(() => nextExercise(), 600);
+    if (autoAdvance && updated.every(s => s.isComplete)) {
+      let nextUnfinishedIdx = -1;
+      for (let offset = 1; offset < exercises.length; offset++) {
+        const candidateIdx = (exerciseIdx + offset) % exercises.length;
+        if (exercises[candidateIdx]?.sets.some(s => !s.isComplete)) {
+          nextUnfinishedIdx = candidateIdx;
+          break;
+        }
+      }
+      if (nextUnfinishedIdx >= 0) {
+        setTimeout(() => goToExercise(nextUnfinishedIdx), 600);
+      }
     }
-  }, [exercises, completeSet, startRestTimer, defaultRestTime, currentExerciseIndex, nextExercise, playFeedbackTone, triggerHaptic, autoStartRest, restTimerEnabled, autoAdvance, historicalBest1RM, addPR]);
+  }, [exercises, completeSet, syncExercisePRs, startRestTimer, defaultRestTime, goToExercise, playFeedbackTone, triggerHaptic, autoStartRest, restTimerEnabled, autoAdvance, historicalBest1RM]);
 
   const handleFinish = async () => {
     if (isFinishingRef.current) return;
@@ -426,28 +459,15 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
             sessionExIdByOrder.set(exOrder, seId);
           }
 
-          await db.sets.bulkAdd(
-            completedSetEntries.map(set => ({
-              sessionExerciseId: sessionExIdByOrder.get(set.orderIndex) || 0,
-              sessionId: savedSessionId,
-              exerciseId: set.exerciseId,
-              setNumber: set.setNumber,
-              setType: set.setType,
-              weight: set.weight,
-              reps: set.reps,
-              completedAt: now,
-              isWarmup: set.isWarmup,
-              isPR: set.isPR,
-            }))
-          );
-
-          const bestByExercise = new Map<number, { exerciseId: number; exerciseName: string; weight: number; reps: number; estimated1RM: number }>();
-          for (const s of completedSetEntries) {
-            if (s.isWarmup || s.weight <= 0 || s.reps <= 0 || !s.exerciseId) continue;
+          const bestByExercise = new Map<string, { entryIdx: number; exerciseId: number; exerciseName: string; weight: number; reps: number; estimated1RM: number }>();
+          completedSetEntries.forEach((s, entryIdx) => {
+            if (s.isWarmup || s.weight <= 0 || s.reps <= 0) return;
+            const key = s.exerciseId ? `id:${s.exerciseId}` : `name:${s.exerciseName.toLowerCase()}`;
             const est1RM = estimate1RM(s.weight, s.reps);
-            const existing = bestByExercise.get(s.exerciseId);
+            const existing = bestByExercise.get(key);
             if (!existing || est1RM > existing.estimated1RM) {
-              bestByExercise.set(s.exerciseId, {
+              bestByExercise.set(key, {
+                entryIdx,
                 exerciseId: s.exerciseId,
                 exerciseName: s.exerciseName,
                 weight: s.weight,
@@ -455,12 +475,18 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                 estimated1RM: est1RM,
               });
             }
-          }
+          });
 
-          for (const [exId, candidate] of bestByExercise.entries()) {
-            const prevPRs = await db.personalRecords.where('exerciseId').equals(exId).toArray();
+          const winningPREntryIndices = new Set<number>();
+          for (const candidate of bestByExercise.values()) {
+            const prevPRs = candidate.exerciseId
+              ? await db.personalRecords.where('exerciseId').equals(candidate.exerciseId).toArray()
+              : await db.personalRecords
+                  .filter(r => (r.exerciseName || '').toLowerCase() === candidate.exerciseName.toLowerCase())
+                  .toArray();
             const prevMax = prevPRs.reduce((m, r) => Math.max(m, r.estimated1RM || 0), 0);
             if (candidate.estimated1RM > prevMax) {
+              winningPREntryIndices.add(candidate.entryIdx);
               await db.personalRecords.add({
                 exerciseId: candidate.exerciseId,
                 exerciseName: candidate.exerciseName,
@@ -477,13 +503,26 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
               });
             }
           }
+
+          await db.sets.bulkAdd(
+            completedSetEntries.map((set, entryIdx) => ({
+              sessionExerciseId: sessionExIdByOrder.get(set.orderIndex) || 0,
+              sessionId: savedSessionId,
+              exerciseId: set.exerciseId,
+              setNumber: set.setNumber,
+              setType: set.setType,
+              weight: set.weight,
+              reps: set.reps,
+              completedAt: now,
+              isWarmup: set.isWarmup,
+              isPR: winningPREntryIndices.has(entryIdx),
+            }))
+          );
         }
       });
 
       setSessionId(savedSessionId);
-      for (const pr of recordedPRs) {
-        addPR(pr.exerciseName, pr.weight, pr.reps);
-      }
+      setNewPRs(recordedPRs);
 
       // Immediately mark workout as inactive & clear active snapshot so Back button never re-enters ActiveWorkoutPage
       completeWorkoutSession(savedSessionId);
@@ -647,9 +686,9 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
       if (showNumpad) {
         const v = parseFloat(numpadValue) || 0;
         if (showNumpad.field === 'weight') {
-          updateSetWeight(showNumpad.exerciseIdx, showNumpad.setIdx, Math.min(1500, Math.max(0, v)));
+          handleEditSetWeight(showNumpad.exerciseIdx, showNumpad.setIdx, Math.min(1500, Math.max(0, v)));
         } else {
-          updateSetReps(showNumpad.exerciseIdx, showNumpad.setIdx, Math.min(999, Math.max(0, Math.round(v))));
+          handleEditSetReps(showNumpad.exerciseIdx, showNumpad.setIdx, Math.min(999, Math.max(0, Math.round(v))));
         }
         setShowNumpad(null);
       }
@@ -1103,7 +1142,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                 }}
               >
                 <button
-                  onClick={() => set.isComplete ? uncompleteSet(currentExerciseIndex, setIdx) : cycleSetType(currentExerciseIndex, setIdx)}
+                  onClick={() => set.isComplete ? handleUncompleteSet(currentExerciseIndex, setIdx) : cycleSetType(currentExerciseIndex, setIdx)}
                   title={set.isComplete ? 'Tap to uncheck set' : `${typeInfo.title} (tap to cycle Warmup/Drop/Failure/AMRAP)`}
                   aria-label={set.isComplete ? `Uncheck set ${setIdx + 1}` : `Set ${setIdx + 1}: ${typeInfo.title}`}
                   style={{
@@ -1112,6 +1151,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 11.5, fontWeight: 800, flexShrink: 0,
                     color: set.isComplete ? '#06120e' : typeInfo.color,
+                    boxShadow: set.isComplete ? '0 2px 8px color-mix(in srgb, var(--accent-green) 35%, transparent)' : 'none',
                   }}
                 >
                   {set.isComplete ? <Check size={14} strokeWidth={3} /> : (typeInfo.label || setIdx + 1)}
@@ -1119,16 +1159,16 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
 
                 {/* Weight Stepper */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                  <button aria-label={`Decrease set ${setIdx + 1} weight`} onClick={() => { triggerHaptic('light'); updateSetWeight(currentExerciseIndex, setIdx, Math.max(0, Number((set.weight - stepWeight).toFixed(2)))); }} style={{ width: 28, height: 34, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Minus size={12} /></button>
-                  <button className="set-input" onClick={() => { triggerHaptic('light'); openNumpad('weight', currentExerciseIndex, setIdx); }} style={{ cursor: 'pointer', width: 54, minHeight: 34, padding: '4px 2px', fontSize: 14.5 }}>{set.weight}</button>
-                  <button aria-label={`Increase set ${setIdx + 1} weight`} onClick={() => { triggerHaptic('light'); updateSetWeight(currentExerciseIndex, setIdx, Number((set.weight + stepWeight).toFixed(2))); }} style={{ width: 28, height: 34, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Plus size={12} /></button>
+                  <button aria-label={`Decrease set ${setIdx + 1} weight`} onClick={() => { triggerHaptic('light'); handleEditSetWeight(currentExerciseIndex, setIdx, Math.max(0, Number((set.weight - stepWeight).toFixed(2)))); }} style={{ width: 28, height: 34, borderRadius: 7, border: set.isComplete ? '1px solid color-mix(in srgb, var(--accent-green) 28%, transparent)' : '1px solid var(--border)', background: set.isComplete ? 'color-mix(in srgb, var(--accent-green) 8%, var(--bg-elevated))' : 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Minus size={12} /></button>
+                  <button className="set-input" onClick={() => { triggerHaptic('light'); openNumpad('weight', currentExerciseIndex, setIdx); }} style={{ cursor: 'pointer', width: 54, minHeight: 34, padding: '4px 2px', fontSize: 14.5, ...(set.isComplete ? { borderColor: 'color-mix(in srgb, var(--accent-green) 36%, transparent)', background: 'color-mix(in srgb, var(--accent-green) 9%, var(--bg-input))', color: 'var(--accent-green)' } : {}) }}>{set.weight}</button>
+                  <button aria-label={`Increase set ${setIdx + 1} weight`} onClick={() => { triggerHaptic('light'); handleEditSetWeight(currentExerciseIndex, setIdx, Number((set.weight + stepWeight).toFixed(2))); }} style={{ width: 28, height: 34, borderRadius: 7, border: set.isComplete ? '1px solid color-mix(in srgb, var(--accent-green) 28%, transparent)' : '1px solid var(--border)', background: set.isComplete ? 'color-mix(in srgb, var(--accent-green) 8%, var(--bg-elevated))' : 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Plus size={12} /></button>
                 </div>
 
                 {/* Reps Stepper */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                  <button aria-label={`Decrease set ${setIdx + 1} reps`} onClick={() => { triggerHaptic('light'); updateSetReps(currentExerciseIndex, setIdx, Math.max(0, set.reps - 1)); }} style={{ width: 28, height: 34, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Minus size={12} /></button>
-                  <button className="set-input" onClick={() => { triggerHaptic('light'); openNumpad('reps', currentExerciseIndex, setIdx); }} style={{ cursor: 'pointer', width: 46, minHeight: 34, padding: '4px 2px', fontSize: 14.5 }}>{set.reps || set.targetReps}</button>
-                  <button aria-label={`Increase set ${setIdx + 1} reps`} onClick={() => { triggerHaptic('light'); updateSetReps(currentExerciseIndex, setIdx, (set.reps || set.targetReps) + 1); }} style={{ width: 28, height: 34, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Plus size={12} /></button>
+                  <button aria-label={`Decrease set ${setIdx + 1} reps`} onClick={() => { triggerHaptic('light'); handleEditSetReps(currentExerciseIndex, setIdx, Math.max(0, set.reps - 1)); }} style={{ width: 28, height: 34, borderRadius: 7, border: set.isComplete ? '1px solid color-mix(in srgb, var(--accent-green) 28%, transparent)' : '1px solid var(--border)', background: set.isComplete ? 'color-mix(in srgb, var(--accent-green) 8%, var(--bg-elevated))' : 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Minus size={12} /></button>
+                  <button className="set-input" onClick={() => { triggerHaptic('light'); openNumpad('reps', currentExerciseIndex, setIdx); }} style={{ cursor: 'pointer', width: 46, minHeight: 34, padding: '4px 2px', fontSize: 14.5, ...(set.isComplete ? { borderColor: 'color-mix(in srgb, var(--accent-green) 36%, transparent)', background: 'color-mix(in srgb, var(--accent-green) 9%, var(--bg-input))', color: 'var(--accent-green)' } : {}) }}>{set.reps || set.targetReps}</button>
+                  <button aria-label={`Increase set ${setIdx + 1} reps`} onClick={() => { triggerHaptic('light'); handleEditSetReps(currentExerciseIndex, setIdx, (set.reps || set.targetReps) + 1); }} style={{ width: 28, height: 34, borderRadius: 7, border: set.isComplete ? '1px solid color-mix(in srgb, var(--accent-green) 28%, transparent)' : '1px solid var(--border)', background: set.isComplete ? 'color-mix(in srgb, var(--accent-green) 8%, var(--bg-elevated))' : 'var(--bg-elevated)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Plus size={12} /></button>
                 </div>
 
                 {/* Complete / Status Button */}
@@ -1145,24 +1185,31 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                 ) : (
                   <button
                     type="button"
-                    onClick={() => uncompleteSet(currentExerciseIndex, setIdx)}
+                    onClick={() => handleUncompleteSet(currentExerciseIndex, setIdx)}
                     aria-label={`Undo set ${setIdx + 1}`}
+                    title={set.isPR ? 'Personal Record! Tap to undo set' : 'Logged — tap to undo'}
                     style={{
                       width: 44,
                       height: 34,
                       borderRadius: 9,
-                      border: '1px solid color-mix(in srgb, var(--accent-green) 35%, transparent)',
-                      background: 'color-mix(in srgb, var(--accent-green) 12%, transparent)',
-                      color: 'var(--accent-green)',
-                      fontSize: 10,
+                      border: set.isPR
+                        ? '1px solid color-mix(in srgb, var(--accent-yellow) 50%, transparent)'
+                        : '1px solid color-mix(in srgb, var(--accent-green) 42%, transparent)',
+                      background: set.isPR
+                        ? 'color-mix(in srgb, var(--accent-yellow) 16%, transparent)'
+                        : 'color-mix(in srgb, var(--accent-green) 16%, transparent)',
+                      color: set.isPR ? 'var(--accent-yellow)' : 'var(--accent-green)',
+                      fontSize: 9.5,
                       fontWeight: 800,
+                      letterSpacing: 0.3,
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
+                      gap: 2,
                     }}
                   >
-                    {set.isPR ? '🏆' : '✓'}
+                    {set.isPR ? '🏆 PR' : 'DONE'}
                   </button>
                 )}
               </motion.div>

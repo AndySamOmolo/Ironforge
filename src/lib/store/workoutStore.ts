@@ -58,6 +58,12 @@ function loadSnapshot(): Partial<PersistedWorkoutSnapshot> | null {
   return null;
 }
 
+function estimateSet1RM(weight: number, reps: number): number {
+  if (!weight || weight <= 0 || !reps || reps <= 0) return 0;
+  if (reps === 1) return Math.round(weight * 10) / 10;
+  return Math.round(weight * (1 + reps / 30) * 10) / 10;
+}
+
 function recomputeTotals(exercises: ActiveExercise[]) {
   let totalVolume = 0;
   let totalSets = 0;
@@ -118,6 +124,8 @@ interface WorkoutState {
   tickTimer: () => void;
   tickRestTimer: () => void;
   addPR: (exerciseName: string, weight: number, reps: number) => void;
+  setNewPRs: (prs: { exerciseName: string; weight: number; reps: number }[]) => void;
+  syncExercisePRs: (exerciseIndex: number, historicalBest1RM: number) => boolean;
   togglePause: () => void;
   minimizeWorkout: () => void;
   resumeWorkout: () => void;
@@ -313,7 +321,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     const exercise = { ...exercises[exerciseIndex] };
     const sets = [...exercise.sets];
     const safeWeight = Math.max(0, Math.min(1500, Number.isFinite(weight) ? weight : 0));
-    if (setIndex === 0) {
+    if (setIndex === 0 && !sets[0]?.isComplete) {
       const prevSet0Weight = sets[0]?.weight;
       exercise.sets = sets.map((s, idx) =>
         idx === 0 || (!s.isComplete && s.weight === prevSet0Weight)
@@ -335,7 +343,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     const exercise = { ...exercises[exerciseIndex] };
     const sets = [...exercise.sets];
     const safeReps = Math.max(0, Math.min(999, Number.isFinite(reps) ? Math.round(reps) : 0));
-    if (setIndex === 0) {
+    if (setIndex === 0 && !sets[0]?.isComplete) {
       const prevSet0Reps = sets[0]?.reps;
       exercise.sets = sets.map((s, idx) =>
         idx === 0 || (!s.isComplete && s.reps === prevSet0Reps)
@@ -527,6 +535,60 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     saveSnapshot({ ...state, newPRs });
     return { newPRs };
   }),
+
+  setNewPRs: (prs) => set((state) => {
+    const deduped: { exerciseName: string; weight: number; reps: number }[] = [];
+    for (const pr of prs) {
+      const idx = deduped.findIndex(p => p.exerciseName === pr.exerciseName);
+      if (idx >= 0) deduped[idx] = pr;
+      else deduped.push(pr);
+    }
+    saveSnapshot({ ...state, newPRs: deduped });
+    return { newPRs: deduped };
+  }),
+
+  syncExercisePRs: (exerciseIndex, historicalBest1RM) => {
+    let hasRecord = false;
+    set((state) => {
+      const targetEx = state.exercises[exerciseIndex];
+      if (!targetEx) return {};
+
+      let best1RM = historicalBest1RM || 0;
+      let bestSetIdx = -1;
+      let bestWeight = 0;
+      let bestReps = 0;
+
+      targetEx.sets.forEach((s, idx) => {
+        if (!s.isComplete || s.setType === SetType.Warmup) return;
+        const est = estimateSet1RM(s.weight || 0, s.reps || 0);
+        if (est > best1RM) {
+          best1RM = est;
+          bestSetIdx = idx;
+          bestWeight = s.weight || 0;
+          bestReps = s.reps || 0;
+        }
+      });
+
+      hasRecord = bestSetIdx >= 0;
+
+      const exercises = [...state.exercises];
+      const updatedSets = targetEx.sets.map((s, idx) => ({
+        ...s,
+        isPR: hasRecord && idx === bestSetIdx,
+      }));
+      exercises[exerciseIndex] = { ...targetEx, sets: updatedSets };
+
+      const filteredPRs = state.newPRs.filter(p => p.exerciseName !== targetEx.exerciseName);
+      const newPRs = hasRecord
+        ? [...filteredPRs, { exerciseName: targetEx.exerciseName, weight: bestWeight, reps: bestReps }]
+        : filteredPRs;
+
+      const totals = recomputeTotals(exercises);
+      saveSnapshot({ ...state, exercises, newPRs, ...totals });
+      return { exercises, newPRs, ...totals };
+    });
+    return hasRecord;
+  },
 
   togglePause: () => set((state) => {
     const isPaused = !state.isPaused;

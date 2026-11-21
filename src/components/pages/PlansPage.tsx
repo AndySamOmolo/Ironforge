@@ -458,7 +458,7 @@ export default function PlansPage() {
                   onClick={() => togglePlan(plan.id!)}
                   style={{
                     width: '100%',
-                    padding: '15px 16px',
+                    padding: '11px 13px',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'stretch',
@@ -472,8 +472,8 @@ export default function PlansPage() {
                   }}
                 >
                   {/* Top Metadata Bar */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginBottom: 5 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', minWidth: 0 }}>
                       {plan.isActive && (
                         <span
                           className="badge"
@@ -481,14 +481,14 @@ export default function PlansPage() {
                             background: 'color-mix(in srgb, var(--accent-green) 14%, transparent)',
                             color: 'var(--accent-green)',
                             border: '1px solid color-mix(in srgb, var(--accent-green) 35%, transparent)',
-                            fontSize: 10,
+                            fontSize: 9,
                             fontWeight: 800,
-                            padding: '3px 9px',
-                            letterSpacing: 0.4,
+                            padding: '2px 7px',
+                            letterSpacing: 0.35,
                           }}
                         >
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-green)', boxShadow: '0 0 6px var(--accent-green)' }} />
-                          ACTIVE PLAN
+                          <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent-green)', boxShadow: '0 0 6px var(--accent-green)' }} />
+                          ACTIVE
                         </span>
                       )}
                       <span
@@ -497,9 +497,9 @@ export default function PlansPage() {
                           background: `color-mix(in srgb, ${catColor} 14%, transparent)`,
                           color: catColor,
                           border: `1px solid color-mix(in srgb, ${catColor} 28%, transparent)`,
-                          fontSize: 10,
+                          fontSize: 9,
                           fontWeight: 700,
-                          padding: '3px 9px',
+                          padding: '2px 7px',
                         }}
                       >
                         {plan.category}
@@ -510,9 +510,9 @@ export default function PlansPage() {
                           background: diff.bg,
                           color: diff.color,
                           border: `1px solid color-mix(in srgb, ${diff.color} 25%, transparent)`,
-                          fontSize: 10,
+                          fontSize: 9,
                           fontWeight: 700,
-                          padding: '3px 9px',
+                          padding: '2px 7px',
                           textTransform: 'capitalize',
                         }}
                       >
@@ -521,9 +521,9 @@ export default function PlansPage() {
                     </div>
                     <div
                       style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 8,
+                        width: 24,
+                        height: 24,
+                        borderRadius: 7,
                         background: isExpanded ? 'color-mix(in srgb, var(--accent-purple) 18%, transparent)' : 'var(--bg-input)',
                         border: '1px solid var(--border-subtle)',
                         display: 'flex',
@@ -533,60 +533,75 @@ export default function PlansPage() {
                       }}
                     >
                       <motion.div animate={{ rotate: isExpanded ? 90 : 0 }} transition={{ duration: 0.2 }} style={{ display: 'flex' }}>
-                        <ChevronRight size={15} color={isExpanded ? 'var(--accent-purple)' : 'var(--text-secondary)'} />
+                        <ChevronRight size={14} color={isExpanded ? 'var(--accent-purple)' : 'var(--text-secondary)'} />
                       </motion.div>
                     </div>
                   </div>
 
-                  {/* Plan Title & Description */}
-                  <div className="font-display" style={{ fontSize: 17, fontWeight: 800, marginBottom: 4, letterSpacing: '-0.015em' }}>
+                  {/* Plan Title & Compact Description */}
+                  <div className="font-display" style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 2, letterSpacing: '-0.015em', lineHeight: 1.2 }}>
                     {plan.name}
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.45, marginBottom: 12 }}>
+                  <div
+                    style={{
+                      fontSize: 11.5,
+                      color: 'var(--text-secondary)',
+                      lineHeight: 1.35,
+                      marginBottom: 8,
+                      ...(!isExpanded
+                        ? {
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                          }
+                        : {}),
+                    }}
+                  >
                     {plan.description}
                   </div>
 
-                  {/* 3-Column Program Telemetry Strip */}
+                  {/* Compact 3-Column Program Telemetry Strip */}
                   <div
                     style={{
                       display: 'grid',
                       gridTemplateColumns: 'repeat(3, 1fr)',
-                      gap: 6,
-                      marginBottom: balance ? 10 : 0,
+                      gap: 5,
+                      marginBottom: balance ? 7 : 0,
                     }}
                   >
-                    <div style={{ padding: '7px 8px', borderRadius: 10, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)' }}>
-                      <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>Schedule</div>
-                      <div className="font-mono" style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text-primary)', marginTop: 2 }}>
-                        {plan.daysPerWeek}d / week
-                      </div>
+                    <div style={{ padding: '5px 7px', borderRadius: 8, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 4 }}>
+                      <span style={{ fontSize: 8.5, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3 }}>Days</span>
+                      <span className="font-mono" style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                        {plan.daysPerWeek}d/wk
+                      </span>
                     </div>
-                    <div style={{ padding: '7px 8px', borderRadius: 10, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)' }}>
-                      <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>Volume</div>
-                      <div className="font-mono" style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--accent-cyan)', marginTop: 2 }}>
-                        {balance ? `${balance.totalSets} sets/wk` : `${days.length || plan.daysPerWeek} days`}
-                      </div>
+                    <div style={{ padding: '5px 7px', borderRadius: 8, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 4 }}>
+                      <span style={{ fontSize: 8.5, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3 }}>Vol</span>
+                      <span className="font-mono" style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--accent-cyan)', whiteSpace: 'nowrap' }}>
+                        {balance ? `${balance.totalSets} sets` : `${days.length || plan.daysPerWeek}d`}
+                      </span>
                     </div>
-                    <div style={{ padding: '7px 8px', borderRadius: 10, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)' }}>
-                      <div style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>Symmetry</div>
-                      <div className="font-mono" style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--accent-green)', marginTop: 2 }}>
-                        {balance ? `${balance.balanceScore}% Balanced` : 'Balanced'}
-                      </div>
+                    <div style={{ padding: '5px 7px', borderRadius: 8, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 4 }}>
+                      <span style={{ fontSize: 8.5, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3 }}>Sym</span>
+                      <span className="font-mono" style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--accent-green)', whiteSpace: 'nowrap' }}>
+                        {balance ? `${balance.balanceScore}%` : 'Bal'}
+                      </span>
                     </div>
                   </div>
 
-                  {/* Visual Body-Part Balance Bar */}
+                  {/* Compact Visual Body-Part Balance Bar */}
                   {balance && (
-                    <div style={{ padding: '8px 10px', borderRadius: 10, background: 'var(--bg-subtle-fill)', border: '1px solid var(--border)' }}>
-                      <div style={{ display: 'flex', height: 6, borderRadius: 999, overflow: 'hidden', background: 'var(--bg-track)', gap: 2 }}>
+                    <div style={{ padding: '6px 8px', borderRadius: 8, background: 'var(--bg-subtle-fill)', border: '1px solid var(--border)' }}>
+                      <div style={{ display: 'flex', height: 5, borderRadius: 999, overflow: 'hidden', background: 'var(--bg-track)', gap: 2 }}>
                         {balance.categories.filter(c => c.sets > 0).map(c => (
                           <div key={c.id} style={{ flex: c.sets, background: c.color, borderRadius: 999 }} title={`${c.label}: ${c.percentage}%`} />
                         ))}
                       </div>
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+                      <div style={{ display: 'flex', gap: '3px 8px', flexWrap: 'wrap', marginTop: 4 }}>
                         {balance.categories.filter(c => c.sets > 0).map(c => (
-                          <span key={c.id} style={{ fontSize: 9.5, fontWeight: 600, color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.color, flexShrink: 0 }} />
+                          <span key={c.id} style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                            <span style={{ width: 5, height: 5, borderRadius: '50%', background: c.color, flexShrink: 0 }} />
                             {c.label} <strong style={{ color: 'var(--text-primary)' }}>{c.percentage}%</strong>
                           </span>
                         ))}

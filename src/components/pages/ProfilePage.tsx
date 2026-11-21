@@ -6,7 +6,7 @@ import {
   User, Dumbbell, Scale, Calculator, Trash2, Download, Check, X, Plus,
   Volume2, Type, Minimize, RotateCcw, Vibrate, Smartphone, Timer,
   ArrowUp, Database, Zap, Bell, BellRing, Sparkles, Eye, LayoutGrid, Sliders, Shuffle, Clock,
-  Settings, Palette, Wrench, Droplets, Ruler, ShieldCheck, Sun, Moon, Send, ExternalLink, Copy, Upload, Pipette,
+  Settings, Palette, Wrench, Droplets, Ruler, ShieldCheck, Sun, Moon, Send, ExternalLink, Copy, Upload, Pipette, ChevronDown,
 } from 'lucide-react';
 import { useReminderStore } from '@/lib/store/reminderStore';
 import { db } from '@/lib/db/schema';
@@ -85,6 +85,29 @@ export default function ProfilePage() {
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const [presetStatus, setPresetStatus] = useState<string | null>(null);
+  const [openAppearanceGroups, setOpenAppearanceGroups] = useState<Record<string, boolean>>({
+    themes: true,
+    typography: false,
+    surfaces: false,
+    effects: false,
+    accessibility: false,
+  });
+  const toggleAppearanceGroup = (id: string) => {
+    triggerWorkoutHaptic('light', hapticEnabled);
+    setOpenAppearanceGroups(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+  const allAppearanceOpen = Object.values(openAppearanceGroups).every(Boolean);
+  const toggleAllAppearanceGroups = () => {
+    triggerWorkoutHaptic('light', hapticEnabled);
+    const nextVal = !allAppearanceOpen;
+    setOpenAppearanceGroups({
+      themes: nextVal,
+      typography: nextVal,
+      surfaces: nextVal,
+      effects: nextVal,
+      accessibility: nextVal,
+    });
+  };
 
   useEffect(() => {
     loadBodyWeights();
@@ -653,6 +676,119 @@ export default function ProfilePage() {
     </div>
   );
 
+  const AppearanceGroup = ({
+    id,
+    icon: Icon,
+    iconColor,
+    title,
+    summary,
+    count,
+    children,
+  }: {
+    id: string;
+    icon: any;
+    iconColor: string;
+    title: string;
+    summary: string;
+    count: number;
+    children: React.ReactNode;
+  }) => {
+    const isOpen = Boolean(openAppearanceGroups[id]);
+    return (
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <button
+          type="button"
+          onClick={() => toggleAppearanceGroup(id)}
+          aria-expanded={isOpen}
+          style={{
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+            padding: '12px 14px',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            textAlign: 'left',
+            color: 'var(--text-primary)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 11, minWidth: 0, flex: 1 }}>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                background: `color-mix(in srgb, ${iconColor} 14%, transparent)`,
+                border: `1px solid color-mix(in srgb, ${iconColor} 28%, transparent)`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <Icon size={16} color={iconColor} />
+            </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--text-primary)' }}>{title}</span>
+                <span
+                  style={{
+                    fontSize: 9.5,
+                    fontWeight: 700,
+                    padding: '1px 6px',
+                    borderRadius: 999,
+                    background: 'var(--bg-subtle-fill)',
+                    color: 'var(--text-muted)',
+                  }}
+                >
+                  {count}
+                </span>
+              </div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: 'var(--text-muted)',
+                  marginTop: 2,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  textTransform: 'capitalize',
+                }}
+              >
+                {summary}
+              </div>
+            </div>
+          </div>
+          <ChevronDown
+            size={16}
+            color="var(--text-muted)"
+            style={{
+              flexShrink: 0,
+              transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 0.22s ease',
+            }}
+          />
+        </button>
+        {isOpen && (
+          <div
+            style={{
+              padding: '4px 14px 16px',
+              borderTop: '1px solid var(--border-subtle)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16,
+              paddingTop: 14,
+            }}
+          >
+            {children}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="page-container">
       <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 12 }}>
@@ -846,9 +982,35 @@ export default function ProfilePage() {
             )}
           </div>
 
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, padding: '0 2px' }>
+            <span className="section-label" style={ margin: 0 }>Appearance Studio (5 Groups)</span>
+            <button
+              type="button"
+              onClick={toggleAllAppearanceGroups}
+              style={
+                background: 'none',
+                border: 'none',
+                color: 'var(--accent-purple)',
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: 'pointer',
+                padding: '2px 4px',
+              }
+            >
+              {allAppearanceOpen ? 'Collapse All' : 'Expand All'}
+            </button>
+          </div>
 
-          {/* Theme Selector — Grouped into Light Mode & Dark/OLED */}
+          <motion.div initial={ opacity: 0 } animate={ opacity: 1 } style={ display: 'flex', flexDirection: 'column', gap: 10 }>
+            <AppearanceGroup
+              id="themes"
+              icon={Palette}
+              iconColor="var(--accent-red)"
+              title="Themes & Colors"
+              summary={`${theme} • ${customAccentHex ? 'Custom Hex' : customAccent} accent`}
+              count={4}
+            >
+{/* Theme Selector — Grouped into Light Mode & Dark/OLED */}
           <div>
             <div className="section-label" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
               <Sun size={11} color="var(--accent-yellow)" /> Light Mode Themes ({THEME_OPTIONS.filter(t => t.isLight).length})
@@ -897,7 +1059,7 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Custom Primary Accent Override */}
+{/* Custom Primary Accent Override */}
           <div>
             <div className="section-label" style={{ marginBottom: 10 }}>Primary Accent Color Override</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
@@ -920,7 +1082,7 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Custom Hex Color Studio (Unlimited Colors) */}
+{/* Custom Hex Color Studio (Unlimited Colors) */}
           <div className="card" style={{ padding: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <div className="section-label" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -972,8 +1134,17 @@ export default function ProfilePage() {
               ))}
             </div>
           </div>
+            </AppearanceGroup>
 
-          {/* Font Selector (10 Options) */}
+            <AppearanceGroup
+              id="typography"
+              icon={Type}
+              iconColor="var(--accent-purple)"
+              title="Typography & Headings"
+              summary={`${font} • ${fontSize} • ${fontWeightScale} • ${numberFont}`}
+              count={6}
+            >
+{/* Font Selector (10 Options) */}
           <div>
             <div className="section-label" style={{ marginBottom: 10 }}>UI Typography ({FONT_OPTIONS.length} Fonts)</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
@@ -1000,7 +1171,7 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Font Size (5 Options) */}
+{/* Font Size (5 Options) */}
           <div>
             <div className="section-label" style={{ marginBottom: 10 }}>Text & UI Scale</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
@@ -1019,7 +1190,29 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Number / Metrics Font */}
+{/* Font Weight Scale */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Typography Weight</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {[
+                { id: 'light', label: 'Light' },
+                { id: 'normal', label: 'Balanced' },
+                { id: 'bold', label: 'Heavy' },
+              ].map(opt => (
+                <button key={opt.id} type="button" onClick={() => updateAppearance({ fontWeightScale: opt.id })} style={{
+                  padding: '10px 6px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                  background: fontWeightScale === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
+                  border: fontWeightScale === opt.id ? 'none' : '1px solid var(--border)',
+                  color: fontWeightScale === opt.id ? 'var(--text-on-accent)' : 'var(--text-secondary)',
+                  fontSize: 11, fontWeight: opt.id === 'light' ? 500 : opt.id === 'bold' ? 900 : 700,
+                }}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+{/* Number / Metrics Font */}
           <div>
             <div className="section-label" style={{ marginBottom: 10 }}>Numbers & Metrics Font</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
@@ -1042,7 +1235,7 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Header Style */}
+{/* Header Style */}
           <div>
             <div className="section-label" style={{ marginBottom: 10 }}>Heading Style</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
@@ -1066,79 +1259,21 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Layout Density */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Layout Density</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-              {[
-                { id: 'compact', label: 'Compact', icon: '📐' },
-                { id: 'normal', label: 'Comfortable', icon: '✨' },
-                { id: 'spacious', label: 'Spacious', icon: '🌿' },
-              ].map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ density: opt.id })}
-                  style={{
-                    padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                    background: density === opt.id ? 'var(--gradient-mint)' : 'var(--bg-glass)',
-                    border: density === opt.id ? 'none' : '1px solid var(--border)',
-                    color: density === opt.id ? 'var(--text-on-mint)' : 'var(--text-secondary)',
-                  }}>
-                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
+{/* Text Shadow Toggle */}
+          <SettingRow icon={Type} iconColor="var(--accent-pink)" label="Text Shadow" description="Add crisp depth to headings & numbers">
+            <Toggle enabled={textShadow} onToggle={() => updateAppearance({ textShadow: !textShadow })} />
+          </SettingRow>
+            </AppearanceGroup>
 
-          {/* Exercise Grid Columns */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Exercise Library Grid</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-              {[
-                { id: '1', label: '1 Col (List)', icon: '📋' },
-                { id: '2', label: '2 Col (Cards)', icon: '🔲' },
-                { id: '3', label: '3 Col (Dense)', icon: '🎛️' },
-              ].map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ gridColumns: opt.id })}
-                  style={{
-                    padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                    background: gridColumns === opt.id ? 'var(--gradient-ocean)' : 'var(--bg-glass)',
-                    border: gridColumns === opt.id ? 'none' : '1px solid var(--border)',
-                    color: gridColumns === opt.id ? 'var(--text-on-ocean)' : 'var(--text-secondary)',
-                  }}>
-                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Button Style (7 Options) */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Button Style (7 Variants)</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-              {[
-                { id: 'default', label: 'Default', preview: '⬛' },
-                { id: 'pill', label: 'Pill', preview: '💊' },
-                { id: 'sharp', label: 'Sharp', preview: '🔲' },
-                { id: 'outline', label: 'Outline', preview: '⬜' },
-                { id: 'neon', label: 'Neon', preview: '✨' },
-                { id: 'glass', label: 'Glass', preview: '🫧' },
-                { id: '3d', label: '3D Tactile', preview: '🕹️' },
-              ].map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ buttonStyle: opt.id })} style={{
-                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: buttonStyle === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
-                  border: buttonStyle === opt.id ? 'none' : '1px solid var(--border)',
-                  color: buttonStyle === opt.id ? 'var(--text-on-accent)' : 'var(--text-secondary)',
-                }}>
-                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.preview}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Card Style (7 Options) */}
+            <AppearanceGroup
+              id="surfaces"
+              icon={LayoutGrid}
+              iconColor="var(--accent-green)"
+              title="Cards, Buttons & Layout"
+              summary={`${cardStyle} cards • ${buttonStyle} buttons • ${density}`}
+              count={9}
+            >
+{/* Card Style (7 Options) */}
           <div>
             <div className="section-label" style={{ marginBottom: 10 }}>Card Style (7 Variants)</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
@@ -1164,7 +1299,33 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Corner Radius (5 Options) */}
+{/* Button Style (7 Options) */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Button Style (7 Variants)</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+              {[
+                { id: 'default', label: 'Default', preview: '⬛' },
+                { id: 'pill', label: 'Pill', preview: '💊' },
+                { id: 'sharp', label: 'Sharp', preview: '🔲' },
+                { id: 'outline', label: 'Outline', preview: '⬜' },
+                { id: 'neon', label: 'Neon', preview: '✨' },
+                { id: 'glass', label: 'Glass', preview: '🫧' },
+                { id: '3d', label: '3D Tactile', preview: '🕹️' },
+              ].map(opt => (
+                <button key={opt.id} onClick={() => updateAppearance({ buttonStyle: opt.id })} style={{
+                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                  background: buttonStyle === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
+                  border: buttonStyle === opt.id ? 'none' : '1px solid var(--border)',
+                  color: buttonStyle === opt.id ? 'var(--text-on-accent)' : 'var(--text-secondary)',
+                }}>
+                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.preview}</div>
+                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+{/* Corner Radius (5 Options) */}
           <div>
             <div className="section-label" style={{ marginBottom: 10 }}>Corner Radius</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
@@ -1188,22 +1349,21 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Background Pattern */}
+{/* Border Thickness (4 Options) */}
           <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Background Pattern</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
+            <div className="section-label" style={{ marginBottom: 10 }}>Border Thickness</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
               {[
-                { id: 'mesh', label: 'Mesh', icon: '🌌' },
-                { id: 'grid', label: 'Grid', icon: '🕸️' },
-                { id: 'dots', label: 'Dots', icon: '⠿' },
-                { id: 'aurora', label: 'Aurora', icon: '🌅' },
-                { id: 'clean', label: 'Clean', icon: '🌑' },
+                { id: 'none', label: 'None', icon: '⭕' },
+                { id: 'thin', label: 'Thin', icon: '📏' },
+                { id: 'normal', label: 'Normal', icon: '📐' },
+                { id: 'thick', label: 'Thick', icon: '📊' },
               ].map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ bgStyle: opt.id })} style={{
+                <button key={opt.id} onClick={() => updateAppearance({ borderThickness: opt.id })} style={{
                   padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: bgStyle === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
-                  border: bgStyle === opt.id ? 'none' : '1px solid var(--border)',
-                  color: bgStyle === opt.id ? 'var(--text-on-accent)' : 'var(--text-secondary)',
+                  background: borderThickness === opt.id ? 'var(--gradient-ocean)' : 'var(--bg-glass)',
+                  border: borderThickness === opt.id ? 'none' : '1px solid var(--border)',
+                  color: borderThickness === opt.id ? 'var(--text-on-ocean)' : 'var(--text-secondary)',
                 }}>
                   <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
@@ -1212,7 +1372,130 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Bottom Nav Style (6 Options) */}
+{/* Glass Opacity (4 Options) */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Surface Opacity & Blur</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+              {[
+                { id: 'clear', label: 'Crystal', icon: '💎' },
+                { id: 'light', label: 'Light', icon: '☁️' },
+                { id: 'medium', label: 'Medium', icon: '🌫️' },
+                { id: 'heavy', label: 'Frosted', icon: '🧊' },
+              ].map(opt => (
+                <button key={opt.id} onClick={() => updateAppearance({ glassOpacity: opt.id })} style={{
+                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                  background: glassOpacity === opt.id ? 'var(--gradient-mint)' : 'var(--bg-glass)',
+                  border: glassOpacity === opt.id ? 'none' : '1px solid var(--border)',
+                  color: glassOpacity === opt.id ? 'var(--text-on-mint)' : 'var(--text-secondary)',
+                }}>
+                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
+                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+{/* Card Backdrop Blur */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Backdrop Blur Intensity</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+              {[
+                { id: 'none', label: 'Off' },
+                { id: 'low', label: 'Soft' },
+                { id: 'normal', label: 'Normal' },
+                { id: 'high', label: 'Heavy' },
+              ].map(opt => (
+                <button key={opt.id} type="button" onClick={() => updateAppearance({ cardBlur: opt.id })} style={{
+                  padding: '10px 6px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                  background: cardBlur === opt.id ? 'var(--gradient-ocean)' : 'var(--bg-glass)',
+                  border: cardBlur === opt.id ? 'none' : '1px solid var(--border)',
+                  color: cardBlur === opt.id ? 'var(--text-on-ocean)' : 'var(--text-secondary)',
+                  fontSize: 11, fontWeight: 700,
+                }}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+{/* Accent Surface Tinting */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Accent Surface Tint</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {[
+                { id: 'none', label: 'Neutral' },
+                { id: 'subtle', label: 'Subtle Wash' },
+                { id: 'vivid', label: 'Vivid Tint' },
+              ].map(opt => (
+                <button key={opt.id} type="button" onClick={() => updateAppearance({ surfaceTint: opt.id })} style={{
+                  padding: '10px 6px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                  background: surfaceTint === opt.id ? 'var(--gradient-mint)' : 'var(--bg-glass)',
+                  border: surfaceTint === opt.id ? 'none' : '1px solid var(--border)',
+                  color: surfaceTint === opt.id ? 'var(--text-on-mint)' : 'var(--text-secondary)',
+                  fontSize: 11, fontWeight: 700,
+                }}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+{/* Layout Density */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Layout Density</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {[
+                { id: 'compact', label: 'Compact', icon: '📐' },
+                { id: 'normal', label: 'Comfortable', icon: '✨' },
+                { id: 'spacious', label: 'Spacious', icon: '🌿' },
+              ].map(opt => (
+                <button key={opt.id} onClick={() => updateAppearance({ density: opt.id })}
+                  style={{
+                    padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                    background: density === opt.id ? 'var(--gradient-mint)' : 'var(--bg-glass)',
+                    border: density === opt.id ? 'none' : '1px solid var(--border)',
+                    color: density === opt.id ? 'var(--text-on-mint)' : 'var(--text-secondary)',
+                  }}>
+                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
+                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+{/* Exercise Grid Columns */}
+          <div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Exercise Library Grid</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {[
+                { id: '1', label: '1 Col (List)', icon: '📋' },
+                { id: '2', label: '2 Col (Cards)', icon: '🔲' },
+                { id: '3', label: '3 Col (Dense)', icon: '🎛️' },
+              ].map(opt => (
+                <button key={opt.id} onClick={() => updateAppearance({ gridColumns: opt.id })}
+                  style={{
+                    padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
+                    background: gridColumns === opt.id ? 'var(--gradient-ocean)' : 'var(--bg-glass)',
+                    border: gridColumns === opt.id ? 'none' : '1px solid var(--border)',
+                    color: gridColumns === opt.id ? 'var(--text-on-ocean)' : 'var(--text-secondary)',
+                  }}>
+                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
+                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+            </AppearanceGroup>
+
+            <AppearanceGroup
+              id="effects"
+              icon={Sparkles}
+              iconColor="var(--accent-orange)"
+              title="Navigation, Background & Effects"
+              summary={`${navStyle} nav • ${bgStyle} bg • glow ${glowIntensity}`}
+              count={5}
+            >
+{/* Bottom Nav Style (6 Options) */}
           <div>
             <div className="section-label" style={{ marginBottom: 10 }}>Navigation Bar (6 Styles)</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
@@ -1237,21 +1520,22 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Animation Level */}
+{/* Background Pattern */}
           <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Animations & Transitions</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+            <div className="section-label" style={{ marginBottom: 10 }}>Background Pattern</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
               {[
-                { id: 'none', label: 'None', icon: '⏹️' },
-                { id: 'subtle', label: 'Subtle', icon: '🌊' },
-                { id: 'normal', label: 'Normal', icon: '💨' },
-                { id: 'full', label: 'Max', icon: '🚀' },
+                { id: 'mesh', label: 'Mesh', icon: '🌌' },
+                { id: 'grid', label: 'Grid', icon: '🕸️' },
+                { id: 'dots', label: 'Dots', icon: '⠿' },
+                { id: 'aurora', label: 'Aurora', icon: '🌅' },
+                { id: 'clean', label: 'Clean', icon: '🌑' },
               ].map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ animationLevel: opt.id })} style={{
+                <button key={opt.id} onClick={() => updateAppearance({ bgStyle: opt.id })} style={{
                   padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: animationLevel === opt.id ? 'var(--gradient-sunset)' : 'var(--bg-glass)',
-                  border: animationLevel === opt.id ? 'none' : '1px solid var(--border)',
-                  color: animationLevel === opt.id ? 'var(--text-on-accent)' : 'var(--text-secondary)',
+                  background: bgStyle === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
+                  border: bgStyle === opt.id ? 'none' : '1px solid var(--border)',
+                  color: bgStyle === opt.id ? 'var(--text-on-accent)' : 'var(--text-secondary)',
                 }}>
                   <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
@@ -1260,7 +1544,7 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Accent Intensity */}
+{/* Accent Intensity */}
           <div>
             <div className="section-label" style={{ marginBottom: 10 }}>Accent Saturation</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
@@ -1278,7 +1562,7 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Glow Intensity (4 Options) */}
+{/* Glow Intensity (4 Options) */}
           <div>
             <div className="section-label" style={{ marginBottom: 10 }}>Glow Intensity</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
@@ -1301,21 +1585,21 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Border Thickness (4 Options) */}
+{/* Animation Level */}
           <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Border Thickness</div>
+            <div className="section-label" style={{ marginBottom: 10 }}>Animations & Transitions</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
               {[
-                { id: 'none', label: 'None', icon: '⭕' },
-                { id: 'thin', label: 'Thin', icon: '📏' },
-                { id: 'normal', label: 'Normal', icon: '📐' },
-                { id: 'thick', label: 'Thick', icon: '📊' },
+                { id: 'none', label: 'None', icon: '⏹️' },
+                { id: 'subtle', label: 'Subtle', icon: '🌊' },
+                { id: 'normal', label: 'Normal', icon: '💨' },
+                { id: 'full', label: 'Max', icon: '🚀' },
               ].map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ borderThickness: opt.id })} style={{
+                <button key={opt.id} onClick={() => updateAppearance({ animationLevel: opt.id })} style={{
                   padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: borderThickness === opt.id ? 'var(--gradient-ocean)' : 'var(--bg-glass)',
-                  border: borderThickness === opt.id ? 'none' : '1px solid var(--border)',
-                  color: borderThickness === opt.id ? 'var(--text-on-ocean)' : 'var(--text-secondary)',
+                  background: animationLevel === opt.id ? 'var(--gradient-sunset)' : 'var(--bg-glass)',
+                  border: animationLevel === opt.id ? 'none' : '1px solid var(--border)',
+                  color: animationLevel === opt.id ? 'var(--text-on-accent)' : 'var(--text-secondary)',
                 }}>
                   <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
                   <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
@@ -1323,31 +1607,17 @@ export default function ProfilePage() {
               ))}
             </div>
           </div>
+            </AppearanceGroup>
 
-          {/* Glass Opacity (4 Options) */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Surface Opacity & Blur</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-              {[
-                { id: 'clear', label: 'Crystal', icon: '💎' },
-                { id: 'light', label: 'Light', icon: '☁️' },
-                { id: 'medium', label: 'Medium', icon: '🌫️' },
-                { id: 'heavy', label: 'Frosted', icon: '🧊' },
-              ].map(opt => (
-                <button key={opt.id} onClick={() => updateAppearance({ glassOpacity: opt.id })} style={{
-                  padding: '12px 4px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: glassOpacity === opt.id ? 'var(--gradient-mint)' : 'var(--bg-glass)',
-                  border: glassOpacity === opt.id ? 'none' : '1px solid var(--border)',
-                  color: glassOpacity === opt.id ? 'var(--text-on-mint)' : 'var(--text-secondary)',
-                }}>
-                  <div style={{ fontSize: 16, marginBottom: 4 }}>{opt.icon}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700 }}>{opt.label}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Contrast Mode (3 Options) */}
+            <AppearanceGroup
+              id="accessibility"
+              icon={Eye}
+              iconColor="var(--accent-cyan)"
+              title="Accessibility & Home Widgets"
+              summary={`Contrast ${contrastMode} • Vision ${colorMode}`}
+              count={3}
+            >
+{/* Contrast Mode (3 Options) */}
           <div>
             <div className="section-label" style={{ marginBottom: 10 }}>Contrast Level</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
@@ -1365,7 +1635,7 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Color Vision Mode (5 Options) */}
+{/* Color Vision Mode (5 Options) */}
           <div>
             <div className="section-label" style={{ marginBottom: 10 }}>Color Vision Accessibility</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
@@ -1383,79 +1653,7 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Font Weight Scale */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Typography Weight</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-              {[
-                { id: 'light', label: 'Light' },
-                { id: 'normal', label: 'Balanced' },
-                { id: 'bold', label: 'Heavy' },
-              ].map(opt => (
-                <button key={opt.id} type="button" onClick={() => updateAppearance({ fontWeightScale: opt.id })} style={{
-                  padding: '10px 6px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: fontWeightScale === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
-                  border: fontWeightScale === opt.id ? 'none' : '1px solid var(--border)',
-                  color: fontWeightScale === opt.id ? 'var(--text-on-accent)' : 'var(--text-secondary)',
-                  fontSize: 11, fontWeight: opt.id === 'light' ? 500 : opt.id === 'bold' ? 900 : 700,
-                }}>
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Card Backdrop Blur */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Backdrop Blur Intensity</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-              {[
-                { id: 'none', label: 'Off' },
-                { id: 'low', label: 'Soft' },
-                { id: 'normal', label: 'Normal' },
-                { id: 'high', label: 'Heavy' },
-              ].map(opt => (
-                <button key={opt.id} type="button" onClick={() => updateAppearance({ cardBlur: opt.id })} style={{
-                  padding: '10px 6px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: cardBlur === opt.id ? 'var(--gradient-ocean)' : 'var(--bg-glass)',
-                  border: cardBlur === opt.id ? 'none' : '1px solid var(--border)',
-                  color: cardBlur === opt.id ? 'var(--text-on-ocean)' : 'var(--text-secondary)',
-                  fontSize: 11, fontWeight: 700,
-                }}>
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Accent Surface Tinting */}
-          <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Accent Surface Tint</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-              {[
-                { id: 'none', label: 'Neutral' },
-                { id: 'subtle', label: 'Subtle Wash' },
-                { id: 'vivid', label: 'Vivid Tint' },
-              ].map(opt => (
-                <button key={opt.id} type="button" onClick={() => updateAppearance({ surfaceTint: opt.id })} style={{
-                  padding: '10px 6px', borderRadius: 10, textAlign: 'center', cursor: 'pointer',
-                  background: surfaceTint === opt.id ? 'var(--gradient-mint)' : 'var(--bg-glass)',
-                  border: surfaceTint === opt.id ? 'none' : '1px solid var(--border)',
-                  color: surfaceTint === opt.id ? 'var(--text-on-mint)' : 'var(--text-secondary)',
-                  fontSize: 11, fontWeight: 700,
-                }}>
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Text Shadow Toggle */}
-          <SettingRow icon={Type} iconColor="var(--accent-pink)" label="Text Shadow" description="Add crisp depth to headings & numbers">
-            <Toggle enabled={textShadow} onToggle={() => updateAppearance({ textShadow: !textShadow })} />
-          </SettingRow>
-
-          {/* Home Dashboard Widgets Customization */}
+{/* Home Dashboard Widgets Customization */}
           <div className="section-label" style={{ marginTop: 8 }}>Home Dashboard Widgets</div>
           <SettingRow icon={Eye} iconColor="var(--accent-purple)" label="Daily Motivational Quote" description="Show quote card on Home tab">
             <Toggle enabled={showDailyQuote} onToggle={() => updateWorkoutSetting('showDailyQuote', !showDailyQuote)} />
@@ -1469,6 +1667,7 @@ export default function ProfilePage() {
           <SettingRow icon={Sliders} iconColor="var(--accent-yellow)" label="Quick Navigation Cards" description="Show feature shortcut tiles on Home tab">
             <Toggle enabled={showFeatureCards} onToggle={() => updateWorkoutSetting('showFeatureCards', !showFeatureCards)} />
           </SettingRow>
+            </AppearanceGroup>
 
           </motion.div>
         </>
