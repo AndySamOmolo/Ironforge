@@ -58,14 +58,12 @@ export default function ExercisesPage() {
       filtered = filtered.filter(e => matchesUserEquipment(e, userEquipment));
     }
 
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(e =>
-        e.name.toLowerCase().includes(q) ||
-        e.primaryMuscles?.some(m => m.toLowerCase().includes(q)) ||
-        e.secondaryMuscles?.some(m => m.toLowerCase().includes(q)) ||
-        (e.equipment && e.equipment.toLowerCase().includes(q))
-      );
+    if (searchQuery.trim()) {
+      const tokens = searchQuery.toLowerCase().trim().split(/\s+/).filter(Boolean);
+      filtered = filtered.filter(e => {
+        const hay = `${e.name} ${e.equipment || ''} ${(e.primaryMuscles || []).join(' ')} ${(e.secondaryMuscles || []).join(' ')} ${e.category || ''}`.toLowerCase();
+        return tokens.every(tok => hay.includes(tok));
+      });
     }
     if (bodyPartFilter !== 'all') {
       filtered = filtered.filter(e =>

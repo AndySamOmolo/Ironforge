@@ -13,7 +13,7 @@ interface WorkoutCompletePageProps {
 
 export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePageProps) {
   const { totalVolume, totalSets, totalReps, elapsedTime, newPRs, exercises, planName, dayName, sessionId, endWorkout } = useWorkoutStore();
-  const { unitSystem } = useUserStore();
+  const { unitSystem, animationLevel } = useUserStore();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [musclesTrained, setMusclesTrained] = useState<string[]>([]);
   const [prevSession, setPrevSession] = useState<{ volume: number; sets: number; duration: number } | null>(null);
@@ -26,6 +26,7 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
   const unitLabel = unitSystem === 'metric' ? 'kg' : 'lbs';
 
   useEffect(() => {
+    if (animationLevel === 'none') return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -137,7 +138,7 @@ export default function WorkoutCompletePage({ onFinish }: WorkoutCompletePagePro
     const text = [
       `🏋️ ${dayName || planName || 'Workout'} Complete! (${'⭐'.repeat(rating)})`,
       `⏱ ${formatTime(elapsedTime)}`,
-      `📊 ${totalVolume.toLocaleString()}${unitLabel} volume`,
+      `📊 ${totalVolume.toLocaleString()} ${unitLabel} volume`,
       `💪 ${totalSets} sets, ${totalReps} reps`,
       `🎯 ${completedExercises} exercises`,
       newPRs.length > 0 ? `🏆 ${newPRs.length} new PR${newPRs.length > 1 ? 's' : ''}!` : '',

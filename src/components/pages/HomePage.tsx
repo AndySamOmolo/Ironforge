@@ -7,7 +7,7 @@ import {
   Star, BarChart3, Shuffle, Check, Activity,
 } from 'lucide-react';
 import { db } from '@/lib/db/schema';
-import { resolveNextPlanDayIndex } from '@/lib/utils/workoutDefaults';
+import { resolveNextPlanDayIndex, triggerWorkoutHaptic } from '@/lib/utils/workoutDefaults';
 import { useUserStore } from '@/lib/store/userStore';
 import { useWorkoutStore } from '@/lib/store/workoutStore';
 import { useUIStore } from '@/lib/store/uiStore';
@@ -64,7 +64,7 @@ export default function HomePage() {
     showDailyQuote,
     showActivityHeatmap,
     showFeatureCards,
-    showLastWorkout,
+    showLastWorkout, hapticEnabled,
     unitSystem,
   } = useUserStore();
   const { startWorkout } = useWorkoutStore();
@@ -433,10 +433,10 @@ export default function HomePage() {
 
       {/* Streak Ring + Stats Row */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.04 }}
-        className="hero-gradient" style={{ padding: '14px 16px', marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-          <div style={{ position: 'relative', width: 86, height: 86, flexShrink: 0 }}>
-            <svg width="86" height="86" viewBox="0 0 86 86">
+        className="hero-gradient" style={{ padding: '11px 14px', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{ position: 'relative', width: 76, height: 76, flexShrink: 0 }}>
+            <svg width="76" height="76" viewBox="0 0 86 86">
               <circle cx="43" cy="43" r="38" fill="none" stroke="var(--border)" strokeWidth="4" />
               <motion.circle cx="43" cy="43" r="38" fill="none" stroke="var(--accent-red)" strokeWidth="4.5"
                 strokeDasharray="251" strokeDashoffset={streakDashOffset} strokeLinecap="round"
@@ -508,7 +508,7 @@ export default function HomePage() {
               ]).map(m => (
                 <button
                   key={m.id}
-                  onClick={() => setHeatmapMetric(m.id)}
+                  onClick={() => { triggerWorkoutHaptic('light', hapticEnabled); setHeatmapMetric(m.id); }}
                   style={{
                     padding: '4px 8px', borderRadius: 7, fontSize: 10, fontWeight: 700, cursor: 'pointer',
                     background: heatmapMetric === m.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
@@ -522,27 +522,27 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="card" style={{ padding: 15, border: '1px solid var(--border-subtle)' }}>
+          <div className="card" style={{ padding: 12, border: '1px solid var(--border-subtle)' }}>
             {/* Current Week Sun-Sat Interactive Tracker (Adapts to Sessions / Volume / Time tab) */}
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--text-primary)' }}>
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-primary)' }}>
                   {heatmapMetric === 'workouts'
                     ? `This Week: ${activeWeekDaysCount} of ${weeklyGoalTarget} days active`
                     : heatmapMetric === 'volume'
                       ? `This Week Volume: ${stats.weekVolume.toLocaleString()} ${unitLabel}`
                       : `This Week Active Time: ${formatDuration(stats.weekDurationSec)}`}
                 </span>
-                <span className="font-mono" style={{ fontSize: 11, fontWeight: 700, color: heatmapMetric === 'volume' ? 'var(--accent-green)' : heatmapMetric === 'duration' ? 'var(--accent-cyan)' : 'var(--accent-orange)' }}>
+                <span className="font-mono" style={{ fontSize: 10.5, fontWeight: 700, color: heatmapMetric === 'volume' ? 'var(--accent-green)' : heatmapMetric === 'duration' ? 'var(--accent-cyan)' : 'var(--accent-orange)' }}>
                   {heatmapMetric === 'workouts'
                     ? `🔥 ~${estWeekCalories.toLocaleString()} kcal`
                     : heatmapMetric === 'volume'
-                      ? `🏋️ ${stats.weekSets} sets logged`
+                      ? `🏋️ ${stats.weekSets} sets`
                       : `⏱ Avg ${stats.weekWorkouts > 0 ? formatDuration(Math.round(stats.weekDurationSec / stats.weekWorkouts)) : '0m'}/sess`}
                 </span>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 5, marginBottom: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 7 }}>
                 {currentWeekDays.map((d) => {
                   const isActive = d.count > 0;
                   const isSelected = selectedDateKey === d.dateKey;
@@ -557,10 +557,10 @@ export default function HomePage() {
                     <button
                       key={d.dateKey}
                       type="button"
-                      onClick={() => setSelectedDateKey(d.dateKey)}
+                      onClick={() => { triggerWorkoutHaptic('light', hapticEnabled); setSelectedDateKey(d.dateKey); }}
                       aria-label={`${d.label} ${d.dateKey}: ${d.count} workout${d.count !== 1 ? 's' : ''}`}
                       style={{
-                        padding: '7px 2px 6px', borderRadius: 12, cursor: 'pointer', textAlign: 'center',
+                        padding: '5px 2px 4px', borderRadius: 10, cursor: 'pointer', textAlign: 'center',
                         background: isActive ? 'color-mix(in srgb, var(--accent-green) 12%, transparent)' : 'var(--bg-input)',
                         border: isSelected
                           ? '1.5px solid var(--accent-purple)'
@@ -569,25 +569,25 @@ export default function HomePage() {
                             : isActive
                               ? '1px solid color-mix(in srgb, var(--accent-green) 35%, transparent)'
                               : '1px solid var(--border-subtle)',
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
                       }}
                     >
-                      <span style={{ fontSize: 9, fontWeight: 700, color: d.isToday ? 'var(--accent-red)' : 'var(--text-muted)' }}>
+                      <span style={{ fontSize: 8.5, fontWeight: 700, color: d.isToday ? 'var(--accent-red)' : 'var(--text-muted)' }}>
                         {d.label}
                       </span>
                       <div style={{
-                        width: 23, height: 23, borderRadius: '50%',
+                        width: 20, height: 20, borderRadius: '50%',
                         background: isActive ? 'var(--accent-green)' : 'var(--bg-subtle-fill)',
                         color: isActive ? 'var(--text-on-mint)' : 'var(--text-secondary)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 10.5, fontWeight: 800,
+                        fontSize: 9.5, fontWeight: 800,
                       }}>
-                        {isActive ? <Check size={12} strokeWidth={3} /> : d.dayNum}
+                        {isActive ? <Check size={11} strokeWidth={3} /> : d.dayNum}
                       </div>
                       <span
                         className="font-mono"
                         style={{
-                          fontSize: 8.5,
+                          fontSize: 8,
                           fontWeight: 700,
                           color: isActive
                             ? heatmapMetric === 'volume'
@@ -606,7 +606,7 @@ export default function HomePage() {
               </div>
 
               {/* Dynamic 4-Tile Metrics Strip (Switches immediately with Sessions / Volume / Time) */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 5 }}>
                 {(heatmapMetric === 'volume'
                   ? [
                       { label: `Week ${unitLabel.toUpperCase()}`, value: stats.weekVolume >= 1000 ? `${(stats.weekVolume / 1000).toFixed(1)}K` : `${Math.round(stats.weekVolume)}`, color: 'var(--accent-green)' },
@@ -628,9 +628,9 @@ export default function HomePage() {
                         { label: 'Best Streak', value: `${stats.bestStreak}d`, color: 'var(--accent-yellow)' },
                       ]
                 ).map((m, idx) => (
-                  <div key={idx} style={{ padding: '7px 4px', background: 'var(--bg-input)', borderRadius: 9, textAlign: 'center', border: '1px solid var(--border-subtle)' }}>
-                    <div className="font-mono" style={{ fontSize: 13, fontWeight: 800, color: m.color }}>{m.value}</div>
-                    <div style={{ fontSize: 8, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginTop: 2 }}>{m.label}</div>
+                  <div key={idx} style={{ padding: '5px 4px', background: 'var(--bg-input)', borderRadius: 8, textAlign: 'center', border: '1px solid var(--border-subtle)' }}>
+                    <div className="font-mono" style={{ fontSize: 12.5, fontWeight: 800, color: m.color, lineHeight: 1.15 }}>{m.value}</div>
+                    <div style={{ fontSize: 7.5, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginTop: 1 }}>{m.label}</div>
                   </div>
                 ))}
               </div>
