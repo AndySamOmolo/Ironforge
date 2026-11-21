@@ -982,12 +982,12 @@ export default function ProfilePage() {
             )}
           </div>
 
-          <div style={ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, padding: '0 2px' }>
-            <span className="section-label" style={ margin: 0 }>Appearance Studio (5 Groups)</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, padding: '0 2px' }}>
+            <span className="section-label" style={{ margin: 0 }}>Appearance Studio (5 Groups)</span>
             <button
               type="button"
               onClick={toggleAllAppearanceGroups}
-              style={
+              style={{
                 background: 'none',
                 border: 'none',
                 color: 'var(--accent-purple)',
@@ -995,13 +995,13 @@ export default function ProfilePage() {
                 fontWeight: 700,
                 cursor: 'pointer',
                 padding: '2px 4px',
-              }
+              }}
             >
               {allAppearanceOpen ? 'Collapse All' : 'Expand All'}
             </button>
           </div>
 
-          <motion.div initial={ opacity: 0 } animate={ opacity: 1 } style={ display: 'flex', flexDirection: 'column', gap: 10 }>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <AppearanceGroup
               id="themes"
               icon={Palette}
