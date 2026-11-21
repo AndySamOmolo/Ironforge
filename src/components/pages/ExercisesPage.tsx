@@ -38,7 +38,7 @@ export default function ExercisesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
   const [imgErrors, setImgErrors] = useState<Set<number>>(new Set());
-  const [visibleCount, setVisibleCount] = useState(30);
+  const [visibleCount, setVisibleCount] = useState(20);
 
   useEffect(() => { loadExercises(); }, []);
 

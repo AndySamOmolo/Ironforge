@@ -452,24 +452,23 @@ export default function PlansPage() {
                 }}
               >
                 {plan.isActive && (
-                  <div
-                    style={{
-                      padding: '6px 13px',
-                      background: 'linear-gradient(90deg, color-mix(in srgb, var(--accent-green) 16%, transparent), color-mix(in srgb, var(--accent-green) 4%, transparent))',
-                      borderBottom: '1px solid color-mix(in srgb, var(--accent-green) 22%, transparent)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 8,
-                    }}
-                  >
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 9.5, fontWeight: 800, letterSpacing: 0.55, color: 'var(--accent-green)', textTransform: 'uppercase' }}>
-                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-green)', boxShadow: '0 0 6px var(--accent-green)', animation: 'pulse-dot 2.2s ease-in-out infinite' }} />
-                      Active Program
-                    </span>
-                    <span style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--accent-green)', opacity: 0.85 }}>
-                      {plan.daysPerWeek}d / week split
-                    </span>
+                  <div style={{ padding: '8px 10px 0' }}>
+                    <div
+                      style={{
+                        padding: '5px 11px',
+                        borderRadius: 10,
+                        background: 'linear-gradient(90deg, color-mix(in srgb, var(--accent-green) 16%, transparent), color-mix(in srgb, var(--accent-green) 5%, transparent))',
+                        border: '1px solid color-mix(in srgb, var(--accent-green) 22%, transparent)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-green)', boxShadow: '0 0 6px var(--accent-green)', animation: 'pulse-dot 2.2s ease-in-out infinite', flexShrink: 0 }} />
+                      <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: 0.55, color: 'var(--accent-green)', textTransform: 'uppercase' }}>
+                        Active Program
+                      </span>
+                    </div>
                   </div>
                 )}
                 <button

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { getExerciseGifUrl, getExerciseImageFrames } from '@/lib/utils/exerciseMedia';
 
 type ExerciseMediaProps = {
@@ -17,7 +17,7 @@ type ExerciseMediaProps = {
   onNaturalAspectRatio?: (ratio: number) => void;
 };
 
-export default function ExerciseMedia({
+function ExerciseMedia({
   gifUrl,
   imageUrls,
   images,
@@ -166,3 +166,5 @@ export default function ExerciseMedia({
     />
   );
 }
+
+export default memo(ExerciseMedia);

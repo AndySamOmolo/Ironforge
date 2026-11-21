@@ -610,7 +610,7 @@ export default function ProgressPage() {
               {paginatedHistory.map((s) => {
                 const isExpanded = expandedSession === s.id;
                 return (
-                  <motion.div key={s.id} layout className="card" style={{ overflow: 'hidden' }}>
+                  <div key={s.id} className="card" style={{ overflow: 'hidden' }}>
                     <button onClick={() => {
                       if (isExpanded) { setExpandedSession(null); setSessionDetail(null); }
                       else { setExpandedSession(s.id!); loadSessionDetail(s); }
@@ -701,7 +701,7 @@ export default function ProgressPage() {
                         </motion.div>
                       )}
                     </AnimatePresence>
-                  </motion.div>
+                  </div>
                 );
               })}
 

@@ -1163,9 +1163,8 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
           {currentExercise.sets.map((set, setIdx) => {
             const typeInfo = SET_TYPE_BADGE[set.setType || SetType.Normal] || SET_TYPE_BADGE[SetType.Normal];
             return (
-              <motion.div
+              <div
                 key={setIdx}
-                layout
                 className={`set-row ${set.isComplete ? 'completed' : ''}`}
                 style={{
                   display: 'grid',
@@ -1247,7 +1246,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                     {set.isPR ? '🏆 PR' : 'DONE'}
                   </button>
                 )}
-              </motion.div>
+              </div>
             );
           })}
         </div>
