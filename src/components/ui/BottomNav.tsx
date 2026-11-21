@@ -295,43 +295,43 @@ export default function BottomNav() {
                 </button>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <button onClick={handleStartActivePlanDay} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', border: '1px solid color-mix(in srgb, var(--accent-red) 30%, transparent)' }}>
-                  <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--gradient-fire)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Play size={18} fill="currentColor" color="var(--text-on-accent)" />
+                <button onClick={handleStartActivePlanDay} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '12px 14px', border: '1px solid color-mix(in srgb, var(--accent-red) 28%, transparent)' }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 11, background: 'color-mix(in srgb, var(--accent-red) 14%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-red) 28%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Play size={18} fill="var(--accent-red)" color="var(--accent-red)" />
                   </div>
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 800 }}>{activePlanName ? `Next Day in ${activePlanName}` : 'Choose an Active Plan'}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{activePlanName ? (nextPlanDayLabel ? `Up next: ${nextPlanDayLabel}` : 'Automatically picks the next scheduled day for your equipment') : 'Browse balanced workout programs to activate your split'}</div>
-                  </div>
-                </button>
-
-                <button onClick={handleStartSmartMix} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', border: '1px solid color-mix(in srgb, var(--accent-purple) 30%, transparent)' }}>
-                  <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--gradient-ocean)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Shuffle size={18} color="white" />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 800 }}>Smart Full-Body Mix</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Generates 6 fresh GIF-backed exercises matching your equipment</div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 14.5, fontWeight: 800 }}>{activePlanName ? `Next Day in ${activePlanName}` : 'Choose an Active Plan'}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{activePlanName ? (nextPlanDayLabel ? `Up next: ${nextPlanDayLabel}` : 'Automatically picks the next scheduled day for your equipment') : 'Browse balanced workout programs to activate your split'}</div>
                   </div>
                 </button>
 
-                <button onClick={handleStartFreestyle} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', border: '1px solid color-mix(in srgb, var(--accent-green) 30%, transparent)' }}>
-                  <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--gradient-mint)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Zap size={18} color="white" />
+                <button onClick={handleStartSmartMix} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '12px 14px', border: '1px solid color-mix(in srgb, var(--accent-purple) 26%, transparent)' }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 11, background: 'color-mix(in srgb, var(--accent-purple) 14%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-purple) 28%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Shuffle size={18} color="var(--accent-purple)" />
                   </div>
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 800 }}>Freestyle Open Session</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Start immediately and add any exercises on the fly</div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 14.5, fontWeight: 800 }}>Smart Full-Body Mix</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Generates 6 fresh GIF-backed exercises matching your equipment</div>
                   </div>
                 </button>
 
-                <button onClick={() => { setShowQuickLaunch(false); setActiveTab('exercises'); }} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer' }}>
-                  <div style={{ width: 42, height: 42, borderRadius: 12, background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <button onClick={handleStartFreestyle} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '12px 14px', border: '1px solid color-mix(in srgb, var(--accent-green) 26%, transparent)' }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 11, background: 'color-mix(in srgb, var(--accent-green) 14%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-green) 28%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Zap size={18} color="var(--accent-green)" />
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 14.5, fontWeight: 800 }}>Freestyle Open Session</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Start immediately and add any exercises on the fly</div>
+                  </div>
+                </button>
+
+                <button onClick={() => { setShowQuickLaunch(false); setActiveTab('exercises'); }} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '12px 14px' }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 11, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Dumbbell size={18} color="var(--text-secondary)" />
                   </div>
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 800 }}>Browse Exercise Library</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Explore 2,240+ exercises with animated GIF demos</div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 14.5, fontWeight: 800 }}>Browse Exercise Library</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Explore 2,240+ exercises with animated GIF demos</div>
                   </div>
                 </button>
               </div>

@@ -85,6 +85,7 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
   const [swapSuggestions, setSwapSuggestions] = useState<{ exercise: Exercise; score: number; matchTags: string[]; category: string }[]>([]);
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [addSearch, setAddSearch] = useState('');
+  const [addEquipmentFilter, setAddEquipmentFilter] = useState<string>('my_gear');
   const [allCatalog, setAllCatalog] = useState<Exercise[]>([]);
   const [notes, setNotes] = useState<Record<number, string>>({});
   const [showPlates, setShowPlates] = useState(false);
@@ -629,18 +630,34 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
     setShowAddExercise(true);
   };
 
+  const addEquipmentOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const ex of allCatalog) {
+      const eq = (ex.equipment || 'body weight').trim().toLowerCase();
+      counts.set(eq, (counts.get(eq) || 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([eq]) => eq);
+  }, [allCatalog]);
+
   const filteredAddCatalog = useMemo(() => {
-    let list = allCatalog.filter(e => matchesUserEquipment(e, userEquipment));
+    let list = allCatalog;
+    if (addEquipmentFilter === 'my_gear') {
+      list = list.filter(e => matchesUserEquipment(e, userEquipment));
+    } else if (addEquipmentFilter !== 'all') {
+      list = list.filter(e => (e.equipment || 'body weight').trim().toLowerCase() === addEquipmentFilter);
+    }
     if (addSearch.trim()) {
-      const q = addSearch.toLowerCase();
-      list = list.filter(e =>
-        e.name.toLowerCase().includes(q) ||
-        e.primaryMuscles?.some(m => m.toLowerCase().includes(q))
-      );
+      const tokens = addSearch.toLowerCase().trim().split(/\s+/).filter(Boolean);
+      list = list.filter(e => {
+        const hay = `${e.name} ${e.equipment || ''} ${(e.primaryMuscles || []).join(' ')} ${(e.secondaryMuscles || []).join(' ')}`.toLowerCase();
+        return tokens.every(tok => hay.includes(tok));
+      });
     }
     list = [...list].sort((a, b) => Number(hasGifExerciseMedia(b)) - Number(hasGifExerciseMedia(a)));
-    return list.slice(0, 60);
-  }, [allCatalog, userEquipment, addSearch]);
+    return list.slice(0, 80);
+  }, [allCatalog, userEquipment, addEquipmentFilter, addSearch]);
 
   const handleAddExerciseToWorkout = (ex: Exercise) => {
     const startW = getWorkoutStartingWeight({
@@ -1351,10 +1368,26 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
                 <h3 style={{ fontSize: 16, fontWeight: 800 }}>Add Exercise to Workout</h3>
                 <button onClick={() => setShowAddExercise(false)} aria-label="Close modal" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18} /></button>
               </div>
-              <div style={{ position: 'relative', marginBottom: 12 }}>
+              <div style={{ position: 'relative', marginBottom: 8 }}>
                 <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                <input className="search-bar" value={addSearch} onChange={e => setAddSearch(e.target.value)} placeholder="Search by name or muscle..." style={{ paddingLeft: 36 }} />
+                <input className="search-bar" value={addSearch} onChange={e => setAddSearch(e.target.value)} placeholder="Search exercise, muscle, or gear..." style={{ paddingLeft: 36, minHeight: 38, fontSize: 12.5 }} />
               </div>
+              <ChipScrollBar
+                dropdownTitle="Filter by Equipment"
+                ariaLabel="Filter add-exercise by equipment"
+                style={{ marginBottom: 10 }}
+                chipStyle={{ fontSize: 10.5, padding: '4px 10px', minHeight: 28, textTransform: 'capitalize' }}
+                items={[
+                  { id: 'my_gear', label: 'My Gear', isActive: addEquipmentFilter === 'my_gear', onClick: () => setAddEquipmentFilter('my_gear') },
+                  { id: 'all', label: 'All Equipment', isActive: addEquipmentFilter === 'all', onClick: () => setAddEquipmentFilter('all') },
+                  ...addEquipmentOptions.map(eq => ({
+                    id: eq,
+                    label: eq,
+                    isActive: addEquipmentFilter === eq,
+                    onClick: () => setAddEquipmentFilter(eq),
+                  })),
+                ]}
+              />
               <div style={{ maxHeight: '55vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {filteredAddCatalog.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '24px 12px', color: 'var(--text-muted)', fontSize: 13 }}>

@@ -454,21 +454,21 @@ export default function PlansPage() {
                 {plan.isActive && (
                   <div
                     style={{
-                      padding: '5px 13px',
-                      background: 'linear-gradient(90deg, color-mix(in srgb, var(--accent-green) 18%, transparent), color-mix(in srgb, var(--accent-green) 6%, transparent))',
-                      borderBottom: '1px solid color-mix(in srgb, var(--accent-green) 24%, transparent)',
+                      padding: '6px 13px',
+                      background: 'linear-gradient(90deg, color-mix(in srgb, var(--accent-green) 16%, transparent), color-mix(in srgb, var(--accent-green) 4%, transparent))',
+                      borderBottom: '1px solid color-mix(in srgb, var(--accent-green) 22%, transparent)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       gap: 8,
                     }}
                   >
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 9.5, fontWeight: 800, letterSpacing: 0.6, color: 'var(--accent-green)', textTransform: 'uppercase' }}>
-                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-green)', boxShadow: '0 0 8px var(--accent-green)', animation: 'pulse-dot 2.2s ease-in-out infinite' }} />
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 9.5, fontWeight: 800, letterSpacing: 0.55, color: 'var(--accent-green)', textTransform: 'uppercase' }}>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-green)', boxShadow: '0 0 6px var(--accent-green)', animation: 'pulse-dot 2.2s ease-in-out infinite' }} />
                       Active Program
                     </span>
-                    <span style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--text-muted)' }}>
-                      Current Split
+                    <span style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--accent-green)', opacity: 0.85 }}>
+                      {plan.daysPerWeek}d / week split
                     </span>
                   </div>
                 )}
@@ -492,23 +492,7 @@ export default function PlansPage() {
                   {/* Top Metadata Bar */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginBottom: 5 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', minWidth: 0 }}>
-                      {plan.isActive && (
-                        <span
-                          className="badge"
-                          style={{
-                            background: 'color-mix(in srgb, var(--accent-green) 14%, transparent)',
-                            color: 'var(--accent-green)',
-                            border: '1px solid color-mix(in srgb, var(--accent-green) 35%, transparent)',
-                            fontSize: 9,
-                            fontWeight: 800,
-                            padding: '2px 7px',
-                            letterSpacing: 0.35,
-                          }}
-                        >
-                          <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent-green)', boxShadow: '0 0 6px var(--accent-green)' }} />
-                          ACTIVE
-                        </span>
-                      )}
+
                       <span
                         className="badge"
                         style={{
@@ -1006,11 +990,11 @@ function SmartWorkoutGeneratorModal({
           })}
         />
 
-        <div className="section-label" style={{ marginBottom: 8 }}>Target Muscles</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+        <div className="section-label" style={{ marginBottom: 6 }}>Target Muscles</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 12 }}>
           {MUSCLE_CHOICES.map(m => (
             <button key={m} className={`filter-chip ${selectedMuscles.includes(m) ? 'active' : ''}`}
-              onClick={() => toggleMuscle(m)} style={{ fontSize: 11, padding: '6px 12px', textTransform: 'capitalize' }}>
+              onClick={() => toggleMuscle(m)} style={{ fontSize: 10, padding: '4px 9px', minHeight: 27, textTransform: 'capitalize' }}>
               {m}
             </button>
           ))}
@@ -1072,15 +1056,15 @@ function SmartWorkoutGeneratorModal({
           value={saveName}
           onChange={e => setSaveName(e.target.value)}
           placeholder="Optional: plan name to save..."
-          style={{ width: '100%', padding: '10px 14px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--text-primary)', fontSize: 13, marginBottom: 10 }}
+          style={{ width: '100%', padding: '8px 12px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 12, marginBottom: 8 }}
         />
 
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={handleSaveAsPlan} className="btn-secondary" style={{ flex: 1, minHeight: 48, borderRadius: 14 }}>
+          <button onClick={handleSaveAsPlan} className="btn-secondary" style={{ flex: 1, minHeight: 40, padding: '8px 10px', borderRadius: 11, fontSize: 12, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap' }}>
             Save as Plan
           </button>
-          <button onClick={handleStartNow} className="btn-primary" style={{ flex: 1, minHeight: 48, borderRadius: 14 }}>
-            <Play size={15} fill="white" /> Start Workout
+          <button onClick={handleStartNow} className="btn-primary" style={{ flex: 1, minHeight: 40, padding: '8px 10px', borderRadius: 11, fontSize: 12, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, whiteSpace: 'nowrap' }}>
+            <Play size={13} fill="currentColor" /> Start Workout
           </button>
         </div>
       </motion.div>
@@ -1103,6 +1087,7 @@ function CustomPlanBuilder({
   const [currentDayIdx, setCurrentDayIdx] = useState(0);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [search, setSearch] = useState('');
+  const [pickerEquip, setPickerEquip] = useState<string>('my_gear');
   const [allExercises, setAllExercises] = useState<Exercise[]>(initialExercises || []);
 
   useEffect(() => {
@@ -1124,17 +1109,34 @@ function CustomPlanBuilder({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose, showExercisePicker]);
 
-  const filteredExercises = useMemo(() => {
-    let filtered = allExercises.filter(e => matchesUserEquipment(e, equipment));
-    if (search) {
-      const q = search.toLowerCase();
-      filtered = filtered.filter(e =>
-        e.name.toLowerCase().includes(q) ||
-        e.primaryMuscles?.some(m => m.toLowerCase().includes(q))
-      );
+  const pickerEquipOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const ex of allExercises) {
+      const eq = (ex.equipment || 'body weight').trim().toLowerCase();
+      counts.set(eq, (counts.get(eq) || 0) + 1);
     }
-    return filtered.slice(0, 80);
-  }, [allExercises, equipment, search]);
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([eq]) => eq);
+  }, [allExercises]);
+
+  const filteredExercises = useMemo(() => {
+    let list = allExercises;
+    if (pickerEquip === 'my_gear') {
+      list = list.filter(e => matchesUserEquipment(e, equipment));
+    } else if (pickerEquip !== 'all') {
+      list = list.filter(e => (e.equipment || 'body weight').trim().toLowerCase() === pickerEquip);
+    }
+    const q = search.trim().toLowerCase();
+    if (q) {
+      const tokens = q.split(/\s+/).filter(Boolean);
+      list = list.filter(e => {
+        const hay = `${e.name} ${e.equipment || ''} ${(e.primaryMuscles || []).join(' ')} ${(e.secondaryMuscles || []).join(' ')}`.toLowerCase();
+        return tokens.every(tok => hay.includes(tok));
+      });
+    }
+    return list.slice(0, 80);
+  }, [allExercises, equipment, pickerEquip, search]);
 
   const addExercise = (exercise: Exercise) => {
     setDays(prev => {
@@ -1305,12 +1307,45 @@ function CustomPlanBuilder({
           ))}
         </div>
 
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <button onClick={() => setShowExercisePicker(true)} className="btn-secondary" style={{ flex: 1, minHeight: 46, borderRadius: 14, fontSize: 12 }}>
-            <Plus size={14} /> Add Exercise
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+          <button
+            type="button"
+            onClick={() => setShowExercisePicker(true)}
+            className="btn-secondary"
+            style={{
+              minHeight: 42,
+              padding: '8px 10px',
+              borderRadius: 12,
+              fontSize: 11.5,
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 5,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <Plus size={14} style={{ flexShrink: 0 }} /> Add Exercise
           </button>
-          <button onClick={autoBalanceDay} className="btn-secondary" style={{ flex: 1, minHeight: 46, borderRadius: 14, fontSize: 12, borderColor: 'var(--accent-purple)' }}>
-            <Sparkles size={14} color="var(--accent-purple)" /> Auto-Fill Balanced Day
+          <button
+            type="button"
+            onClick={autoBalanceDay}
+            className="btn-secondary"
+            style={{
+              minHeight: 42,
+              padding: '8px 10px',
+              borderRadius: 12,
+              fontSize: 11.5,
+              fontWeight: 700,
+              borderColor: 'var(--accent-purple)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 5,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <Sparkles size={14} color="var(--accent-purple)" style={{ flexShrink: 0 }} /> Auto-Fill Day
           </button>
         </div>
 
@@ -1332,10 +1367,26 @@ function CustomPlanBuilder({
                   <X size={18} />
                 </button>
               </div>
-              <div style={{ position: 'relative', marginBottom: 12 }}>
+              <div style={{ position: 'relative', marginBottom: 8 }}>
                 <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                <input className="search-bar" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or muscle..." style={{ paddingLeft: 36 }} />
+                <input className="search-bar" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search exercise, muscle, or gear..." style={{ paddingLeft: 36, minHeight: 38, fontSize: 12.5 }} />
               </div>
+              <ChipScrollBar
+                dropdownTitle="Filter by Equipment"
+                ariaLabel="Filter picker by equipment"
+                style={{ marginBottom: 10 }}
+                chipStyle={{ fontSize: 10.5, padding: '4px 10px', minHeight: 28, textTransform: 'capitalize' }}
+                items={[
+                  { id: 'my_gear', label: 'My Gear', isActive: pickerEquip === 'my_gear', onClick: () => setPickerEquip('my_gear') },
+                  { id: 'all', label: 'All Equipment', isActive: pickerEquip === 'all', onClick: () => setPickerEquip('all') },
+                  ...pickerEquipOptions.map(eq => ({
+                    id: eq,
+                    label: eq,
+                    isActive: pickerEquip === eq,
+                    onClick: () => setPickerEquip(eq),
+                  })),
+                ]}
+              />
               <div style={{ maxHeight: '50vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {filteredExercises.length === 0 ? (
                   <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
