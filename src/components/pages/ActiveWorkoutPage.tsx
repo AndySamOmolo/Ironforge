@@ -898,8 +898,26 @@ export default function ActiveWorkoutPage({ onComplete }: ActiveWorkoutPageProps
           chipStyle={{ fontSize: 11.5, padding: '5px 11px', minHeight: 32, textTransform: 'capitalize' }}
           items={exercises.map((ex, idx) => ({
             id: `${idx}-${ex.exerciseName}`,
-            label: `${ex.isComplete ? '✓ ' : `${idx + 1}. `}${ex.exerciseName.split(' ').slice(0, 3).join(' ')}`,
+            label: `${ex.isComplete ? '' : `${idx + 1}. `}${ex.exerciseName.split(' ').slice(0, 3).join(' ')}`,
+            icon: ex.isComplete ? (
+              <span
+                style={{
+                  width: 15,
+                  height: 15,
+                  borderRadius: '50%',
+                  background: idx === currentExerciseIndex ? 'rgba(255,255,255,0.28)' : 'var(--accent-green)',
+                  color: idx === currentExerciseIndex ? 'var(--text-on-accent)' : '#06120e',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <Check size={10} strokeWidth={3.2} />
+              </span>
+            ) : undefined,
             isActive: idx === currentExerciseIndex,
+            isCompleted: ex.isComplete,
             onClick: () => goToExercise(idx),
           }))}
           trailingAction={

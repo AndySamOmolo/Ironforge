@@ -68,7 +68,7 @@ export default function ProfilePage() {
     animationLevel, navStyle, bgStyle, accentIntensity, glowIntensity,
     borderThickness, glassOpacity, contrastMode, colorMode, textShadow,
     weightIncrement, autoAdvance, autoStartRest, keepScreenOn,
-    showTimer, countdownSound, exerciseVariety,
+    showTimer, timerStartMode, includeWarmupSets, countdownSound, exerciseVariety,
     showDailyQuote, showActivityHeatmap, showFeatureCards, showLastWorkout,
     setField, loadFromProfile,
   } = store;
@@ -368,9 +368,12 @@ export default function ProfilePage() {
       ]);
       const customPlans = allPlans.filter(p => p.isCustom);
       const customPlanIds = new Set(customPlans.map(p => p.id).filter(Boolean));
+      const activePlanRecord = allPlans.find(p => p.isActive);
       const data = {
-        version: 3,
+        version: 4,
+        app: 'IronForge',
         exportedAt: new Date().toISOString(),
+        activePlanName: activePlanRecord?.name || null,
         sessions,
         sessionExercises,
         sets,
@@ -416,16 +419,38 @@ export default function ProfilePage() {
   };
 
   const handleImportData = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const inputEl = e.target;
+    const file = inputEl.files?.[0];
     if (!file) return;
     try {
       if (file.size > 25 * 1024 * 1024) {
         throw new Error('Backup file exceeds 25MB limit');
       }
-      const text = await file.text();
-      const data = JSON.parse(text);
-      if (!data || typeof data !== 'object') {
-        throw new Error('Invalid JSON structure');
+      const text = await (typeof file.text === 'function'
+        ? file.text()
+        : new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(new Error('Could not read file'));
+            reader.readAsText(file);
+          }));
+      const cleanText = text.replace(/^\uFEFF/, '').trim();
+      const data = JSON.parse(cleanText);
+      const hasKnownSection = Boolean(
+        data &&
+        typeof data === 'object' &&
+        (data.version ||
+          Array.isArray(data.sessions) ||
+          Array.isArray(data.profile) ||
+          Array.isArray(data.sets) ||
+          Array.isArray(data.prs) ||
+          Array.isArray(data.bodyWeight) ||
+          Array.isArray(data.measurements) ||
+          Array.isArray(data.waterLogs) ||
+          Array.isArray(data.customPlans))
+      );
+      if (!hasKnownSection) {
+        throw new Error('Not a valid IronForge backup JSON');
       }
       const safeDate = (val: any): Date => {
         const d = val ? new Date(val) : new Date();
@@ -574,6 +599,18 @@ export default function ProfilePage() {
             }))
           );
         }
+        if (typeof data.activePlanName === 'string' && data.activePlanName.trim().length > 0) {
+          const targetPlanName = data.activePlanName.trim().toLowerCase();
+          const allCurrentPlans = await db.workoutPlans.toArray();
+          const matchedPlan = allCurrentPlans.find(p => p.name.trim().toLowerCase() === targetPlanName);
+          if (matchedPlan?.id) {
+            for (const pl of allCurrentPlans) {
+              if (pl.id) {
+                await db.workoutPlans.update(pl.id, { isActive: pl.id === matchedPlan.id });
+              }
+            }
+          }
+        }
         if (Array.isArray(data.profile) && data.profile[0]) {
           const importedProfile = data.profile[0];
           const existingProfiles = await db.userProfile.toArray();
@@ -598,13 +635,20 @@ export default function ProfilePage() {
       loadMeasurements();
       loadTodayWater();
       loadDBStats();
-      setImportStatus('✅ Backup restored successfully!');
-      setTimeout(() => setImportStatus(null), 4000);
-    } catch {
-      setImportStatus('❌ Invalid backup file');
-      setTimeout(() => setImportStatus(null), 4000);
+      const restoredCount = Array.isArray(data.sessions) ? data.sessions.length : 0;
+      setImportStatus(
+        restoredCount > 0
+          ? `✅ Restored backup (${restoredCount} workout${restoredCount !== 1 ? 's' : ''})`
+          : '✅ Backup restored successfully!'
+      );
+      setTimeout(() => setImportStatus(null), 4500);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Invalid backup file';
+      setImportStatus(`❌ ${msg}`);
+      setTimeout(() => setImportStatus(null), 4500);
+    } finally {
+      inputEl.value = '';
     }
-    e.target.value = '';
   };
 
   const weightChartPoints = useMemo(() => {
@@ -1730,6 +1774,39 @@ export default function ProfilePage() {
             <Toggle enabled={showTimer} onToggle={() => updateWorkoutSetting('showTimer', !showTimer)} />
           </SettingRow>
 
+          <SettingRow icon={Timer} iconColor="var(--accent-purple)" label="Timer Start Mode" description="Choose when the workout stopwatch begins counting" stacked>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {([
+                { id: 'on_enter' as const, label: 'On Enter' },
+                { id: 'on_first_set' as const, label: 'First Set' },
+                { id: 'manual' as const, label: 'Manual Tap' },
+              ]).map(opt => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => updateWorkoutSetting('timerStartMode', opt.id)}
+                  style={{
+                    padding: '8px 6px',
+                    borderRadius: 9,
+                    border: timerStartMode === opt.id ? 'none' : '1px solid var(--border)',
+                    background: timerStartMode === opt.id ? 'var(--gradient-fire)' : 'var(--bg-glass)',
+                    color: timerStartMode === opt.id ? 'var(--text-on-accent)' : 'var(--text-muted)',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    textAlign: 'center',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </SettingRow>
+
+          <SettingRow icon={Dumbbell} iconColor="var(--accent-yellow)" label="Exercise Warm-Up Sets" description="Prepend lighter ramp-up warm-up sets before each exercise">
+            <Toggle enabled={includeWarmupSets} onToggle={() => updateWorkoutSetting('includeWarmupSets', !includeWarmupSets)} />
+          </SettingRow>
+
           <SettingRow icon={Volume2} iconColor="var(--accent-yellow)" label="Sound Effects" description="Set & rest timer completion sounds">
             <Toggle enabled={soundEnabled} onToggle={() => { const next = !soundEnabled; toggleSound(); saveProfileFields({ soundEnabled: next }); if (next) { unlockAudioContext(); playWorkoutSound('set', true); } }} />
           </SettingRow>
@@ -1997,7 +2074,7 @@ export default function ProfilePage() {
               <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-cyan)' }}>Import Backup (Restore JSON)</div>
               <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{importStatus || 'Restore workouts, PRs & measurements from a backup file'}</div>
             </div>
-            <input type="file" accept=".json,application/json" onChange={handleImportData} style={{ display: 'none' }} />
+            <input type="file" accept=".json,application/json,text/plain,*/*" onChange={handleImportData} style={{ display: 'none' }} />
           </label>
 
           <button className="card" onClick={async () => {

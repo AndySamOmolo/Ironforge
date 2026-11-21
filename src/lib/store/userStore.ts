@@ -45,6 +45,8 @@ export interface UserState {
   autoStartRest: boolean;
   keepScreenOn: boolean;
   showTimer: boolean;
+  timerStartMode: 'on_enter' | 'on_first_set' | 'manual';
+  includeWarmupSets: boolean;
   countdownSound: boolean;
   exerciseVariety: 'low' | 'medium' | 'high';
   showDailyQuote: boolean;
@@ -139,6 +141,8 @@ export const useUserStore = create<UserState>((set) => ({
   autoStartRest: true,
   keepScreenOn: true,
   showTimer: true,
+  timerStartMode: 'on_first_set',
+  includeWarmupSets: false,
   countdownSound: true,
   exerciseVariety: 'medium',
   showDailyQuote: true,

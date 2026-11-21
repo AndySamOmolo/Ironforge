@@ -291,6 +291,8 @@ export interface UserProfile {
   autoStartRest?: boolean;
   keepScreenOn?: boolean;
   showTimer?: boolean;
+  timerStartMode?: 'on_enter' | 'on_first_set' | 'manual';
+  includeWarmupSets?: boolean;
   countdownSound?: boolean;
   exerciseVariety?: 'low' | 'medium' | 'high';
   showDailyQuote?: boolean;

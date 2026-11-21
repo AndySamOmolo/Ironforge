@@ -295,6 +295,7 @@ export interface ChipScrollItem {
   icon?: React.ReactNode;
   badge?: string;
   isActive?: boolean;
+  isCompleted?: boolean;
   onClick: () => void;
   title?: string;
 }
@@ -323,7 +324,8 @@ export function ChipScrollBar({
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const touchStartXRef = useRef<number | null>(null);
-  const touchStartScrollRef = useRef<number>(0);
+  const edgeAnchorXRef = useRef<number | null>(null);
+  const prevScrollLeftRef = useRef<number>(0);
   const wheelResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [isOpen, setIsOpen] = useState(false);
@@ -344,7 +346,17 @@ export function ChipScrollBar({
     updateScrollEdges();
     const el = scrollRef.current;
     if (!el) return;
-    const onScroll = () => updateScrollEdges();
+    const onScroll = () => {
+      updateScrollEdges();
+      const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+      const prev = prevScrollLeftRef.current;
+      const curr = el.scrollLeft;
+      prevScrollLeftRef.current = curr;
+      if (touchStartXRef.current === null && maxScroll > 8) {
+        if (prev > 4 && curr <= 1) triggerImpulseBounce(1, 10);
+        else if (prev < maxScroll - 4 && curr >= maxScroll - 1) triggerImpulseBounce(-1, 10);
+      }
+    };
     el.addEventListener('scroll', onScroll, { passive: true });
     let ro: ResizeObserver | null = null;
     if (typeof ResizeObserver !== 'undefined') {
@@ -385,36 +397,56 @@ export function ChipScrollBar({
     };
   }, []);
 
+  const triggerImpulseBounce = useCallback((direction: 1 | -1, strength = 12) => {
+    setIsDraggingBounce(false);
+    setBounceX(direction * strength);
+    if (wheelResetRef.current) clearTimeout(wheelResetRef.current);
+    wheelResetRef.current = setTimeout(() => setBounceX(0), 140);
+  }, []);
+
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
     const el = scrollRef.current;
     if (!el || e.touches.length !== 1) return;
     touchStartXRef.current = e.touches[0].clientX;
-    touchStartScrollRef.current = el.scrollLeft;
+    edgeAnchorXRef.current = null;
+    prevScrollLeftRef.current = el.scrollLeft;
     setIsDraggingBounce(false);
   };
 
   const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
     const el = scrollRef.current;
     if (!el || touchStartXRef.current === null || e.touches.length !== 1) return;
-    const deltaX = e.touches[0].clientX - touchStartXRef.current;
+    const currentX = e.touches[0].clientX;
+    const deltaFromStart = currentX - touchStartXRef.current;
     const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
 
-    if (el.scrollLeft <= 1 && deltaX > 0 && touchStartScrollRef.current <= 2) {
-      const resisted = Math.min(24, Math.sqrt(deltaX) * 2.5);
+    const atLeft = el.scrollLeft <= 1;
+    const atRight = el.scrollLeft >= maxScroll - 1;
+
+    if (atLeft && deltaFromStart > 0) {
+      if (edgeAnchorXRef.current === null) edgeAnchorXRef.current = currentX;
+      const pull = Math.max(0, currentX - edgeAnchorXRef.current);
+      const resisted = Math.min(30, Math.pow(pull + 4, 0.78) * 1.45);
       setIsDraggingBounce(true);
       setBounceX(resisted);
-    } else if (el.scrollLeft >= maxScroll - 1 && deltaX < 0 && touchStartScrollRef.current >= maxScroll - 2) {
-      const resisted = -Math.min(24, Math.sqrt(Math.abs(deltaX)) * 2.5);
+    } else if (atRight && deltaFromStart < 0) {
+      if (edgeAnchorXRef.current === null) edgeAnchorXRef.current = currentX;
+      const pull = Math.max(0, edgeAnchorXRef.current - currentX);
+      const resisted = -Math.min(30, Math.pow(pull + 4, 0.78) * 1.45);
       setIsDraggingBounce(true);
       setBounceX(resisted);
-    } else if (bounceX !== 0) {
-      setIsDraggingBounce(false);
-      setBounceX(0);
+    } else {
+      edgeAnchorXRef.current = null;
+      if (bounceX !== 0) {
+        setIsDraggingBounce(false);
+        setBounceX(0);
+      }
     }
   };
 
   const handleTouchEnd = () => {
     touchStartXRef.current = null;
+    edgeAnchorXRef.current = null;
     if (bounceX !== 0) {
       setIsDraggingBounce(false);
       setBounceX(0);
@@ -497,7 +529,7 @@ export function ChipScrollBar({
               paddingRight: canScrollRight ? 16 : 2,
               paddingLeft: canScrollLeft ? 10 : 0,
               transform: `translateX(${bounceX}px)`,
-              transition: isDraggingBounce ? 'none' : 'transform 0.36s cubic-bezier(0.22, 1.45, 0.36, 1)',
+              transition: isDraggingBounce ? 'none' : 'transform 0.42s cubic-bezier(0.22, 1.6, 0.36, 1)',
               willChange: 'transform',
             }}
           >
@@ -516,6 +548,14 @@ export function ChipScrollBar({
                   whiteSpace: 'nowrap',
                   flexShrink: 0,
                   ...chipStyle,
+                  ...(item.isCompleted && !item.isActive
+                    ? {
+                        background: 'color-mix(in srgb, var(--accent-green) 16%, transparent)',
+                        borderColor: 'color-mix(in srgb, var(--accent-green) 48%, transparent)',
+                        color: 'var(--accent-green)',
+                        fontWeight: 700,
+                      }
+                    : {}),
                 }}
               >
                 {item.icon}

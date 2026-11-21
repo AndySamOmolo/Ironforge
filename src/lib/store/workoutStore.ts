@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { SetType, type ActiveExercise } from '@/lib/types';
+import { useUserStore } from '@/lib/store/userStore';
 
 const STORAGE_KEY = 'ironforge_active_workout_v1';
 
@@ -62,6 +63,74 @@ function estimateSet1RM(weight: number, reps: number): number {
   if (!weight || weight <= 0 || !reps || reps <= 0) return 0;
   if (reps === 1) return Math.round(weight * 10) / 10;
   return Math.round(weight * (1 + reps / 30) * 10) / 10;
+}
+
+function buildWarmupSetsForExercise(exercise: ActiveExercise, barWeight: number, unitSystem: 'metric' | 'imperial'): ActiveExercise {
+  if (!exercise.sets || exercise.sets.length === 0) return exercise;
+  if (exercise.sets.some(s => s.setType === SetType.Warmup)) return exercise;
+
+  const firstWorking = exercise.sets[0];
+  const workingWeight = firstWorking.weight || firstWorking.targetWeight || 0;
+  const workingReps = firstWorking.reps || firstWorking.targetReps || 10;
+  const step = unitSystem === 'imperial' ? 5 : 2.5;
+  const roundToStep = (val: number) => Math.max(step, Math.round(val / step) * step);
+
+  const warmups = [];
+  if (workingWeight > 0) {
+    if (workingWeight >= Math.max(barWeight * 1.75, step * 8)) {
+      const w1 = roundToStep(workingWeight * 0.5);
+      const w2 = roundToStep(workingWeight * 0.75);
+      warmups.push({
+        setNumber: 1,
+        setType: SetType.Warmup,
+        weight: w1,
+        reps: 10,
+        targetWeight: w1,
+        targetReps: 10,
+        isComplete: false,
+      });
+      if (w2 > w1 && w2 < workingWeight) {
+        warmups.push({
+          setNumber: 2,
+          setType: SetType.Warmup,
+          weight: w2,
+          reps: 5,
+          targetWeight: w2,
+          targetReps: 5,
+          isComplete: false,
+        });
+      }
+    } else {
+      const w1 = roundToStep(workingWeight * 0.55);
+      warmups.push({
+        setNumber: 1,
+        setType: SetType.Warmup,
+        weight: w1 < workingWeight ? w1 : workingWeight,
+        reps: Math.min(12, Math.max(8, workingReps)),
+        targetWeight: w1 < workingWeight ? w1 : workingWeight,
+        targetReps: Math.min(12, Math.max(8, workingReps)),
+        isComplete: false,
+      });
+    }
+  } else {
+    const reps = Math.max(5, Math.round(workingReps * 0.5));
+    warmups.push({
+      setNumber: 1,
+      setType: SetType.Warmup,
+      weight: 0,
+      reps,
+      targetWeight: 0,
+      targetReps: reps,
+      isComplete: false,
+    });
+  }
+
+  const combined = [...warmups, ...exercise.sets].map((s, idx) => ({ ...s, setNumber: idx + 1 }));
+  return {
+    ...exercise,
+    sets: combined,
+    targetSets: combined.length,
+  };
 }
 
 function recomputeTotals(exercises: ActiveExercise[]) {
@@ -164,17 +233,23 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       clearTimeout(noteSaveTimeout);
       noteSaveTimeout = null;
     }
+    const userPrefs = useUserStore.getState();
+    const preparedExercises = userPrefs.includeWarmupSets
+      ? exercises.map(ex => buildWarmupSetsForExercise(ex, userPrefs.barWeight, userPrefs.unitSystem))
+      : exercises;
+    const autoStartNow = userPrefs.timerStartMode === 'on_enter';
+    const startNowMs = Date.now();
     const nextState = {
       isActive: true,
-      isPaused: true,
+      isPaused: !autoStartNow,
       isMinimized: false,
       sessionId: null,
       planName,
       dayName,
-      exercises,
+      exercises: preparedExercises,
       currentExerciseIndex: 0,
       elapsedTime: 0,
-      lastTickAt: null,
+      lastTickAt: autoStartNow ? startNowMs : null,
       totalVolume: 0,
       totalSets: 0,
       totalReps: 0,
@@ -296,9 +371,13 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
 
     const now = Date.now();
     const totals = recomputeTotals(exercises);
-    const next = { ...state, isPaused: false, lastTickAt: state.lastTickAt || now, exercises, ...totals };
+    const timerMode = useUserStore.getState().timerStartMode || 'on_first_set';
+    const shouldKeepPaused = timerMode === 'manual' && state.isPaused;
+    const nextIsPaused = shouldKeepPaused ? true : false;
+    const nextLastTick = nextIsPaused ? state.lastTickAt : (state.lastTickAt || now);
+    const next = { ...state, isPaused: nextIsPaused, lastTickAt: nextLastTick, exercises, ...totals };
     saveSnapshot(next);
-    return { isPaused: false, lastTickAt: state.lastTickAt || now, exercises, ...totals };
+    return { isPaused: nextIsPaused, lastTickAt: nextLastTick, exercises, ...totals };
   }),
 
   uncompleteSet: (exerciseIndex, setIndex) => set((state) => {

@@ -143,6 +143,8 @@ export default function App() {
           autoStartRest: p.autoStartRest ?? true,
           keepScreenOn: p.keepScreenOn ?? true,
           showTimer: p.showTimer ?? true,
+          timerStartMode: p.timerStartMode ?? 'on_first_set',
+          includeWarmupSets: Boolean(p.includeWarmupSets),
           countdownSound: p.countdownSound ?? true,
           exerciseVariety: p.exerciseVariety ?? 'medium',
           showDailyQuote: p.showDailyQuote ?? true,
@@ -449,61 +451,93 @@ export default function App() {
             </div>
           )}
           {renderPage()}
-          {workoutActive && workoutMinimized && (
-            <div
-              style={{
-                position: 'fixed',
-                left: 12,
-                right: 12,
-                bottom: 'calc(76px + env(safe-area-inset-bottom, 0px))',
-                zIndex: 95,
-                maxWidth: 456,
-                margin: '0 auto',
-                background: 'var(--bg-floating)',
-                backdropFilter: 'blur(20px)',
-                border: '1px solid var(--border-active)',
-                borderRadius: 16,
-                padding: '10px 14px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 10,
-                boxShadow: 'var(--shadow-elevated)',
-              }}
-            >
-              <div onClick={resumeWorkout} style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: isPaused ? 'var(--accent-yellow)' : 'var(--accent-green)' }} />
-                  <span style={{ fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {activeDayName || activePlanName || 'Active Workout'}
-                  </span>
+          {workoutActive && workoutMinimized && (() => {
+            const doneCount = activeExercises.filter(e => e.isComplete).length;
+            const pct = activeExercises.length > 0 ? Math.round((doneCount / activeExercises.length) * 100) : 0;
+            return (
+              <div
+                style={{
+                  position: 'fixed',
+                  left: 12,
+                  right: 12,
+                  bottom: 'calc(72px + env(safe-area-inset-bottom, 0px))',
+                  zIndex: 95,
+                  maxWidth: 456,
+                  margin: '0 auto',
+                  background: 'var(--bg-floating)',
+                  backdropFilter: 'blur(22px)',
+                  WebkitBackdropFilter: 'blur(22px)',
+                  border: '1px solid color-mix(in srgb, var(--accent-green) 42%, var(--border-active))',
+                  borderRadius: 16,
+                  overflow: 'hidden',
+                  boxShadow: 'var(--shadow-elevated)',
+                }}
+              >
+                <div style={{ padding: '9px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                  <div onClick={resumeWorkout} style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span
+                        style={{
+                          width: 7,
+                          height: 7,
+                          borderRadius: '50%',
+                          background: isPaused ? 'var(--accent-yellow)' : 'var(--accent-green)',
+                          boxShadow: isPaused ? 'none' : '0 0 8px var(--accent-green)',
+                          animation: isPaused ? 'none' : 'pulse-dot 2s ease-in-out infinite',
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span style={{ fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {activeDayName || activePlanName || 'Active Workout'}
+                      </span>
+                      <span
+                        className="font-mono"
+                        style={{
+                          fontSize: 10.5,
+                          fontWeight: 800,
+                          color: isPaused ? 'var(--accent-yellow)' : 'var(--accent-green)',
+                          background: isPaused
+                            ? 'color-mix(in srgb, var(--accent-yellow) 12%, transparent)'
+                            : 'color-mix(in srgb, var(--accent-green) 14%, transparent)',
+                          padding: '1px 6px',
+                          borderRadius: 6,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {Math.floor(elapsedTime / 60)}:{String(elapsedTime % 60).padStart(2, '0')}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textTransform: 'capitalize' }}>
+                      {activeExercises[currentExerciseIndex]?.exerciseName || 'In progress'} • {doneCount}/{activeExercises.length} done
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                    <button
+                      onClick={togglePause}
+                      style={{
+                        width: 32, height: 32, borderRadius: 9, border: '1px solid var(--border)',
+                        background: 'var(--bg-glass)', color: isPaused ? 'var(--accent-green)' : 'var(--text-secondary)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                      }}
+                      aria-label={isPaused ? 'Resume timer' : 'Pause timer'}
+                    >
+                      {isPaused ? <Play size={13} fill="currentColor" /> : <Pause size={13} />}
+                    </button>
+                    <button
+                      onClick={resumeWorkout}
+                      className="btn-primary"
+                      style={{ width: 'auto', minHeight: 32, padding: '5px 11px', fontSize: 11, borderRadius: 9, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                    >
+                      <Maximize2 size={11} /> Resume
+                    </button>
+                  </div>
                 </div>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textTransform: 'capitalize' }}>
-                  {activeExercises[currentExerciseIndex]?.exerciseName || 'In progress'} • {Math.floor(elapsedTime / 60)}:{String(elapsedTime % 60).padStart(2, '0')}
+                <div style={{ height: 3, width: '100%', background: 'var(--bg-track)' }}>
+                  <div style={{ height: '100%', width: `${Math.max(4, pct)}%`, background: 'var(--gradient-mint)', transition: 'width 0.3s ease' }} />
                 </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                <button
-                  onClick={togglePause}
-                  style={{
-                    width: 34, height: 34, borderRadius: 10, border: '1px solid var(--border)',
-                    background: 'var(--bg-glass)', color: isPaused ? 'var(--accent-green)' : 'var(--text-secondary)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                  }}
-                  aria-label={isPaused ? 'Resume timer' : 'Pause timer'}
-                >
-                  {isPaused ? <Play size={14} fill="currentColor" /> : <Pause size={14} />}
-                </button>
-                <button
-                  onClick={resumeWorkout}
-                  className="btn-primary"
-                  style={{ width: 'auto', minHeight: 34, padding: '6px 12px', fontSize: 11, borderRadius: 10, display: 'inline-flex', alignItems: 'center', gap: 5 }}
-                >
-                  <Maximize2 size={12} /> Resume
-                </button>
-              </div>
-            </div>
-          )}
+            );
+          })()}
           <BottomNav />
         </>
       )}

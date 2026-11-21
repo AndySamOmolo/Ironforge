@@ -237,15 +237,21 @@ export default function ProgressPage() {
     return { calendarWeeks: weeks, calendarMonthHeaders: headers };
   }, [calendarData]);
 
-  const weekStats = useMemo(() => {
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const weekSessions = sessions.filter(s => new Date(s.startedAt) >= weekAgo);
+  const filteredStats = useMemo(() => {
+    const label = selectedCalendarDate
+      ? 'Day'
+      : historyFilter === 'week'
+        ? '7D'
+        : historyFilter === 'month'
+          ? '30D'
+          : 'All Time';
     return {
-      count: weekSessions.length,
-      volume: weekSessions.reduce((a, s) => a + (s.totalVolume || 0), 0),
-      duration: weekSessions.reduce((a, s) => a + (s.duration || 0), 0),
+      label,
+      count: filteredHistory.length,
+      volume: filteredHistory.reduce((a, s) => a + (s.totalVolume || 0), 0),
+      duration: filteredHistory.reduce((a, s) => a + (s.duration || 0), 0),
     };
-  }, [sessions]);
+  }, [filteredHistory, historyFilter, selectedCalendarDate]);
 
   const { currentStreak, longestStreak, activeDays30d } = useMemo(() => {
     const dates = new Set(sessions.map(s => toLocalDateKey(s.startedAt)));
@@ -361,27 +367,27 @@ export default function ProgressPage() {
       {/* ════════ OVERVIEW ════════ */}
       {tab === 'overview' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 12 }}>
             {[
-              { icon: Dumbbell, value: sessions.length, label: 'Total Workouts', color: 'var(--accent-purple)', bg: 'color-mix(in srgb, var(--accent-purple) 8%, transparent)' },
-              { icon: Activity, value: `${activeDays30d}d`, label: 'Active Days (30D)', color: 'var(--accent-green)', bg: 'color-mix(in srgb, var(--accent-green) 8%, transparent)' },
-              { icon: Clock, value: `${avgDuration}m`, label: `Avg Time (${fmtDur(totalDurationSec)} total)`, color: 'var(--accent-orange)', bg: 'color-mix(in srgb, var(--accent-orange) 8%, transparent)' },
-              { icon: Flame, value: `${currentStreak}d`, label: `Streak (Best: ${longestStreak}d)`, color: 'var(--accent-red)', bg: 'color-mix(in srgb, var(--accent-red) 8%, transparent)' },
+              { icon: Dumbbell, value: sessions.length, label: 'Total Workouts', color: 'var(--accent-purple)', bg: 'color-mix(in srgb, var(--accent-purple) 10%, transparent)' },
+              { icon: Activity, value: `${activeDays30d}d`, label: 'Active Days (30D)', color: 'var(--accent-green)', bg: 'color-mix(in srgb, var(--accent-green) 10%, transparent)' },
+              { icon: Clock, value: `${avgDuration}m`, label: `Avg Time (${fmtDur(totalDurationSec)})`, color: 'var(--accent-orange)', bg: 'color-mix(in srgb, var(--accent-orange) 10%, transparent)' },
+              { icon: Flame, value: `${currentStreak}d`, label: `Streak (Best: ${longestStreak}d)`, color: 'var(--accent-red)', bg: 'color-mix(in srgb, var(--accent-red) 10%, transparent)' },
             ].map((stat, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}
-                className="stat-card" style={{ alignItems: 'center', textAlign: 'center' }}>
-                <div className="icon-badge" style={{ background: stat.bg, width: 32, height: 32, borderRadius: 8 }}>
-                  <stat.icon size={16} color={stat.color} />
+              <motion.div key={i} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
+                className="stat-card" style={{ alignItems: 'center', textAlign: 'center', padding: '10px 8px', gap: 4 }}>
+                <div className="icon-badge" style={{ background: stat.bg, width: 28, height: 28, borderRadius: 8 }}>
+                  <stat.icon size={14} color={stat.color} />
                 </div>
-                <div className="stat-value" style={{ fontSize: 22 }}>{stat.value}</div>
-                <div className="stat-label">{stat.label}</div>
+                <div className="stat-value" style={{ fontSize: 19 }}>{stat.value}</div>
+                <div className="stat-label" style={{ fontSize: 9.5 }}>{stat.label}</div>
               </motion.div>
             ))}
           </div>
 
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="card" style={{ marginBottom: 16, padding: 18 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>This Week Volume (Mon–Sun, {unitLabel})</h3>
-            <div style={{ height: 180 }}>
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.16 }} className="card" style={{ marginBottom: 12, padding: 13 }}>
+            <h3 style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 10 }}>This Week Volume (Mon–Sun, {unitLabel})</h3>
+            <div style={{ height: 150 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={getWeeklyData()} barSize={24}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
@@ -395,9 +401,9 @@ export default function ProgressPage() {
             </div>
           </motion.div>
 
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="card" style={{ marginBottom: 16, padding: 18 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Volume Trend (8 Weeks)</h3>
-            <div style={{ height: 150 }}>
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.24 }} className="card" style={{ marginBottom: 12, padding: 13 }}>
+            <h3 style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 10 }}>Volume Trend (8 Weeks)</h3>
+            <div style={{ height: 132 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={getTrendData()}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
@@ -431,27 +437,27 @@ export default function ProgressPage() {
       {/* ════════ HISTORY / ACTIVITY LOG ════════ */}
       {tab === 'history' && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14 }}>
-            <div className="stat-card" style={{ textAlign: 'center', padding: 10 }}>
-              <div className="stat-value" style={{ fontSize: 18, color: 'var(--accent-green)' }}>{weekStats.count}</div>
-              <div className="stat-label">This Week</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 7, marginBottom: 10 }}>
+            <div className="stat-card" style={{ textAlign: 'center', padding: '8px 6px' }}>
+              <div className="stat-value" style={{ fontSize: 16.5, color: 'var(--accent-green)' }}>{filteredStats.count}</div>
+              <div className="stat-label" style={{ fontSize: 9 }}>Workouts ({filteredStats.label})</div>
             </div>
-            <div className="stat-card" style={{ textAlign: 'center', padding: 10 }}>
-              <div className="stat-value" style={{ fontSize: 18, color: 'var(--accent-purple)' }}>{fmtVol(weekStats.volume)}</div>
-              <div className="stat-label">Week Volume</div>
+            <div className="stat-card" style={{ textAlign: 'center', padding: '8px 6px' }}>
+              <div className="stat-value" style={{ fontSize: 16.5, color: 'var(--accent-purple)' }}>{fmtVol(filteredStats.volume)}</div>
+              <div className="stat-label" style={{ fontSize: 9 }}>Volume ({unitLabel})</div>
             </div>
-            <div className="stat-card" style={{ textAlign: 'center', padding: 10 }}>
-              <div className="stat-value" style={{ fontSize: 18, color: 'var(--accent-orange)' }}>{fmtDur(weekStats.duration)}</div>
-              <div className="stat-label">Week Time</div>
+            <div className="stat-card" style={{ textAlign: 'center', padding: '8px 6px' }}>
+              <div className="stat-value" style={{ fontSize: 16.5, color: 'var(--accent-orange)' }}>{fmtDur(filteredStats.duration)}</div>
+              <div className="stat-label" style={{ fontSize: 9 }}>Time ({filteredStats.label})</div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8 }}>
-            <div style={{ display: 'flex', gap: 4 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, gap: 6 }}>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
               {(['all', 'month', 'week'] as const).map(f => (
-                <button key={f} className={historyFilter === f && !selectedCalendarDate ? 'btn-primary' : 'btn-secondary'}
+                <button key={f} type="button" className={historyFilter === f && !selectedCalendarDate ? 'btn-primary' : 'btn-secondary'}
                   onClick={() => { setHistoryFilter(f); setSelectedCalendarDate(null); setHistoryPage(0); }}
-                  style={{ minHeight: 32, padding: '5px 12px', fontSize: 11, borderRadius: 8, width: 'auto' }}>
+                  style={{ minHeight: 29, padding: '4px 10px', fontSize: 10.5, borderRadius: 8, width: 'auto' }}>
                   {f === 'all' ? 'All' : f === 'month' ? '30D' : '7D'}
                 </button>
               ))}
@@ -473,7 +479,7 @@ export default function ProgressPage() {
           </div>
 
           {calendarView && (
-            <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+            <div className="card" style={{ padding: 11, marginBottom: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>Last 12 Weeks</span>
                 <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-muted)' }}>
@@ -612,7 +618,7 @@ export default function ProgressPage() {
                       display: 'flex', alignItems: 'center', gap: 12, width: '100%', background: 'none', border: 'none',
                       color: 'var(--text-primary)', cursor: 'pointer', padding: 0, textAlign: 'left',
                     }}>
-                      <div style={{ width: 40, height: 40, borderRadius: 10, background: 'color-mix(in srgb, var(--accent-green) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-green) 20%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <div style={{ width: 34, height: 34, borderRadius: 9, background: 'color-mix(in srgb, var(--accent-green) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-green) 22%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         <Dumbbell size={16} color="var(--accent-green)" />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>

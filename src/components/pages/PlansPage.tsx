@@ -452,7 +452,25 @@ export default function PlansPage() {
                 }}
               >
                 {plan.isActive && (
-                  <div style={{ height: 3, width: '100%', background: 'var(--gradient-mint)' }} />
+                  <div
+                    style={{
+                      padding: '5px 13px',
+                      background: 'linear-gradient(90deg, color-mix(in srgb, var(--accent-green) 18%, transparent), color-mix(in srgb, var(--accent-green) 6%, transparent))',
+                      borderBottom: '1px solid color-mix(in srgb, var(--accent-green) 24%, transparent)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                    }}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 9.5, fontWeight: 800, letterSpacing: 0.6, color: 'var(--accent-green)', textTransform: 'uppercase' }}>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-green)', boxShadow: '0 0 8px var(--accent-green)', animation: 'pulse-dot 2.2s ease-in-out infinite' }} />
+                      Active Program
+                    </span>
+                    <span style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--text-muted)' }}>
+                      Current Split
+                    </span>
+                  </div>
                 )}
                 <button
                   onClick={() => togglePlan(plan.id!)}

@@ -1830,9 +1830,8 @@ html[data-anim="none"] body::before { animation: none; }
 }
 
 .set-row.completed {
-  border-color: color-mix(in srgb, var(--accent-green) 40%, transparent);
+  border-color: color-mix(in srgb, var(--accent-green) 38%, transparent);
   background: color-mix(in srgb, var(--accent-green) 11%, var(--bg-glass));
-  box-shadow: inset 3px 0 0 var(--accent-green);
 }
 
 .complete-set-btn {
