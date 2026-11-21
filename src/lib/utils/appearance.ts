@@ -95,6 +95,11 @@ export const THEME_OPTIONS: ThemeOption[] = [
   { id: 'nord', label: 'Nord', colors: ['#38BDF8', '#818CF8', '#1E293B'], isLight: false, category: 'dark', metaColor: '#1E293B' },
   { id: 'bloodmoon', label: 'Blood', colors: ['#E5395E', '#FB7185', '#140408'], isLight: false, category: 'dark', metaColor: '#140408' },
   { id: 'cobalt', label: 'Cobalt', colors: ['#3B82F6', '#06B6D4', '#081229'], isLight: false, category: 'dark', metaColor: '#081229' },
+  { id: 'emerald_oled', label: 'Matrix', colors: ['#10B981', '#34D399', '#000000'], isLight: false, category: 'oled', metaColor: '#000000' },
+  { id: 'mocha', label: 'Espresso', colors: ['#D97706', '#F59E0B', '#16100C'], isLight: false, category: 'dark', metaColor: '#16100C' },
+  { id: 'crimson', label: 'Crimson', colors: ['#F43F5E', '#FB923C', '#0D0609'], isLight: false, category: 'dark', metaColor: '#0D0609' },
+  { id: 'abyss', label: 'Abyss', colors: ['#22D3EE', '#38BDF8', '#050A14'], isLight: false, category: 'dark', metaColor: '#050A14' },
+  { id: 'amethyst', label: 'Amethyst', colors: ['#C084FC', '#F472B6', '#090512'], isLight: false, category: 'oled', metaColor: '#090512' },
   // Light Mode Themes (10 Curated Palettes)
   { id: 'daylight', label: 'Daylight', colors: ['#E11D48', '#4F46E5', '#F8FAFC'], isLight: true, category: 'light', metaColor: '#F8FAFC' },
   { id: 'sand', label: 'Sand', colors: ['#EA580C', '#0D9488', '#FAF6F0'], isLight: true, category: 'light', metaColor: '#FAF6F0' },
@@ -106,6 +111,11 @@ export const THEME_OPTIONS: ThemeOption[] = [
   { id: 'paper', label: 'Paper', colors: ['#18181B', '#52525B', '#F9F8F4'], isLight: true, category: 'light', metaColor: '#F9F8F4' },
   { id: 'citrus', label: 'Citrus', colors: ['#D97706', '#65A30D', '#FFFBF0'], isLight: true, category: 'light', metaColor: '#FFFBF0' },
   { id: 'matcha', label: 'Matcha', colors: ['#3F6212', '#15803D', '#F4F7F0'], isLight: true, category: 'light', metaColor: '#F4F7F0' },
+  { id: 'peach', label: 'Peach', colors: ['#EA580C', '#F43F5E', '#FFF6F0'], isLight: true, category: 'light', metaColor: '#FFF6F0' },
+  { id: 'oceanic', label: 'Breeze', colors: ['#0284C7', '#0D9488', '#EFFBFA'], isLight: true, category: 'light', metaColor: '#EFFBFA' },
+  { id: 'linen', label: 'Linen', colors: ['#B45309', '#78716C', '#FBF8F3'], isLight: true, category: 'light', metaColor: '#FBF8F3' },
+  { id: 'berry', label: 'Berry', colors: ['#9333EA', '#E11D48', '#FAF5FF'], isLight: true, category: 'light', metaColor: '#FAF5FF' },
+  { id: 'slate_light', label: 'Glacier', colors: ['#334155', '#2563EB', '#F1F5F9'], isLight: true, category: 'light', metaColor: '#F1F5F9' },
 ];
 
 export const LIGHT_THEME_IDS = new Set(

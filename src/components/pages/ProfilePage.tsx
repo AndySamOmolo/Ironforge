@@ -1566,13 +1566,20 @@ export default function ProfilePage() {
 
 {/* Background Pattern */}
           <div>
-            <div className="section-label" style={{ marginBottom: 10 }}>Background Pattern</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
+            <div className="section-label" style={{ marginBottom: 10 }}>Background Pattern (12 Styles)</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
               {[
                 { id: 'mesh', label: 'Mesh', icon: '🌌' },
                 { id: 'grid', label: 'Grid', icon: '🕸️' },
                 { id: 'dots', label: 'Dots', icon: '⠿' },
                 { id: 'aurora', label: 'Aurora', icon: '🌅' },
+                { id: 'diagonal', label: 'Stripes', icon: '📐' },
+                { id: 'crosshatch', label: 'Blueprint', icon: '🗺️' },
+                { id: 'spotlight', label: 'Spotlight', icon: '🔦' },
+                { id: 'horizon', label: 'Horizon', icon: '🌇' },
+                { id: 'rings', label: 'Rings', icon: '🎯' },
+                { id: 'carbon', label: 'Carbon', icon: '🧱' },
+                { id: 'duotone', label: 'Duotone', icon: '🎨' },
                 { id: 'clean', label: 'Clean', icon: '🌑' },
               ].map(opt => (
                 <button key={opt.id} onClick={() => updateAppearance({ bgStyle: opt.id })} style={{
